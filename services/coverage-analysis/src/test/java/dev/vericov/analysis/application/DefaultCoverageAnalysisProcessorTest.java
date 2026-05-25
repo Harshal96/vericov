@@ -4,6 +4,8 @@ import dev.vericov.analysis.application.port.ArtifactContentStore;
 import dev.vericov.analysis.application.port.CoverageAnalysisInputRepository;
 import dev.vericov.analysis.application.port.CoverageReportRepository;
 import dev.vericov.analysis.application.port.GateConfigurationRepository;
+import dev.vericov.analysis.application.port.NormalizedCoverageLocation;
+import dev.vericov.analysis.application.port.NormalizedCoverageStore;
 import dev.vericov.analysis.coverage.CloverCoverageParser;
 import dev.vericov.analysis.coverage.CoberturaCoverageParser;
 import dev.vericov.analysis.coverage.CoverageAnalysisInput;
@@ -32,6 +34,7 @@ import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class DefaultCoverageAnalysisProcessorTest {
@@ -83,6 +86,7 @@ class DefaultCoverageAnalysisProcessorTest {
                         end_of_record
                         """.getBytes(StandardCharsets.UTF_8)));
         FakeReportRepository reports = new FakeReportRepository();
+        FakeNormalizedCoverageStore normalizedCoverage = new FakeNormalizedCoverageStore();
         FakeGateConfigurationRepository gates = new FakeGateConfigurationRepository(List.of(new GateConfiguration(
                 UUID.fromString("6ca2b9dc-75f0-45e7-b28b-a76c4db133d9"),
                 TENANT_ID,
@@ -101,6 +105,7 @@ class DefaultCoverageAnalysisProcessorTest {
                 content,
                 reports,
                 gates,
+                normalizedCoverage,
                 lcovParserRegistry(),
                 Clock.fixed(NOW, ZoneOffset.UTC));
 
@@ -113,6 +118,10 @@ class DefaultCoverageAnalysisProcessorTest {
         assertEquals("abc123", report.commitSha());
         assertEquals("main", report.branchName());
         assertEquals(42, report.pullRequestNumber());
+        assertEquals("coverage-normalized", report.normalizedStorageBucket());
+        assertEquals(
+                TENANT_ID + "/" + UPLOAD_ID + "/coverage-normalized/coverage-map.json.gz",
+                report.normalizedStoragePath());
         assertEquals(3, report.line().total());
         assertEquals(3, report.line().covered());
         assertEquals(2, report.branch().total());
@@ -130,6 +139,8 @@ class DefaultCoverageAnalysisProcessorTest {
         assertEquals("line-minimum", evaluation.gateName());
         assertEquals("passed", evaluation.status());
         assertEquals(new BigDecimal("100.0000"), evaluation.actual());
+        assertEquals(1, normalizedCoverage.storedReports.size());
+        assertEquals(3, normalizedCoverage.storedReports.getFirst().line().total());
     }
 
     @Test
@@ -145,6 +156,7 @@ class DefaultCoverageAnalysisProcessorTest {
                         List.of())),
                 new FakeContentStore(Map.of()),
                 new FakeReportRepository(),
+                new FakeNormalizedCoverageStore(),
                 lcovParserRegistry(),
                 Clock.fixed(NOW, ZoneOffset.UTC));
 
@@ -205,6 +217,7 @@ class DefaultCoverageAnalysisProcessorTest {
                 inputs,
                 content,
                 reports,
+                new FakeNormalizedCoverageStore(),
                 fullParserRegistry(),
                 Clock.fixed(NOW, ZoneOffset.UTC));
 
@@ -217,6 +230,45 @@ class DefaultCoverageAnalysisProcessorTest {
         assertEquals(1, report.function().covered());
         assertEquals(3, report.statement().total());
         assertEquals(3, report.statement().covered());
+    }
+
+    @Test
+    void failsWithoutSavingReportWhenNormalizedCoverageStorageFails() {
+        FakeInputRepository inputs = new FakeInputRepository(new CoverageAnalysisInput(
+                UPLOAD_ID,
+                TENANT_ID,
+                REPOSITORY_ID,
+                "abc123",
+                "main",
+                42,
+                List.of(new CoverageInputArtifact(
+                        "unit.lcov",
+                        "coverage",
+                        "lcov",
+                        "coverage-raw",
+                        "tenant/upload/coverage/unit.lcov",
+                        "sha-1"))));
+        FakeContentStore content = new FakeContentStore(Map.of(
+                "coverage-raw/tenant/upload/coverage/unit.lcov", """
+                        TN:
+                        SF:src/App.java
+                        DA:1,1
+                        end_of_record
+                        """.getBytes(StandardCharsets.UTF_8)));
+        FakeReportRepository reports = new FakeReportRepository();
+        DefaultCoverageAnalysisProcessor processor = new DefaultCoverageAnalysisProcessor(
+                inputs,
+                content,
+                reports,
+                new FakeGateConfigurationRepository(List.of()),
+                new FakeNormalizedCoverageStore(new IllegalStateException("normalized upload failed")),
+                lcovParserRegistry(),
+                Clock.fixed(NOW, ZoneOffset.UTC));
+
+        IllegalStateException exception = assertThrows(IllegalStateException.class, () -> processor.process(event()));
+
+        assertEquals("normalized upload failed", exception.getMessage());
+        assertNull(reports.savedReport);
     }
 
     @Test
@@ -304,6 +356,7 @@ class DefaultCoverageAnalysisProcessorTest {
                 reports,
                 gates,
                 contextRepo,
+                new FakeNormalizedCoverageStore(),
                 lcovParserRegistry(),
                 PrDiffCoverageProcessor.noop(),
                 Clock.fixed(NOW, ZoneOffset.UTC));
@@ -362,6 +415,7 @@ class DefaultCoverageAnalysisProcessorTest {
                                 "sha-1")))),
                 new FakeContentStore(Map.of("coverage-raw/tenant/upload/coverage/coverage.xml", new byte[0])),
                 new FakeReportRepository(),
+                new FakeNormalizedCoverageStore(),
                 lcovParserRegistry(),
                 Clock.fixed(NOW, ZoneOffset.UTC));
 
@@ -448,6 +502,30 @@ class DefaultCoverageAnalysisProcessorTest {
             assertEquals(TENANT_ID, tenantId);
             assertEquals(REPOSITORY_ID, repositoryId);
             return gates;
+        }
+    }
+
+    private static final class FakeNormalizedCoverageStore implements NormalizedCoverageStore {
+        private final List<CoverageReport> storedReports = new java.util.ArrayList<>();
+        private final RuntimeException failure;
+
+        private FakeNormalizedCoverageStore() {
+            this(null);
+        }
+
+        private FakeNormalizedCoverageStore(RuntimeException failure) {
+            this.failure = failure;
+        }
+
+        @Override
+        public NormalizedCoverageLocation store(CoverageReport report) {
+            if (failure != null) {
+                throw failure;
+            }
+            storedReports.add(report);
+            return new NormalizedCoverageLocation(
+                    "coverage-normalized",
+                    report.tenantId() + "/" + report.uploadId() + "/coverage-normalized/coverage-map.json.gz");
         }
     }
 }

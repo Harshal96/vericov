@@ -1314,6 +1314,10 @@ VALUES
         'coverage-raw'
     ),
     (
+        'coverage-normalized',
+        'coverage-normalized'
+    ),
+    (
         'test-results-raw',
         'test-results-raw'
     ),
@@ -1336,7 +1340,7 @@ BEGIN
         EXECUTE $sql$
             UPDATE storage.buckets
             SET "public" = false
-            WHERE id IN ('coverage-raw', 'test-results-raw', 'metadata-raw')
+            WHERE id IN ('coverage-raw', 'coverage-normalized', 'test-results-raw', 'metadata-raw')
         $sql$;
     END IF;
 
@@ -1351,11 +1355,12 @@ BEGIN
             UPDATE storage.buckets
             SET file_size_limit = CASE id
                 WHEN 'coverage-raw' THEN 104857600
+                WHEN 'coverage-normalized' THEN 104857600
                 WHEN 'test-results-raw' THEN 104857600
                 WHEN 'metadata-raw' THEN 10485760
                 ELSE file_size_limit
             END
-            WHERE id IN ('coverage-raw', 'test-results-raw', 'metadata-raw')
+            WHERE id IN ('coverage-raw', 'coverage-normalized', 'test-results-raw', 'metadata-raw')
         $sql$;
     END IF;
 
@@ -1377,6 +1382,11 @@ BEGIN
                     'text/plain',
                     'text/xml'
                 ]
+                WHEN 'coverage-normalized' THEN ARRAY[
+                    'application/gzip',
+                    'application/json',
+                    'application/octet-stream'
+                ]
                 WHEN 'test-results-raw' THEN ARRAY[
                     'application/json',
                     'application/gzip',
@@ -1392,7 +1402,7 @@ BEGIN
                 ]
                 ELSE allowed_mime_types
             END
-            WHERE id IN ('coverage-raw', 'test-results-raw', 'metadata-raw')
+            WHERE id IN ('coverage-raw', 'coverage-normalized', 'test-results-raw', 'metadata-raw')
         $sql$;
     END IF;
 END;

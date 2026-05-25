@@ -10,6 +10,7 @@ import dev.vericov.analysis.adapter.jdbc.JdbcCoverageReportRepository;
 import dev.vericov.analysis.adapter.jdbc.JdbcGateConfigurationRepository;
 import dev.vericov.analysis.adapter.jdbc.JdbcPrDiffCoverageRepository;
 import dev.vericov.analysis.adapter.storage.HttpSupabaseArtifactContentStore;
+import dev.vericov.analysis.adapter.storage.SupabaseNormalizedCoverageStore;
 import dev.vericov.analysis.application.AnalysisMessageHandler;
 import dev.vericov.analysis.application.AnalysisWorker;
 import dev.vericov.analysis.application.DefaultCoverageAnalysisProcessor;
@@ -27,6 +28,7 @@ import dev.vericov.analysis.coverage.GcovCoverageParser;
 import dev.vericov.analysis.coverage.GoCoverProfileParser;
 import dev.vericov.analysis.coverage.JacocoCoverageParser;
 import dev.vericov.analysis.coverage.LcovCoverageParser;
+import dev.vericov.analysis.coverage.NormalizedCoverageMapSerializer;
 import dev.vericov.analysis.coverage.SecureXmlCoverageDocumentReader;
 import dev.vericov.analysis.domain.AnalysisFailureDecision;
 import dev.vericov.analysis.domain.AnalysisJobStartResult;
@@ -92,14 +94,19 @@ public class AnalysisComponents {
         DataSource dataSource = dataSource(jdbcUrl);
         SecureXmlCoverageDocumentReader xmlReader = new SecureXmlCoverageDocumentReader();
         JdbcCoverageReportRepository reportRepository = new JdbcCoverageReportRepository(dataSource);
+        URI storageBaseUri = supabaseStorageBaseUri();
+        String serviceRoleKey = requiredEnv("SUPABASE_SERVICE_ROLE_KEY");
         return new DefaultCoverageAnalysisProcessor(
                 new JdbcCoverageAnalysisInputRepository(dataSource),
-                new HttpSupabaseArtifactContentStore(
-                        supabaseStorageBaseUri(),
-                        requiredEnv("SUPABASE_SERVICE_ROLE_KEY")),
+                new HttpSupabaseArtifactContentStore(storageBaseUri, serviceRoleKey),
                 reportRepository,
                 new JdbcGateConfigurationRepository(dataSource),
                 repositoryContextRepository,
+                new SupabaseNormalizedCoverageStore(
+                        storageBaseUri,
+                        serviceRoleKey,
+                        normalizedCoverageBucket(),
+                        new NormalizedCoverageMapSerializer()),
                 new CoverageParserRegistry(List.of(
                         new LcovCoverageParser(),
                         new CoberturaCoverageParser(xmlReader),
@@ -159,6 +166,10 @@ public class AnalysisComponents {
 
     private static int visibilityTimeoutSeconds() {
         return intEnv("VERICOV_ANALYSIS_VISIBILITY_TIMEOUT_SECONDS", 300);
+    }
+
+    private static String normalizedCoverageBucket() {
+        return env("VERICOV_NORMALIZED_COVERAGE_BUCKET", "coverage-normalized");
     }
 
     private static URI supabaseStorageBaseUri() {
