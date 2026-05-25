@@ -11,6 +11,7 @@ import dev.vericov.organization.application.GateEvaluationDetails;
 import dev.vericov.organization.application.OrganizationApplicationService;
 import dev.vericov.organization.application.OrganizationException;
 import dev.vericov.organization.application.PullRequestDiffCoverageDetails;
+import dev.vericov.organization.application.TestRunDetails;
 import dev.vericov.organization.application.port.UserPrincipalResolver;
 import dev.vericov.organization.domain.AuthenticatedUser;
 import dev.vericov.organization.domain.UserAuthContext;
@@ -540,6 +541,25 @@ class OrganizationResourceTest {
                 true,
                 Map.of("summary", "below threshold"),
                 NOW));
+        repositoryStore.saveTestRun(new TestRunDetails(
+                UUID.randomUUID(),
+                repository.tenantId(),
+                repository.id(),
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                "abc123",
+                "main",
+                42,
+                "unit",
+                0,
+                "failed",
+                3,
+                2,
+                1,
+                0,
+                0,
+                420L,
+                NOW));
 
         Response commitResponse = controlPlaneResource.getCommitCoverageReport(
                 "Bearer test-token",
@@ -565,6 +585,20 @@ class OrganizationResourceTest {
                 repository.id(),
                 "abc123",
                 "src/App.java");
+        Response testRunsResponse = controlPlaneResource.listCommitTestRuns(
+                "Bearer test-token",
+                null,
+                organization.id(),
+                repository.id(),
+                "abc123",
+                100);
+        Response emptyTestRunsResponse = controlPlaneResource.listCommitTestRuns(
+                "Bearer test-token",
+                null,
+                organization.id(),
+                repository.id(),
+                "def456",
+                100);
         Response trendResponse = controlPlaneResource.listCoverageTrends(
                 "Bearer test-token",
                 null,
@@ -620,6 +654,18 @@ class OrganizationResourceTest {
                 CoverageLineHitMapHttpResponse.class);
         assertEquals(Map.of(12, 4L, 14, 0L, 20, 0L), lineHits.files().get("src/App.java"));
 
+        assertEquals(200, testRunsResponse.getStatus());
+        List<?> testRuns = assertInstanceOf(List.class, responseEnvelope(testRunsResponse).data());
+        TestRunHttpResponse testRun = assertInstanceOf(TestRunHttpResponse.class, testRuns.getFirst());
+        assertEquals("unit", testRun.suiteName());
+        assertEquals("failed", testRun.status());
+        assertEquals(3, testRun.totalCount());
+        assertEquals(2, testRun.passedCount());
+        assertEquals(420L, testRun.durationMs());
+
+        assertEquals(200, emptyTestRunsResponse.getStatus());
+        assertTrue(assertInstanceOf(List.class, responseEnvelope(emptyTestRunsResponse).data()).isEmpty());
+
         assertEquals(200, trendResponse.getStatus());
         CoverageTrendHttpResponse trend = responseBody(trendResponse, CoverageTrendHttpResponse.class);
         assertEquals(1, trend.points().size());
@@ -641,6 +687,28 @@ class OrganizationResourceTest {
 
         assertEquals(200, repositoryDashboardsResponse.getStatus());
         assertEquals(1, assertInstanceOf(List.class, responseEnvelope(repositoryDashboardsResponse).data()).size());
+    }
+
+    @Test
+    void testRunEndpointRejectsUsersWithoutRepositoryReadAccess() {
+        OrganizationApplicationService service = service();
+        var organizationResource = new OrganizationResource(service, fixedUser(USER_ID, "owner@example.com"));
+        var unauthorizedControlPlaneResource =
+                new RepositoryControlPlaneResource(service, fixedUser(MEMBER_USER_ID, MEMBER_EMAIL));
+        OrganizationHttpResponse organization = createOrganization(organizationResource);
+        RepositoryHttpResponse repository = registerRepository(organizationResource, organization);
+
+        Response response = unauthorizedControlPlaneResource.listCommitTestRuns(
+                "Bearer test-token",
+                null,
+                organization.id(),
+                repository.id(),
+                "abc123",
+                100);
+
+        assertEquals(404, response.getStatus());
+        ApiError error = assertInstanceOf(ApiError.class, response.getEntity());
+        assertEquals("not_found", error.error().code());
     }
 
     @Test

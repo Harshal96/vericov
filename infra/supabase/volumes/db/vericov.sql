@@ -449,6 +449,29 @@ CREATE TABLE IF NOT EXISTS vericov.coverage_line_hits (
     UNIQUE (coverage_report_id, file_path, line_number)
 );
 
+CREATE TABLE IF NOT EXISTS vericov.test_runs (
+    id uuid PRIMARY KEY DEFAULT extensions.gen_random_uuid(),
+    tenant_id uuid NOT NULL REFERENCES vericov.tenants (id) ON DELETE CASCADE,
+    repository_id uuid NOT NULL REFERENCES vericov.repositories (id) ON DELETE CASCADE,
+    upload_id uuid NOT NULL REFERENCES vericov.uploads (id) ON DELETE CASCADE,
+    upload_artifact_id uuid NOT NULL REFERENCES vericov.upload_artifacts (id) ON DELETE CASCADE,
+    commit_sha text NOT NULL,
+    branch text NOT NULL,
+    pull_request_number integer,
+    suite_name text NOT NULL CHECK (length(trim(suite_name)) BETWEEN 1 AND 512),
+    suite_index integer NOT NULL CHECK (suite_index >= 0),
+    status text NOT NULL CHECK (status IN ('passed', 'failed', 'error', 'skipped')),
+    total_count integer NOT NULL CHECK (total_count >= 0),
+    passed_count integer NOT NULL CHECK (passed_count >= 0),
+    failed_count integer NOT NULL CHECK (failed_count >= 0),
+    error_count integer NOT NULL CHECK (error_count >= 0),
+    skipped_count integer NOT NULL CHECK (skipped_count >= 0),
+    duration_ms bigint NOT NULL CHECK (duration_ms >= 0),
+    created_at timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (upload_id, upload_artifact_id, suite_index),
+    CHECK (passed_count + failed_count + error_count + skipped_count = total_count)
+);
+
 CREATE TABLE IF NOT EXISTS vericov.pull_request_coverage_diffs (
     id uuid PRIMARY KEY DEFAULT extensions.gen_random_uuid(),
     tenant_id uuid NOT NULL REFERENCES vericov.tenants (id) ON DELETE CASCADE,
@@ -943,6 +966,15 @@ CREATE INDEX IF NOT EXISTS coverage_line_hits_report_file_idx
 CREATE INDEX IF NOT EXISTS coverage_line_hits_repository_commit_file_idx
     ON vericov.coverage_line_hits (repository_id, commit_sha, file_path, line_number);
 
+CREATE INDEX IF NOT EXISTS test_runs_upload_idx
+    ON vericov.test_runs (upload_id, suite_index);
+
+CREATE INDEX IF NOT EXISTS test_runs_repository_commit_idx
+    ON vericov.test_runs (repository_id, commit_sha, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS test_runs_repository_branch_created_idx
+    ON vericov.test_runs (repository_id, branch, created_at DESC);
+
 CREATE INDEX IF NOT EXISTS pr_coverage_diffs_repository_pr_idx
     ON vericov.pull_request_coverage_diffs (repository_id, pull_request_number, created_at DESC);
 
@@ -1145,6 +1177,7 @@ ALTER TABLE vericov.coverage_reports ENABLE ROW LEVEL SECURITY;
 ALTER TABLE vericov.badge_cache ENABLE ROW LEVEL SECURITY;
 ALTER TABLE vericov.coverage_file_summaries ENABLE ROW LEVEL SECURITY;
 ALTER TABLE vericov.coverage_line_hits ENABLE ROW LEVEL SECURITY;
+ALTER TABLE vericov.test_runs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE vericov.pull_request_coverage_diffs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE vericov.pull_request_coverage_diff_files ENABLE ROW LEVEL SECURITY;
 ALTER TABLE vericov.pull_request_coverage_diff_lines ENABLE ROW LEVEL SECURITY;

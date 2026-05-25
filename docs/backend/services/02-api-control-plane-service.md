@@ -1,6 +1,6 @@
 # Organization Service and API / Control Plane Contract
 
-Status: Organization, repository registration, policy defaults, repository config, repository policies, gate configuration, coverage badges, report reads, coverage trends, gate evaluation reads, and dashboard reads implemented; wider control-plane surface draft
+Status: Organization, repository registration, policy defaults, repository config, repository policies, gate configuration, coverage badges, report reads, test-run reads, coverage trends, gate evaluation reads, and dashboard reads implemented; wider control-plane surface draft
 Runtime: Helidon 4 on Java 25+
 Public base path: `/api/v1`
 Internal base path: `/internal/v1/control-plane`
@@ -8,7 +8,7 @@ OpenAPI: `/openapi`
 
 ## Purpose
 
-The Organization Service owns the first implemented part of Vericov's core product model: tenants, organizations, users, memberships, repository registration, org policy defaults, repository config overrides, repository policies, gate configuration, coverage badge reads/settings, commit and PR coverage report reads, coverage trends, gate evaluation history, and dashboard read APIs. The wider API / Control Plane surface for components, coverage debt, API keys, and repository-scoped agent APIs remains draft.
+The Organization Service owns the first implemented part of Vericov's core product model: tenants, organizations, users, memberships, repository registration, org policy defaults, repository config overrides, repository policies, gate configuration, coverage badge reads/settings, commit and PR coverage report reads, aggregate commit test-run reads, coverage trends, gate evaluation history, and dashboard read APIs. The wider API / Control Plane surface for components, coverage debt, API keys, and repository-scoped agent APIs remains draft.
 
 It is the first read/write API for the web app and public API clients. It validates Supabase Auth JWTs for user identity and uses Supabase Postgres for Vericov organization membership, invitations, and role authorization. Local header-based auth is available only when the service is explicitly started with `VERICOV_DEV_AUTH_BYPASS=true`.
 
@@ -80,6 +80,7 @@ It is the first read/write API for the web app and public API clients. It valida
 | --- | --- | --- |
 | `GET` | `/api/v1/orgs/{org_id}/repositories/{repository_id}/commits/{sha}/report` | Commit coverage report |
 | `GET` | `/api/v1/orgs/{org_id}/repositories/{repository_id}/commits/{sha}/line-hits` | Per-file line hit map for a commit |
+| `GET` | `/api/v1/orgs/{org_id}/repositories/{repository_id}/commits/{sha}/test-runs` | Aggregate test runs for a commit |
 | `GET` | `/api/v1/orgs/{org_id}/repositories/{repository_id}/pull-requests/{number}/report` | PR coverage report |
 | `GET` | `/api/v1/orgs/{org_id}/repositories/{repository_id}/trends` | Coverage trends |
 | `GET` | `/api/v1/orgs/{org_id}/repositories/{repository_id}/gate-evaluations` | Gate history |

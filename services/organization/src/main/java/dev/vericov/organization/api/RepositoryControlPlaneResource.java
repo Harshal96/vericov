@@ -11,6 +11,7 @@ import dev.vericov.organization.application.GetRepositoryDashboardQuery;
 import dev.vericov.organization.application.ListCoverageTrendsQuery;
 import dev.vericov.organization.application.ListGateEvaluationsQuery;
 import dev.vericov.organization.application.ListRepositoryDashboardsQuery;
+import dev.vericov.organization.application.ListTestRunsQuery;
 import dev.vericov.organization.application.RotateRepositoryBadgeTokenCommand;
 import dev.vericov.organization.application.RevokeRepositoryApiKeyCommand;
 import dev.vericov.organization.application.UpsertRepositoryGatesCommand;
@@ -401,6 +402,32 @@ public class RepositoryControlPlaneResource {
                     commitSha,
                     filePath));
             return Response.ok(new ApiResponse<>(CoverageLineHitMapHttpResponse.from(lineHits))).build();
+        } catch (OrganizationException exception) {
+            return OrganizationResource.errorResponse(exception);
+        }
+    }
+
+    @GET
+    @Path("/{org_id}/repositories/{repository_id}/commits/{sha}/test-runs")
+    public Response listCommitTestRuns(
+            @HeaderParam("Authorization") String authorizationHeader,
+            @HeaderParam("X-Vericov-User-Id") String userIdHeader,
+            @PathParam("org_id") UUID organizationId,
+            @PathParam("repository_id") UUID repositoryId,
+            @PathParam("sha") String commitSha,
+            @QueryParam("limit") int limit) {
+        try {
+            AuthenticatedUser user = resolveUser(authorizationHeader, userIdHeader);
+            var runs = organizationService.listCommitTestRuns(new ListTestRunsQuery(
+                            user.userId(),
+                            organizationId,
+                            repositoryId,
+                            commitSha,
+                            limit))
+                    .stream()
+                    .map(TestRunHttpResponse::from)
+                    .toList();
+            return Response.ok(new ApiResponse<>(runs)).build();
         } catch (OrganizationException exception) {
             return OrganizationResource.errorResponse(exception);
         }

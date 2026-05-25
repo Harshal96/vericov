@@ -29,6 +29,7 @@ public class InMemoryOrganizationRepository implements OrganizationRepository {
     private final Map<String, CoverageLineHitMapDetails> coverageLineHitsByRepositoryCommitAndFile =
             new ConcurrentHashMap<>();
     private final Map<UUID, GateEvaluationDetails> gateEvaluationsById = new ConcurrentHashMap<>();
+    private final Map<UUID, TestRunDetails> testRunsById = new ConcurrentHashMap<>();
 
     @Override
     public List<OrganizationDetails> findOrganizationsForUser(UUID userId) {
@@ -508,6 +509,18 @@ public class InMemoryOrganizationRepository implements OrganizationRepository {
     }
 
     @Override
+    public List<TestRunDetails> listTestRuns(UUID repositoryId, String commitSha, int limit) {
+        return testRunsById.values().stream()
+                .filter(run -> run.repositoryId().equals(repositoryId))
+                .filter(run -> run.commitSha().equals(commitSha))
+                .sorted(Comparator.comparing(TestRunDetails::createdAt).reversed()
+                        .thenComparing(TestRunDetails::suiteIndex)
+                        .thenComparing(TestRunDetails::id))
+                .limit(limit)
+                .toList();
+    }
+
+    @Override
     public List<GateEvaluationDetails> listGateEvaluations(
             UUID organizationId,
             UUID repositoryId,
@@ -550,6 +563,11 @@ public class InMemoryOrganizationRepository implements OrganizationRepository {
                         details.coverageReportId(),
                         details.commitSha(),
                         Map.of(filePath, hits))));
+        return details;
+    }
+
+    public synchronized TestRunDetails saveTestRun(TestRunDetails details) {
+        testRunsById.put(details.id(), details);
         return details;
     }
 

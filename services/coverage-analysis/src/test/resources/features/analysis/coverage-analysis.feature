@@ -14,8 +14,17 @@ Feature: Analyze uploaded coverage
       And the analysis job is completed
       And the queue message is archived
 
-    Scenario: Uploads without coverage artifacts are retried
-      Given an upload received message without coverage artifacts
+    Scenario: JUnit-only uploads persist test runs and complete
+      Given an upload received message with JUnit test-result artifacts
+      And object storage contains the JUnit test results
+      When the analysis worker polls once
+      Then the test run is persisted with 2 passed tests out of 3
+      And no coverage report is persisted
+      And the analysis job is completed
+      And the queue message is archived
+
+    Scenario: Uploads without analyzable artifacts are retried
+      Given an upload received message without analyzable artifacts
       When the analysis worker polls once
       Then the analysis job failure is recorded
       And the queue message is rescheduled

@@ -16,4 +16,14 @@ class JdbcOrganizationRepositorySchemaTest {
         assertTrue(sql.contains("CREATE INDEX IF NOT EXISTS badge_cache_expires_at_idx"));
         assertTrue(sql.contains("ALTER TABLE vericov.badge_cache ENABLE ROW LEVEL SECURITY"));
     }
+
+    @Test
+    void schemaDefinesTestRunsTable() throws Exception {
+        String sql = Files.readString(Path.of("../../infra/supabase/volumes/db/vericov.sql"));
+
+        assertTrue(sql.contains("CREATE TABLE IF NOT EXISTS vericov.test_runs"));
+        assertTrue(sql.contains("CHECK (status IN ('passed', 'failed', 'error', 'skipped'))"));
+        assertTrue(sql.contains("CREATE INDEX IF NOT EXISTS test_runs_repository_commit_idx"));
+        assertTrue(sql.contains("ALTER TABLE vericov.test_runs ENABLE ROW LEVEL SECURITY"));
+    }
 }
