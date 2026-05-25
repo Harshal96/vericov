@@ -6,7 +6,7 @@
 
 **Architecture:** Add a small Typer-based Python CLI under `clis/coverage-upload/`. This subfolder is its own Python project with its own `pyproject.toml`, tests, README, package namespace, and build lifecycle. The CLI packages coverage and test-result artifacts into the existing Upload / Ingestion Service JSON contract. The CLI owns local concerns: config loading, CI/git metadata discovery, artifact discovery, artifact size limits, Base64 encoding, idempotency-key generation, retry behavior, and user-facing output. The backend remains the durable ingestion boundary and should resolve repository identity from repo-scoped API keys when `repository_id` is omitted.
 
-**Tech Stack:** Python 3.9+, setuptools, Typer, PyYAML, urllib from the standard library for direct URL calls in v1, pytest for tests, existing Java 25 Helidon upload service for the optional backend contract adjustment.
+**Tech Stack:** Python 3.9+, uv for dependency management/build/test execution, setuptools build backend, Typer, PyYAML, urllib from the standard library for direct URL calls in v1, pytest for tests, existing Java 25 Helidon upload service for the optional backend contract adjustment.
 
 ---
 
@@ -34,7 +34,7 @@ This design intentionally avoids a large plugin system in v1. The first release 
 
 ## Completion Definition
 
-- `cd clis/coverage-upload && pip install -e .` installs a `vericov` console script.
+- `cd clis/coverage-upload && uv run vericov --version` runs the independently managed `vericov` console script.
 - `vericov --version` prints the package version.
 - `vericov config validate` validates `vericov.yml` or `.vericov.yml` with useful line-level or field-level errors where available.
 - `vericov upload` discovers metadata and files, validates inputs, submits a JSON upload request, and prints upload status details.
@@ -1052,10 +1052,10 @@ Rules:
 
 ```bash
 cd clis/coverage-upload
-python -m pytest
-python -m build
-python -m pip install -e .
-vericov upload --help
+uv sync --dev
+uv run pytest
+uv build
+uv run vericov upload --help
 ```
 
 - The import package is `vericov_coverage_upload`, not `vericov`, so it does not collide with the reserved root package.
@@ -1063,6 +1063,7 @@ vericov upload --help
 - The console script remains `vericov` so users get `vericov upload`.
 - The CLI package must not import the root `src/vericov` package.
 - Shared reusable API-client code can become a separate dependency later, for example `vericov-api-client`, but v1 keeps direct upload/status URL calls inside this CLI package.
+- Use `uv` for all dependency, lockfile, test, build, and local command execution workflows in this folder.
 
 ### File Structure
 
@@ -1235,7 +1236,7 @@ dependencies = [
 [project.scripts]
 vericov = "vericov_coverage_upload.cli.main:main"
 
-[project.optional-dependencies]
+[dependency-groups]
 dev = [
   "build>=1.2",
   "pytest>=8"
@@ -1277,7 +1278,7 @@ No `requests` dependency in v1.
 - [ ] Implement top-level `--version`, `config validate`, and `upload` subcommand placeholders.
 - [ ] Add typed `VericovCliError` with `code`, `message`, and `exit_code`.
 - [ ] Add output helpers that can write human text or JSON.
-- [ ] Verify with `cd clis/coverage-upload && python -m pytest tests/test_cli.py`.
+- [ ] Verify with `cd clis/coverage-upload && uv run pytest tests/test_cli.py`.
 
 Exit criteria:
 
@@ -1302,7 +1303,7 @@ Exit criteria:
 - [ ] Implement `load_config(path, cwd)` with `yaml.safe_load`.
 - [ ] Implement schema validation with explicit allowed keys and clear field paths.
 - [ ] Implement `vericov config validate`.
-- [ ] Verify with `cd clis/coverage-upload && python -m pytest tests/test_config.py`.
+- [ ] Verify with `cd clis/coverage-upload && uv run pytest tests/test_config.py`.
 
 Exit criteria:
 
@@ -1327,7 +1328,7 @@ Exit criteria:
 - [ ] Write tests for git fallback using an injectable command runner.
 - [ ] Implement provider-specific pure functions over env mappings.
 - [ ] Implement git fallback with timeout and safe failure.
-- [ ] Verify with `cd clis/coverage-upload && python -m pytest tests/test_metadata.py`.
+- [ ] Verify with `cd clis/coverage-upload && uv run pytest tests/test_metadata.py`.
 
 Exit criteria:
 
@@ -1354,7 +1355,7 @@ Exit criteria:
 - [ ] Implement glob expansion without following directory symlinks.
 - [ ] Implement size validation before content reads.
 - [ ] Implement artifact naming and digesting.
-- [ ] Verify with `cd clis/coverage-upload && python -m pytest tests/test_discovery.py tests/test_artifacts.py`.
+- [ ] Verify with `cd clis/coverage-upload && uv run pytest tests/test_discovery.py tests/test_artifacts.py`.
 
 Exit criteria:
 
@@ -1379,7 +1380,7 @@ Exit criteria:
 - [ ] Implement bounded content sniffing.
 - [ ] Implement XML root detection without resolving external entities.
 - [ ] Wire detected kind/format/content type into artifact payload.
-- [ ] Verify with `cd clis/coverage-upload && python -m pytest tests/test_formats.py`.
+- [ ] Verify with `cd clis/coverage-upload && uv run pytest tests/test_formats.py`.
 
 Exit criteria:
 
@@ -1412,7 +1413,7 @@ Exit criteria:
 - [ ] Keep gateway methods narrow enough that a future API client dependency can replace the direct URL implementation.
 - [ ] Implement retry policy with injected sleeper/random for tests.
 - [ ] Implement response envelope parsing.
-- [ ] Verify with `cd clis/coverage-upload && python -m pytest tests/test_http.py tests/test_upload.py`.
+- [ ] Verify with `cd clis/coverage-upload && uv run pytest tests/test_http.py tests/test_upload.py`.
 
 Exit criteria:
 
@@ -1438,7 +1439,7 @@ Exit criteria:
 - [ ] Write tests for unknown status warning.
 - [ ] Implement status polling with backoff and timeout.
 - [ ] Implement human and JSON final output.
-- [ ] Verify with `cd clis/coverage-upload && python -m pytest tests/test_http.py tests/test_upload.py`.
+- [ ] Verify with `cd clis/coverage-upload && uv run pytest tests/test_http.py tests/test_upload.py`.
 
 Exit criteria:
 
@@ -1485,7 +1486,7 @@ Exit criteria:
 - [ ] Add test for retry exhaustion exit code `6`.
 - [ ] Add test that validation errors do not print tracebacks.
 - [ ] Add test that `--verbose` prints value provenance.
-- [ ] Verify all Python tests with `cd clis/coverage-upload && python -m pytest`.
+- [ ] Verify all Python tests with `cd clis/coverage-upload && uv run pytest`.
 
 Exit criteria:
 
@@ -1522,20 +1523,20 @@ Exit criteria:
 
 ```bash
 cd clis/coverage-upload
-python -m pytest
-python -m build
-python -m pip install dist/vericov_coverage_upload-*.whl
-vericov --version
-vericov config validate --help
-vericov upload --help
+uv lock
+uv run pytest
+uv build
+uv run vericov --version
+uv run vericov config validate --help
+uv run vericov upload --help
 cd ../..
 mvn -pl services/upload test
 ```
 
-The CLI package should already include `build` in its dev extra:
+The CLI package should keep development tools in the uv dependency group:
 
 ```toml
-[project.optional-dependencies]
+[dependency-groups]
 dev = [
   "build>=1.2",
   "pytest>=8"

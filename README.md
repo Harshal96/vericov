@@ -10,7 +10,7 @@ metadata only.
 ## Installation
 
 ```bash
-pip install vericov
+uv add vericov
 ```
 
 ## Coverage Upload CLI
@@ -20,8 +20,7 @@ Python package. It installs the `vericov` console script for CI uploads:
 
 ```bash
 cd clis/coverage-upload
-python3 -m pip install -e .
-VERICOV_API_KEY=vc_live_... vericov upload --coverage coverage/lcov.info
+VERICOV_API_KEY=vc_live_... uv run vericov upload --coverage coverage/lcov.info --dry-run
 ```
 
 See `clis/coverage-upload/README.md` for usage, development, and contribution

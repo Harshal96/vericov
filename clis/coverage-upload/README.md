@@ -35,7 +35,7 @@ The normal CI path is:
 
 ```bash
 export VERICOV_API_KEY=vc_live_...
-vericov upload --coverage coverage/lcov.info --wait
+uvx --from vericov-coverage-upload vericov upload --coverage coverage/lcov.info --wait
 ```
 
 When a repo-scoped API key is used, `repository_id` can be omitted. The upload
@@ -43,7 +43,7 @@ service resolves repository identity from the key. Customers can still pass an
 explicit repository id when they need to debug or use broader credentials:
 
 ```bash
-vericov upload \
+uvx --from vericov-coverage-upload vericov upload \
   --repository-id 4d607f16-1af7-4d3b-ac38-06454cba463c \
   --coverage coverage/lcov.info \
   --test-results junit.xml
@@ -52,13 +52,13 @@ vericov upload \
 For local validation without sending data:
 
 ```bash
-vericov upload --coverage coverage/lcov.info --commit-sha abc123 --branch main --dry-run
+VERICOV_API_KEY=vc_live_... uv run vericov upload --coverage coverage/lcov.info --commit-sha abc123 --branch main --dry-run
 ```
 
 For machine-readable output:
 
 ```bash
-vericov upload --coverage coverage/lcov.info --json
+uvx --from vericov-coverage-upload vericov upload --coverage coverage/lcov.info --json
 ```
 
 ## Configuration
@@ -90,7 +90,7 @@ secret store.
 Validate config with:
 
 ```bash
-vericov config validate
+uv run vericov config validate
 ```
 
 ## Development
@@ -99,13 +99,17 @@ This package builds and tests from its own folder:
 
 ```bash
 cd clis/coverage-upload
-python3 -m pip install -e '.[dev]'
-python3 -m pytest
-python3 -m build
+uv sync --dev
+uv run pytest
+uv build
 ```
 
 The package name is `vericov-coverage-upload`. The import package is
 `vericov_coverage_upload`. Do not import from the root `src/vericov` package.
+
+Use `uv` for all local package operations. Do not add pip, virtualenv, poetry,
+or ad hoc Python command instructions to this folder. If you add or change
+dependencies, update `pyproject.toml` and run `uv lock`.
 
 ## Package Layout
 
@@ -146,7 +150,7 @@ Near-term improvements that fit this package:
 - `--wait gates` once gate status is exposed.
 - A GitHub Action wrapper that invokes this CLI.
 - Multipart or signed-storage upload once the backend supports it.
-- A shared Vericov API client dependency.
+- A shared Vericov API client dependency managed through `uv`.
 
 Work that should not be added here:
 
