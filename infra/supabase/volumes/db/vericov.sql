@@ -847,6 +847,72 @@ CREATE TABLE IF NOT EXISTS vericov.git_branches (
     UNIQUE (tenant_id, repository_id, provider_key, branch_name)
 );
 
+CREATE TABLE IF NOT EXISTS vericov.coverage_debt_items (
+    id uuid PRIMARY KEY DEFAULT extensions.gen_random_uuid(),
+    tenant_id uuid NOT NULL REFERENCES vericov.tenants (id) ON DELETE CASCADE,
+    org_id uuid NOT NULL REFERENCES vericov.organizations (id) ON DELETE CASCADE,
+    repository_id uuid NOT NULL REFERENCES vericov.repositories (id) ON DELETE CASCADE,
+    component_id uuid,
+    source_gap_id uuid,
+    source_report_id uuid REFERENCES vericov.coverage_reports (id) ON DELETE SET NULL,
+    source_commit_sha text NOT NULL,
+    pull_request_number integer CHECK (pull_request_number IS NULL OR pull_request_number > 0),
+    target_type text NOT NULL CHECK (target_type IN ('line', 'range', 'file', 'function', 'branch', 'component')),
+    file_path text,
+    line_start integer CHECK (line_start IS NULL OR line_start > 0),
+    line_end integer CHECK (line_end IS NULL OR line_end > 0),
+    symbol_name text,
+    risk_level text NOT NULL CHECK (risk_level IN ('critical', 'high', 'medium', 'low')),
+    reason text NOT NULL,
+    owner text NOT NULL,
+    status text NOT NULL CHECK (status IN ('active', 'resolved', 'expired', 'revoked')),
+    expires_at timestamptz NOT NULL,
+    resolved_at timestamptz,
+    resolved_by_user_id uuid,
+    revoked_at timestamptz,
+    revoked_by_user_id uuid,
+    linked_issue_url text,
+    metadata_json jsonb NOT NULL DEFAULT '{}'::jsonb,
+    created_by_user_id uuid NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    CHECK (
+        (target_type = 'component' AND file_path IS NULL AND line_start IS NULL AND line_end IS NULL) OR
+        (target_type != 'component' AND file_path IS NOT NULL)
+    ),
+    CHECK (
+        (target_type IN ('line', 'range') AND line_start IS NOT NULL) OR
+        (target_type NOT IN ('line', 'range') AND line_start IS NULL)
+    ),
+    CHECK (
+        (target_type = 'range' AND line_end IS NOT NULL) OR
+        (target_type != 'range' AND line_end IS NULL)
+    ),
+    CHECK (line_end IS NULL OR line_start IS NULL OR line_end >= line_start),
+    CHECK (length(trim(reason)) BETWEEN 10 AND 2000),
+    CHECK (length(trim(owner)) > 0),
+    CHECK (jsonb_typeof(metadata_json) = 'object')
+);
+
+CREATE TABLE IF NOT EXISTS vericov.coverage_debt_events (
+    id uuid PRIMARY KEY DEFAULT extensions.gen_random_uuid(),
+    tenant_id uuid NOT NULL REFERENCES vericov.tenants (id) ON DELETE CASCADE,
+    org_id uuid NOT NULL REFERENCES vericov.organizations (id) ON DELETE CASCADE,
+    repository_id uuid NOT NULL REFERENCES vericov.repositories (id) ON DELETE CASCADE,
+    debt_item_id uuid NOT NULL REFERENCES vericov.coverage_debt_items (id) ON DELETE CASCADE,
+    event_type text NOT NULL CHECK (event_type IN ('created', 'updated', 'resolved', 'expired', 'revoked', 'matched_gap')),
+    actor_user_id uuid,
+    payload_json jsonb NOT NULL DEFAULT '{}'::jsonb,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    CHECK (jsonb_typeof(payload_json) = 'object')
+);
+
+CREATE INDEX IF NOT EXISTS coverage_debt_items_repository_status_idx
+    ON vericov.coverage_debt_items (repository_id, status);
+
+CREATE INDEX IF NOT EXISTS coverage_debt_events_debt_item_idx
+    ON vericov.coverage_debt_events (debt_item_id);
+
 CREATE INDEX IF NOT EXISTS repositories_tenant_idx
     ON vericov.repositories (tenant_id);
 
@@ -1163,6 +1229,8 @@ ALTER TABLE vericov.git_check_runs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE vericov.git_pr_comments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE vericov.git_pr_annotations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE vericov.git_branches ENABLE ROW LEVEL SECURITY;
+ALTER TABLE vericov.coverage_debt_items ENABLE ROW LEVEL SECURITY;
+ALTER TABLE vericov.coverage_debt_events ENABLE ROW LEVEL SECURITY;
 
 REVOKE ALL ON ALL TABLES IN SCHEMA vericov FROM anon;
 REVOKE ALL ON ALL TABLES IN SCHEMA vericov FROM authenticated;
