@@ -19,17 +19,17 @@ Upload authentication is separate from human login.
 | Caller | Credential | Allowed actions |
 | --- | --- | --- |
 | Web app / local authenticated user | Supabase Auth JWT | Create manual uploads only for repositories where the user has permission |
-| CI job | Repo-scoped Vericov API key, sent as `Authorization: Bearer vc_...` | Create uploads and poll upload status within key scope |
-| Trusted CI provider later | OIDC/provider identity token | Tokenless upload after repository trust is configured |
-| Enterprise runner | Short-lived runner JWT | Upload runner-produced artifacts for assigned tasks |
+| CI job | Repo-scoped Vericov API key, sent as `Authorization: Bearer vc_repo_...` | Create uploads and poll upload status within key scope |
+| Trusted CI provider | GitHub Actions OIDC token | Tokenless upload after repository trust is configured |
+| Enterprise runner | Short-lived Vericov runner upload JWT | Upload runner-produced artifacts for assigned tasks |
 | Internal services | Service JWT or mTLS-bound token | Internal status and parser updates |
 
-Repo-scoped API keys are created through the API / Control Plane Service and stored hashed in `repository_api_keys`. The Upload / Ingestion Service validates key hash, repository scope, allowed branches, expiration, revocation status, and requested scopes before accepting an upload.
+Repo-scoped API keys are created through the API / Control Plane Service and stored hashed in `repository_api_keys`. The Upload / Ingestion Service validates key hash, repository scope, allowed branches, expiration, revocation status, and requested scopes before accepting an upload. GitHub Actions OIDC tokens are verified against GitHub's JWKS before matching `repository_ci_trusts`.
 
 Minimum CI configuration:
 
 ```bash
-VERICOV_API_KEY=vc_live_...
+VERICOV_API_KEY=vc_repo_...
 vericov upload --coverage coverage/lcov.info --test-results junit.xml
 ```
 
@@ -38,6 +38,7 @@ vericov upload --coverage coverage/lcov.info --test-results junit.xml
 | Method | Path | Purpose |
 | --- | --- | --- |
 | `POST` | `/api/v1/uploads` | Directly upload coverage/test artifacts and enqueue processing |
+| `POST` | `/api/v1/uploads/auth/runner-token` | Exchange a repo API key or trusted CI identity for a short-lived runner upload JWT |
 | `GET` | `/api/v1/uploads/{upload_id}` | Get upload status |
 | `GET` | `/api/v1/uploads/{upload_id}/artifacts` | List uploaded artifact metadata |
 
@@ -47,7 +48,8 @@ vericov upload --coverage coverage/lcov.info --test-results junit.xml
 
 Rules:
 
-- The request is authenticated by repository API key, Supabase Auth JWT, runner JWT, tokenless CI identity, or service JWT.
+- The request is authenticated by repository API key, Supabase Auth JWT, runner upload JWT, GitHub Actions OIDC identity, or service JWT.
+- Polling upload status and artifact metadata requires `uploads:read` for the upload repository.
 - The service validates repository, branch, commit, artifact metadata, request size, and key scope before accepting the upload.
 - The service stores raw artifacts in Supabase Storage before returning success. In production, Supabase Storage must use an S3-compatible backend so raw coverage files live in remote object storage rather than service-local disk.
 - The service creates an internal `upload.received` event and an `analysis_job` in the same transactional boundary as the upload record.

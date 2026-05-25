@@ -12,6 +12,7 @@ import dev.vericov.organization.application.ListCoverageTrendsQuery;
 import dev.vericov.organization.application.ListGateEvaluationsQuery;
 import dev.vericov.organization.application.ListRepositoryDashboardsQuery;
 import dev.vericov.organization.application.RotateRepositoryBadgeTokenCommand;
+import dev.vericov.organization.application.RevokeRepositoryApiKeyCommand;
 import dev.vericov.organization.application.UpsertRepositoryGatesCommand;
 import dev.vericov.organization.application.ValidateRepositoryConfigCommand;
 import dev.vericov.organization.application.port.UserPrincipalResolver;
@@ -134,6 +135,68 @@ public class RepositoryControlPlaneResource {
                     request.config(),
                     request.schemaVersion()));
             return Response.ok(new ApiResponse<>(RepositoryConfigValidationHttpResponse.from(config))).build();
+        } catch (OrganizationException exception) {
+            return OrganizationResource.errorResponse(exception);
+        }
+    }
+
+    @GET
+    @Path("/{org_id}/repositories/{repository_id}/api-keys")
+    public Response listRepositoryApiKeys(
+            @HeaderParam("Authorization") String authorizationHeader,
+            @HeaderParam("X-Vericov-User-Id") String userIdHeader,
+            @PathParam("org_id") UUID organizationId,
+            @PathParam("repository_id") UUID repositoryId) {
+        try {
+            AuthenticatedUser user = resolveUser(authorizationHeader, userIdHeader);
+            var apiKeys = organizationService.listRepositoryApiKeys(user.userId(), organizationId, repositoryId)
+                    .stream()
+                    .map(RepositoryApiKeyHttpResponse::from)
+                    .toList();
+            return Response.ok(new ApiResponse<>(apiKeys)).build();
+        } catch (OrganizationException exception) {
+            return OrganizationResource.errorResponse(exception);
+        }
+    }
+
+    @POST
+    @Path("/{org_id}/repositories/{repository_id}/api-keys")
+    public Response createRepositoryApiKey(
+            @HeaderParam("Authorization") String authorizationHeader,
+            @HeaderParam("X-Vericov-User-Id") String userIdHeader,
+            @PathParam("org_id") UUID organizationId,
+            @PathParam("repository_id") UUID repositoryId,
+            CreateRepositoryApiKeyHttpRequest request) {
+        try {
+            AuthenticatedUser user = resolveUser(authorizationHeader, userIdHeader);
+            var apiKey = organizationService.createRepositoryApiKey(
+                    request.toCommand(user.userId(), organizationId, repositoryId));
+            return Response.created(URI.create("/api/v1/orgs/" + organizationId
+                            + "/repositories/" + repositoryId
+                            + "/api-keys/" + apiKey.id()))
+                    .entity(new ApiResponse<>(RepositoryApiKeyHttpResponse.from(apiKey)))
+                    .build();
+        } catch (OrganizationException exception) {
+            return OrganizationResource.errorResponse(exception);
+        }
+    }
+
+    @POST
+    @Path("/{org_id}/repositories/{repository_id}/api-keys/{api_key_id}/revoke")
+    public Response revokeRepositoryApiKey(
+            @HeaderParam("Authorization") String authorizationHeader,
+            @HeaderParam("X-Vericov-User-Id") String userIdHeader,
+            @PathParam("org_id") UUID organizationId,
+            @PathParam("repository_id") UUID repositoryId,
+            @PathParam("api_key_id") UUID apiKeyId) {
+        try {
+            AuthenticatedUser user = resolveUser(authorizationHeader, userIdHeader);
+            var apiKey = organizationService.revokeRepositoryApiKey(new RevokeRepositoryApiKeyCommand(
+                    user.userId(),
+                    organizationId,
+                    repositoryId,
+                    apiKeyId));
+            return Response.ok(new ApiResponse<>(RepositoryApiKeyHttpResponse.from(apiKey))).build();
         } catch (OrganizationException exception) {
             return OrganizationResource.errorResponse(exception);
         }

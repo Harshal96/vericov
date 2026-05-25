@@ -40,8 +40,8 @@ class UploadResourceIntegrationTest {
 
         assertEquals(202, create.getStatus());
         CreateUploadHttpResponse accepted = acceptedBody(create);
-        Response statusResponse = fixture.resource.getUpload(accepted.uploadId());
-        Response artifactsResponse = fixture.resource.getArtifacts(accepted.uploadId());
+        Response statusResponse = fixture.resource.getUpload("Bearer vc_live_test", accepted.uploadId());
+        Response artifactsResponse = fixture.resource.getArtifacts("Bearer vc_live_test", accepted.uploadId());
 
         assertEquals(200, statusResponse.getStatus());
         UploadStatusHttpResponse status = responseBody(statusResponse, UploadStatusHttpResponse.class);
@@ -93,11 +93,32 @@ class UploadResourceIntegrationTest {
     void returnsNotFoundEnvelopeForUnknownUpload() {
         Fixture fixture = new Fixture();
 
-        Response response = fixture.resource.getUpload(UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"));
+        Response response = fixture.resource.getUpload(
+                "Bearer vc_live_test",
+                UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"));
 
         assertEquals(404, response.getStatus());
         ApiError error = assertInstanceOf(ApiError.class, response.getEntity());
         assertEquals("not_found", error.error().code());
+    }
+
+    @Test
+    void requiresReadScopeWhenPollingUploadStatus() {
+        Fixture fixture = new Fixture();
+        Response create = fixture.resource.createUpload("Bearer vc_live_test", "integration-read-auth", validRequest());
+        CreateUploadHttpResponse accepted = acceptedBody(create);
+        fixture.authenticator.principal = new RepositoryApiKeyPrincipal(
+                TENANT_ID,
+                REPOSITORY_ID,
+                API_KEY_ID,
+                Set.of("uploads:create"),
+                Set.of("main"));
+
+        Response response = fixture.resource.getUpload("Bearer vc_live_test", accepted.uploadId());
+
+        assertEquals(403, response.getStatus());
+        ApiError error = assertInstanceOf(ApiError.class, response.getEntity());
+        assertEquals("forbidden", error.error().code());
     }
 
     @Test
@@ -151,11 +172,12 @@ class UploadResourceIntegrationTest {
     }
 
     private static final class Fixture {
+        private final FakeAuthenticator authenticator = new FakeAuthenticator();
         private final FakeStorage storage = new FakeStorage();
         private final FakePublisher publisher = new FakePublisher();
         private final FakeQueue queue = new FakeQueue();
         private final UploadResource resource = new UploadResource(new UploadApplicationService(
-                new FakeAuthenticator(),
+                authenticator,
                 new InMemoryUploadRepository(),
                 storage,
                 publisher,
@@ -164,14 +186,16 @@ class UploadResourceIntegrationTest {
     }
 
     private static final class FakeAuthenticator implements RepositoryApiKeyAuthenticator {
+        private RepositoryApiKeyPrincipal principal = new RepositoryApiKeyPrincipal(
+                TENANT_ID,
+                REPOSITORY_ID,
+                API_KEY_ID,
+                Set.of("uploads:create", "uploads:read"),
+                Set.of("main"));
+
         @Override
         public RepositoryApiKeyPrincipal authenticate(CreateUploadCommand command) {
-            return new RepositoryApiKeyPrincipal(
-                    TENANT_ID,
-                    REPOSITORY_ID,
-                    API_KEY_ID,
-                    Set.of("uploads:create", "uploads:read"),
-                    Set.of("main"));
+            return principal;
         }
     }
 

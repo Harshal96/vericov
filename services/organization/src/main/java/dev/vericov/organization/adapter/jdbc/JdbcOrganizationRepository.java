@@ -15,6 +15,7 @@ import dev.vericov.organization.application.DiffCoverageLineDetails;
 import dev.vericov.organization.application.GateEvaluationDetails;
 import dev.vericov.organization.application.PullRequestDiffCoverageDetails;
 import dev.vericov.organization.application.RepositoryBadgeSettingsDetails;
+import dev.vericov.organization.application.RepositoryApiKeyDetails;
 import dev.vericov.organization.application.RepositoryConfigDetails;
 import dev.vericov.organization.application.RepositoryDetails;
 import dev.vericov.organization.application.RepositoryGateDetails;
@@ -568,6 +569,144 @@ public class JdbcOrganizationRepository implements OrganizationRepository {
             return repository;
         } catch (SQLException exception) {
             throw databaseFailure("Failed to update repository", exception);
+        }
+    }
+
+    @Override
+    public List<RepositoryApiKeyDetails> listRepositoryApiKeys(UUID repositoryId) {
+        try (var connection = dataSource.getConnection();
+                var statement = connection.prepareStatement("""
+                        select
+                            id,
+                            tenant_id,
+                            repository_id,
+                            name,
+                            key_prefix,
+                            key_hash,
+                            scopes,
+                            branch_allow_patterns,
+                            expires_at,
+                            revoked_at,
+                            created_by_user_id,
+                            revoked_by_user_id,
+                            last_used_at,
+                            created_at,
+                            updated_at
+                        from vericov.repository_api_keys
+                        where repository_id = ?
+                        order by created_at, id
+                        """)) {
+            statement.setObject(1, repositoryId);
+            try (var resultSet = statement.executeQuery()) {
+                List<RepositoryApiKeyDetails> apiKeys = new ArrayList<>();
+                while (resultSet.next()) {
+                    apiKeys.add(readRepositoryApiKey(resultSet));
+                }
+                return List.copyOf(apiKeys);
+            }
+        } catch (SQLException exception) {
+            throw databaseFailure("Failed to list repository API keys", exception);
+        }
+    }
+
+    @Override
+    public Optional<RepositoryApiKeyDetails> findRepositoryApiKey(UUID repositoryId, UUID apiKeyId) {
+        try (var connection = dataSource.getConnection();
+                var statement = connection.prepareStatement("""
+                        select
+                            id,
+                            tenant_id,
+                            repository_id,
+                            name,
+                            key_prefix,
+                            key_hash,
+                            scopes,
+                            branch_allow_patterns,
+                            expires_at,
+                            revoked_at,
+                            created_by_user_id,
+                            revoked_by_user_id,
+                            last_used_at,
+                            created_at,
+                            updated_at
+                        from vericov.repository_api_keys
+                        where repository_id = ?
+                          and id = ?
+                        """)) {
+            statement.setObject(1, repositoryId);
+            statement.setObject(2, apiKeyId);
+            try (var resultSet = statement.executeQuery()) {
+                return resultSet.next() ? Optional.of(readRepositoryApiKey(resultSet)) : Optional.empty();
+            }
+        } catch (SQLException exception) {
+            throw databaseFailure("Failed to find repository API key", exception);
+        }
+    }
+
+    @Override
+    public RepositoryApiKeyDetails saveRepositoryApiKey(RepositoryApiKeyDetails apiKey) {
+        try (var connection = dataSource.getConnection();
+                var statement = connection.prepareStatement("""
+                        insert into vericov.repository_api_keys (
+                            id,
+                            tenant_id,
+                            repository_id,
+                            name,
+                            key_prefix,
+                            key_hash,
+                            scopes,
+                            branch_allow_patterns,
+                            expires_at,
+                            revoked_at,
+                            created_by_user_id,
+                            revoked_by_user_id,
+                            last_used_at,
+                            created_at,
+                            updated_at
+                        )
+                        values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """)) {
+            setRepositoryApiKey(statement, apiKey);
+            statement.executeUpdate();
+            return apiKey;
+        } catch (SQLException exception) {
+            throw mapIntegrityFailure("Failed to save repository API key", exception);
+        }
+    }
+
+    @Override
+    public RepositoryApiKeyDetails updateRepositoryApiKey(RepositoryApiKeyDetails apiKey) {
+        try (var connection = dataSource.getConnection();
+                var statement = connection.prepareStatement("""
+                        update vericov.repository_api_keys
+                        set name = ?,
+                            scopes = ?,
+                            branch_allow_patterns = ?,
+                            expires_at = ?,
+                            revoked_at = ?,
+                            revoked_by_user_id = ?,
+                            last_used_at = ?,
+                            updated_at = ?
+                        where repository_id = ?
+                          and id = ?
+                        """)) {
+            statement.setString(1, apiKey.name());
+            statement.setArray(2, connection.createArrayOf("text", apiKey.scopes().toArray(String[]::new)));
+            statement.setArray(3, connection.createArrayOf("text", apiKey.branchAllowPatterns().toArray(String[]::new)));
+            setNullableInstant(statement, 4, apiKey.expiresAt());
+            setNullableInstant(statement, 5, apiKey.revokedAt());
+            statement.setObject(6, apiKey.revokedByUserId());
+            setNullableInstant(statement, 7, apiKey.lastUsedAt());
+            statement.setObject(8, utc(apiKey.updatedAt()));
+            statement.setObject(9, apiKey.repositoryId());
+            statement.setObject(10, apiKey.id());
+            int updated = statement.executeUpdate();
+            if (updated == 0) {
+                throw new OrganizationException("not_found", "Repository API key not found");
+            }
+            return apiKey;
+        } catch (SQLException exception) {
+            throw databaseFailure("Failed to update repository API key", exception);
         }
     }
 
@@ -1613,6 +1752,47 @@ public class JdbcOrganizationRepository implements OrganizationRepository {
                 instant(resultSet, "updated_at"));
     }
 
+    private static void setRepositoryApiKey(PreparedStatement statement, RepositoryApiKeyDetails apiKey)
+            throws SQLException {
+        int index = 1;
+        statement.setObject(index++, apiKey.id());
+        statement.setObject(index++, apiKey.tenantId());
+        statement.setObject(index++, apiKey.repositoryId());
+        statement.setString(index++, apiKey.name());
+        statement.setString(index++, apiKey.keyPrefix());
+        statement.setString(index++, apiKey.keyHash());
+        statement.setArray(index++, statement.getConnection().createArrayOf("text", apiKey.scopes().toArray(String[]::new)));
+        statement.setArray(index++, statement.getConnection()
+                .createArrayOf("text", apiKey.branchAllowPatterns().toArray(String[]::new)));
+        setNullableInstant(statement, index++, apiKey.expiresAt());
+        setNullableInstant(statement, index++, apiKey.revokedAt());
+        statement.setObject(index++, apiKey.createdByUserId());
+        statement.setObject(index++, apiKey.revokedByUserId());
+        setNullableInstant(statement, index++, apiKey.lastUsedAt());
+        statement.setObject(index++, utc(apiKey.createdAt()));
+        statement.setObject(index, utc(apiKey.updatedAt()));
+    }
+
+    private static RepositoryApiKeyDetails readRepositoryApiKey(ResultSet resultSet) throws SQLException {
+        return new RepositoryApiKeyDetails(
+                resultSet.getObject("id", UUID.class),
+                resultSet.getObject("tenant_id", UUID.class),
+                resultSet.getObject("repository_id", UUID.class),
+                resultSet.getString("name"),
+                resultSet.getString("key_prefix"),
+                resultSet.getString("key_hash"),
+                null,
+                stringArray(resultSet, "scopes"),
+                stringArray(resultSet, "branch_allow_patterns"),
+                nullableInstant(resultSet, "expires_at"),
+                nullableInstant(resultSet, "revoked_at"),
+                resultSet.getObject("created_by_user_id", UUID.class),
+                resultSet.getObject("revoked_by_user_id", UUID.class),
+                nullableInstant(resultSet, "last_used_at"),
+                instant(resultSet, "created_at"),
+                instant(resultSet, "updated_at"));
+    }
+
     private static void bindRepositoryConfig(PreparedStatement statement, RepositoryConfigDetails config)
             throws SQLException {
         int index = 1;
@@ -2020,6 +2200,23 @@ public class JdbcOrganizationRepository implements OrganizationRepository {
     private static Long nullableLong(ResultSet resultSet, String columnName) throws SQLException {
         Number value = (Number) resultSet.getObject(columnName);
         return value == null ? null : value.longValue();
+    }
+
+    private static List<String> stringArray(ResultSet resultSet, String columnName) throws SQLException {
+        java.sql.Array array = resultSet.getArray(columnName);
+        if (array == null) {
+            return List.of();
+        }
+        Object values = array.getArray();
+        if (values instanceof String[] strings) {
+            return List.of(strings);
+        }
+        Object[] objects = (Object[]) values;
+        List<String> strings = new ArrayList<>(objects.length);
+        for (Object object : objects) {
+            strings.add(String.valueOf(object));
+        }
+        return List.copyOf(strings);
     }
 
     private static void setNullableInstant(PreparedStatement statement, int index, Instant value) throws SQLException {

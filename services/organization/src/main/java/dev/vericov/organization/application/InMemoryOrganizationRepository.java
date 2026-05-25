@@ -15,6 +15,7 @@ public class InMemoryOrganizationRepository implements OrganizationRepository {
     private final Map<UUID, MembershipDetails> membershipsById = new ConcurrentHashMap<>();
     private final Map<UUID, OrganizationInvitation> invitationsById = new ConcurrentHashMap<>();
     private final Map<UUID, RepositoryDetails> repositoriesById = new ConcurrentHashMap<>();
+    private final Map<UUID, RepositoryApiKeyDetails> repositoryApiKeysById = new ConcurrentHashMap<>();
     private final Map<UUID, PolicyDefaultsDetails> policyDefaultsByOrgId = new ConcurrentHashMap<>();
     private final Map<String, RepositoryConfigDetails> repositoryConfigsByOrgAndRepo = new ConcurrentHashMap<>();
     private final Map<UUID, RepositoryPolicyDetails> repositoryPoliciesById = new ConcurrentHashMap<>();
@@ -218,6 +219,42 @@ public class InMemoryOrganizationRepository implements OrganizationRepository {
         }
         repositoriesById.put(repository.id(), repository);
         return repository;
+    }
+
+    @Override
+    public List<RepositoryApiKeyDetails> listRepositoryApiKeys(UUID repositoryId) {
+        return repositoryApiKeysById.values().stream()
+                .filter(apiKey -> apiKey.repositoryId().equals(repositoryId))
+                .sorted(Comparator.comparing(RepositoryApiKeyDetails::createdAt)
+                        .thenComparing(RepositoryApiKeyDetails::id))
+                .toList();
+    }
+
+    @Override
+    public Optional<RepositoryApiKeyDetails> findRepositoryApiKey(UUID repositoryId, UUID apiKeyId) {
+        return Optional.ofNullable(repositoryApiKeysById.get(apiKeyId))
+                .filter(apiKey -> apiKey.repositoryId().equals(repositoryId));
+    }
+
+    @Override
+    public synchronized RepositoryApiKeyDetails saveRepositoryApiKey(RepositoryApiKeyDetails apiKey) {
+        boolean duplicatePrefix = repositoryApiKeysById.values().stream()
+                .anyMatch(existing -> existing.repositoryId().equals(apiKey.repositoryId())
+                        && existing.keyPrefix().equals(apiKey.keyPrefix()));
+        if (duplicatePrefix) {
+            throw new OrganizationException("conflict", "Repository API key already exists");
+        }
+        repositoryApiKeysById.put(apiKey.id(), apiKey);
+        return apiKey;
+    }
+
+    @Override
+    public synchronized RepositoryApiKeyDetails updateRepositoryApiKey(RepositoryApiKeyDetails apiKey) {
+        if (!repositoryApiKeysById.containsKey(apiKey.id())) {
+            throw new OrganizationException("not_found", "Repository API key not found");
+        }
+        repositoryApiKeysById.put(apiKey.id(), apiKey);
+        return apiKey;
     }
 
     @Override

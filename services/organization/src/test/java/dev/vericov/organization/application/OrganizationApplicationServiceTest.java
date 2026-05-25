@@ -12,7 +12,9 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class OrganizationApplicationServiceTest {
     private static final UUID USER_ID = UUID.fromString("11111111-1111-1111-1111-111111111111");
@@ -233,6 +235,55 @@ class OrganizationApplicationServiceTest {
         assertEquals("internal", updated.visibility());
         assertEquals("active", updated.status());
         assertEquals(NOW, updated.updatedAt());
+    }
+
+    @Test
+    void adminCreatesListsAndRevokesRepositoryApiKeyWithoutPersistingRawSecret() {
+        TestFixture fixture = new TestFixture();
+        var organization = fixture.service.createOrganization(new CreateOrganizationCommand(
+                USER_ID,
+                "Acme Engineering",
+                "acme",
+                "team"));
+        RepositoryDetails repository = fixture.service.registerRepository(new CreateRepositoryCommand(
+                USER_ID,
+                organization.id(),
+                "github",
+                "123456789",
+                "acme/payments-api",
+                "main",
+                "private"));
+
+        RepositoryApiKeyDetails created = fixture.service.createRepositoryApiKey(new CreateRepositoryApiKeyCommand(
+                USER_ID,
+                organization.id(),
+                repository.id(),
+                "CI uploads",
+                List.of("uploads:create", "uploads:read"),
+                List.of("main", "release/*"),
+                NOW.plusSeconds(3600)));
+
+        assertTrue(created.plaintextKey().startsWith("vc_repo_"));
+        assertEquals(repository.id(), created.repositoryId());
+        assertEquals("CI uploads", created.name());
+        assertEquals(List.of("uploads:create", "uploads:read"), created.scopes());
+        assertEquals(List.of("main", "release/*"), created.branchAllowPatterns());
+        assertEquals(NOW.plusSeconds(3600), created.expiresAt());
+        assertNull(created.revokedAt());
+
+        var listed = fixture.service.listRepositoryApiKeys(USER_ID, organization.id(), repository.id());
+        assertEquals(1, listed.size());
+        assertNull(listed.getFirst().plaintextKey());
+        assertEquals(created.keyPrefix(), listed.getFirst().keyPrefix());
+
+        RepositoryApiKeyDetails revoked = fixture.service.revokeRepositoryApiKey(new RevokeRepositoryApiKeyCommand(
+                USER_ID,
+                organization.id(),
+                repository.id(),
+                created.id()));
+
+        assertEquals(NOW, revoked.revokedAt());
+        assertNull(revoked.plaintextKey());
     }
 
     @Test

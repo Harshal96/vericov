@@ -71,10 +71,35 @@ public class UploadResource {
             description = "Upload status",
             content = @Content(schema = @Schema(implementation = UploadStatusHttpResponse.class)))
     @APIResponse(responseCode = "404", description = "Upload not found")
-    public Response getUpload(@PathParam("upload_id") UUID uploadId) {
+    public Response getUpload(
+            @HeaderParam("Authorization") String authorizationHeader,
+            @PathParam("upload_id") UUID uploadId) {
         try {
-            var upload = uploadService.getUpload(uploadId);
+            var upload = uploadService.getUpload(uploadId, authorizationHeader);
             return Response.ok(new ApiResponse<>(UploadStatusHttpResponse.from(upload))).build();
+        } catch (InvalidUploadException exception) {
+            return errorResponse(exception);
+        }
+    }
+
+    @POST
+    @Path("/auth/runner-token")
+    @Operation(summary = "Exchange an upload credential for a short-lived runner upload token")
+    @APIResponse(
+            responseCode = "200",
+            description = "Runner upload token",
+            content = @Content(schema = @Schema(implementation = RunnerUploadTokenHttpResponse.class)))
+    @APIResponse(responseCode = "401", description = "Authentication required")
+    @APIResponse(responseCode = "403", description = "Credential not authorized")
+    public Response createRunnerUploadToken(
+            @HeaderParam("Authorization") String authorizationHeader,
+            CreateRunnerUploadTokenHttpRequest request) {
+        try {
+            var token = uploadService.createRunnerUploadToken(
+                    authorizationHeader,
+                    request.repositoryId(),
+                    request.branch());
+            return Response.ok(new ApiResponse<>(RunnerUploadTokenHttpResponse.from(token))).build();
         } catch (InvalidUploadException exception) {
             return errorResponse(exception);
         }
@@ -87,9 +112,11 @@ public class UploadResource {
             responseCode = "200",
             description = "Upload artifacts",
             content = @Content(schema = @Schema(type = SchemaType.ARRAY, implementation = UploadArtifactHttpResponse.class)))
-    public Response getArtifacts(@PathParam("upload_id") UUID uploadId) {
+    public Response getArtifacts(
+            @HeaderParam("Authorization") String authorizationHeader,
+            @PathParam("upload_id") UUID uploadId) {
         try {
-            var upload = uploadService.getUpload(uploadId);
+            var upload = uploadService.getUpload(uploadId, authorizationHeader);
             var artifacts = upload.artifacts().stream()
                     .map(UploadArtifactHttpResponse::from)
                     .toList();

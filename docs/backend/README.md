@@ -103,8 +103,8 @@ Common headers:
 | --- | --- | --- | --- |
 | User session | Web app, CLI user commands | Supabase Auth JWT | Organization service validates token; Helidon validates membership and permissions |
 | Repository API key | CI coverage uploads | Repo-scoped Vericov API key, stored hashed | Upload / Ingestion Service |
-| Tokenless CI | Trusted CI providers later | OIDC/provider identity token | Upload / Ingestion Service |
-| Runner | Self-hosted runners | Short-lived runner JWT | Agent / Runner Control Plane |
+| Tokenless CI | GitHub Actions in v1 | OIDC/provider identity token | Upload / Ingestion Service |
+| Runner | Self-hosted runners | Short-lived runner upload JWT | Upload / Ingestion Service |
 | Service | Internal service calls | Service JWT or mTLS-bound token | Receiving Helidon service |
 | Webhook | Git providers | Provider signature header | Git Integration Service |
 

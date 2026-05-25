@@ -217,16 +217,71 @@ CREATE TABLE IF NOT EXISTS vericov.repository_api_keys (
     id uuid PRIMARY KEY DEFAULT extensions.gen_random_uuid(),
     tenant_id uuid NOT NULL REFERENCES vericov.tenants (id) ON DELETE CASCADE,
     repository_id uuid NOT NULL REFERENCES vericov.repositories (id) ON DELETE CASCADE,
-    name text NOT NULL,
+    name text NOT NULL CHECK (length(trim(name)) BETWEEN 1 AND 120),
     key_prefix text NOT NULL,
-    key_hash text NOT NULL,
+    key_hash text NOT NULL CHECK (length(key_hash) = 64),
     scopes text[] NOT NULL DEFAULT ARRAY['uploads:create', 'uploads:read'],
     branch_allow_patterns text[] NOT NULL DEFAULT ARRAY['*'],
     expires_at timestamptz,
     revoked_at timestamptz,
+    created_by_user_id uuid NOT NULL,
+    revoked_by_user_id uuid,
+    last_used_at timestamptz,
     created_at timestamptz NOT NULL DEFAULT now(),
-    UNIQUE (repository_id, key_prefix)
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (repository_id, key_prefix),
+    CHECK (cardinality(scopes) > 0),
+    CHECK (cardinality(branch_allow_patterns) > 0)
 );
+
+CREATE TABLE IF NOT EXISTS vericov.repository_ci_trusts (
+    id uuid PRIMARY KEY DEFAULT extensions.gen_random_uuid(),
+    tenant_id uuid NOT NULL REFERENCES vericov.tenants (id) ON DELETE CASCADE,
+    repository_id uuid NOT NULL REFERENCES vericov.repositories (id) ON DELETE CASCADE,
+    provider text NOT NULL CHECK (provider IN ('github_actions')),
+    issuer text NOT NULL,
+    audience text NOT NULL,
+    subject_pattern text NOT NULL,
+    scopes text[] NOT NULL DEFAULT ARRAY['uploads:create', 'uploads:read'],
+    branch_allow_patterns text[] NOT NULL DEFAULT ARRAY['*'],
+    expires_at timestamptz,
+    revoked_at timestamptz,
+    created_by_user_id uuid NOT NULL,
+    revoked_by_user_id uuid,
+    last_used_at timestamptz,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (repository_id, provider, subject_pattern),
+    CHECK (issuer = 'https://token.actions.githubusercontent.com'),
+    CHECK (length(trim(audience)) BETWEEN 1 AND 255),
+    CHECK (length(trim(subject_pattern)) BETWEEN 1 AND 500),
+    CHECK (cardinality(scopes) > 0),
+    CHECK (cardinality(branch_allow_patterns) > 0)
+);
+
+CREATE TABLE IF NOT EXISTS vericov.runner_upload_tokens (
+    id uuid PRIMARY KEY DEFAULT extensions.gen_random_uuid(),
+    tenant_id uuid NOT NULL REFERENCES vericov.tenants (id) ON DELETE CASCADE,
+    repository_id uuid NOT NULL REFERENCES vericov.repositories (id) ON DELETE CASCADE,
+    source_type text NOT NULL CHECK (source_type IN ('repository_api_key', 'github_actions_oidc')),
+    source_id uuid,
+    token_id text NOT NULL UNIQUE,
+    scopes text[] NOT NULL DEFAULT ARRAY['uploads:create'],
+    branch_allow_patterns text[] NOT NULL DEFAULT ARRAY['*'],
+    issued_at timestamptz NOT NULL DEFAULT now(),
+    expires_at timestamptz NOT NULL,
+    revoked_at timestamptz,
+    last_used_at timestamptz,
+    CHECK (expires_at > issued_at),
+    CHECK (cardinality(scopes) > 0),
+    CHECK (cardinality(branch_allow_patterns) > 0)
+);
+
+ALTER TABLE IF EXISTS vericov.repository_api_keys
+    ADD COLUMN IF NOT EXISTS created_by_user_id uuid,
+    ADD COLUMN IF NOT EXISTS revoked_by_user_id uuid,
+    ADD COLUMN IF NOT EXISTS last_used_at timestamptz,
+    ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT now();
 
 CREATE TABLE IF NOT EXISTS vericov.uploads (
     id uuid PRIMARY KEY DEFAULT extensions.gen_random_uuid(),
@@ -834,6 +889,18 @@ CREATE INDEX IF NOT EXISTS repository_api_keys_repository_active_idx
     ON vericov.repository_api_keys (repository_id)
     WHERE revoked_at IS NULL;
 
+CREATE INDEX IF NOT EXISTS repository_api_keys_prefix_active_idx
+    ON vericov.repository_api_keys (key_prefix)
+    WHERE revoked_at IS NULL;
+
+CREATE INDEX IF NOT EXISTS repository_ci_trusts_repository_active_idx
+    ON vericov.repository_ci_trusts (repository_id, provider)
+    WHERE revoked_at IS NULL;
+
+CREATE INDEX IF NOT EXISTS runner_upload_tokens_token_active_idx
+    ON vericov.runner_upload_tokens (token_id)
+    WHERE revoked_at IS NULL;
+
 CREATE INDEX IF NOT EXISTS uploads_repository_commit_idx
     ON vericov.uploads (repository_id, commit_sha);
 
@@ -1068,6 +1135,8 @@ ALTER TABLE vericov.repository_policies ENABLE ROW LEVEL SECURITY;
 ALTER TABLE vericov.repository_gate_configurations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE vericov.repository_badge_settings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE vericov.repository_api_keys ENABLE ROW LEVEL SECURITY;
+ALTER TABLE vericov.repository_ci_trusts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE vericov.runner_upload_tokens ENABLE ROW LEVEL SECURITY;
 ALTER TABLE vericov.uploads ENABLE ROW LEVEL SECURITY;
 ALTER TABLE vericov.upload_artifacts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE vericov.analysis_jobs ENABLE ROW LEVEL SECURITY;
