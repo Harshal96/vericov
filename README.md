@@ -13,6 +13,20 @@ metadata only.
 pip install vericov
 ```
 
+## Coverage Upload CLI
+
+The coverage upload CLI lives in `clis/coverage-upload` as an independent
+Python package. It installs the `vericov` console script for CI uploads:
+
+```bash
+cd clis/coverage-upload
+python3 -m pip install -e .
+VERICOV_API_KEY=vc_live_... vericov upload --coverage coverage/lcov.info
+```
+
+See `clis/coverage-upload/README.md` for usage, development, and contribution
+guidelines.
+
 ## Local Backend Stack
 
 Bring up Supabase, the Vericov Helidon services, and the product Kong gateway:

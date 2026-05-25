@@ -31,23 +31,7 @@ class UploadResourceTest {
     @Test
     void returnsAcceptedEnvelopeForDirectUpload() {
         UploadResource resource = new UploadResource(service());
-        CreateUploadHttpRequest request = new CreateUploadHttpRequest(
-                UUID.fromString("4d607f16-1af7-4d3b-ac38-06454cba463c"),
-                "abc123",
-                "main",
-                42,
-                "github_actions",
-                "987654321",
-                "https://github.com/acme/payments-api/actions/runs/987654321",
-                List.of("unit"),
-                "api",
-                "services/api",
-                List.of(new UploadArtifactHttpRequest(
-                        "lcov.info",
-                        "coverage",
-                        "lcov",
-                        "text/plain",
-                        "VE46ClNGOnNyYy9NYWluLmphdmEK")));
+        CreateUploadHttpRequest request = request(UUID.fromString("4d607f16-1af7-4d3b-ac38-06454cba463c"));
 
         Response response = resource.createUpload("Bearer vc_live_test", "request-1", request);
 
@@ -58,10 +42,22 @@ class UploadResourceTest {
         assertEquals("/api/v1/uploads/" + body.uploadId(), body.pollUrl());
     }
 
+    @Test
+    void returnsResolvedRepositoryIdWhenRequestOmitsRepositoryId() {
+        UploadResource resource = new UploadResource(service());
+
+        Response response = resource.createUpload("Bearer vc_live_test", "request-2", request(null));
+
+        assertEquals(202, response.getStatus());
+        ApiResponse<?> envelope = assertInstanceOf(ApiResponse.class, response.getEntity());
+        CreateUploadHttpResponse body = assertInstanceOf(CreateUploadHttpResponse.class, envelope.data());
+        assertEquals(UUID.fromString("4d607f16-1af7-4d3b-ac38-06454cba463c"), body.repositoryId());
+    }
+
     private static UploadApplicationService service() {
         RepositoryApiKeyAuthenticator authenticator = command -> new RepositoryApiKeyPrincipal(
                 UUID.fromString("0f4f478a-3fc0-45c4-b274-43a0e18850cf"),
-                command.repositoryId(),
+                UUID.fromString("4d607f16-1af7-4d3b-ac38-06454cba463c"),
                 UUID.fromString("9f66fbf9-512e-4de1-94c2-dfca2c18e72b"),
                 Set.of("uploads:create", "uploads:read"),
                 Set.of("main"));
@@ -89,5 +85,25 @@ class UploadResourceTest {
                 publisher,
                 queue,
                 Clock.fixed(Instant.parse("2026-05-22T10:00:00Z"), ZoneOffset.UTC));
+    }
+
+    private static CreateUploadHttpRequest request(UUID repositoryId) {
+        return new CreateUploadHttpRequest(
+                repositoryId,
+                "abc123",
+                "main",
+                42,
+                "github_actions",
+                "987654321",
+                "https://github.com/acme/payments-api/actions/runs/987654321",
+                List.of("unit"),
+                "api",
+                "services/api",
+                List.of(new UploadArtifactHttpRequest(
+                        "lcov.info",
+                        "coverage",
+                        "lcov",
+                        "text/plain",
+                        "VE46ClNGOnNyYy9NYWluLmphdmEK")));
     }
 }

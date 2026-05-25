@@ -60,6 +60,35 @@ class UploadApplicationServiceTest {
     }
 
     @Test
+    void acceptsUploadWithoutRepositoryIdWhenApiKeyIsRepoScoped() {
+        TestFixture fixture = new TestFixture();
+        CreateUploadCommand command = command("repo-inferred", null);
+
+        var accepted = fixture.service.acceptUpload(command);
+
+        assertEquals(REPOSITORY_ID, accepted.repositoryId());
+        var storedUpload = fixture.uploadRepository.findById(accepted.uploadId()).orElseThrow();
+        assertEquals(REPOSITORY_ID, storedUpload.repositoryId());
+        assertEquals(1, fixture.workQueue.jobs.size());
+    }
+
+    @Test
+    void rejectsExplicitRepositoryMismatchEvenWhenApiKeyIsRepoScoped() {
+        TestFixture fixture = new TestFixture();
+        CreateUploadCommand command = command(
+                "repo-mismatch",
+                UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"));
+
+        InvalidUploadException exception = assertThrows(
+                InvalidUploadException.class,
+                () -> fixture.service.acceptUpload(command));
+
+        assertEquals("forbidden", exception.code());
+        assertEquals(0, fixture.artifactStorage.storedArtifacts.size());
+        assertEquals(0, fixture.workQueue.jobs.size());
+    }
+
+    @Test
     void returnsExistingUploadWhenIdempotencyKeyWasAlreadyAccepted() {
         TestFixture fixture = new TestFixture();
         CreateUploadCommand command = command("same-key");
@@ -163,10 +192,14 @@ class UploadApplicationServiceTest {
     }
 
     private static CreateUploadCommand command(String idempotencyKey) {
+        return command(idempotencyKey, REPOSITORY_ID);
+    }
+
+    private static CreateUploadCommand command(String idempotencyKey, UUID repositoryId) {
         return new CreateUploadCommand(
                 "Bearer vc_live_test",
                 idempotencyKey,
-                REPOSITORY_ID,
+                repositoryId,
                 "abc123",
                 "main",
                 42,
