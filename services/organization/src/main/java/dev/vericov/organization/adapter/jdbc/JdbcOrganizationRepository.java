@@ -20,6 +20,8 @@ import dev.vericov.organization.application.RepositoryConfigDetails;
 import dev.vericov.organization.application.RepositoryDetails;
 import dev.vericov.organization.application.RepositoryGateDetails;
 import dev.vericov.organization.application.RepositoryPolicyDetails;
+import dev.vericov.organization.application.CoverageDebtDetails;
+import dev.vericov.organization.application.CoverageDebtEventDetails;
 import dev.vericov.organization.application.port.OrganizationRepository;
 import jakarta.json.Json;
 import jakarta.json.JsonArrayBuilder;
@@ -1407,6 +1409,320 @@ public class JdbcOrganizationRepository implements OrganizationRepository {
             throw databaseFailure("Failed to list gate evaluations", exception);
         }
     }
+    @Override
+    public Optional<CoverageDebtDetails> findCoverageDebt(UUID repositoryId, UUID debtId) {
+        try (var connection = dataSource.getConnection();
+                var statement = connection.prepareStatement("""
+                        select
+                            id, tenant_id, org_id, repository_id, component_id, source_gap_id, source_report_id,
+                            source_commit_sha, pull_request_number, target_type, file_path, line_start, line_end,
+                            symbol_name, risk_level, reason, owner, status, expires_at, resolved_at,
+                            resolved_by_user_id, revoked_at, revoked_by_user_id, linked_issue_url,
+                            metadata_json, created_by_user_id, created_at, updated_at
+                        from vericov.coverage_debt_items
+                        where repository_id = ?
+                          and id = ?
+                        """)) {
+            statement.setObject(1, repositoryId);
+            statement.setObject(2, debtId);
+            try (var resultSet = statement.executeQuery()) {
+                return resultSet.next() ? Optional.of(readCoverageDebt(resultSet)) : Optional.empty();
+            }
+        } catch (SQLException exception) {
+            throw databaseFailure("Failed to find coverage debt item", exception);
+        }
+    }
+
+    @Override
+    public List<CoverageDebtDetails> listCoverageDebts(
+            UUID repositoryId,
+            String status,
+            String owner,
+            String riskLevel,
+            UUID componentId,
+            Instant expiresBefore,
+            boolean includeExpired,
+            UUID sourceGapId,
+            int limit) {
+        StringBuilder sql = new StringBuilder("""
+                select
+                    id, tenant_id, org_id, repository_id, component_id, source_gap_id, source_report_id,
+                    source_commit_sha, pull_request_number, target_type, file_path, line_start, line_end,
+                    symbol_name, risk_level, reason, owner, status, expires_at, resolved_at,
+                    resolved_by_user_id, revoked_at, revoked_by_user_id, linked_issue_url,
+                    metadata_json, created_by_user_id, created_at, updated_at
+                from vericov.coverage_debt_items
+                where repository_id = ?
+                """);
+        List<Object> params = new ArrayList<>();
+        params.add(repositoryId);
+
+        Instant now = Instant.now();
+
+        if (status != null) {
+            if ("expired".equals(status)) {
+                sql.append(" and (status = 'expired' or (status = 'active' and expires_at <= ?))");
+                params.add(now);
+            } else if ("active".equals(status)) {
+                sql.append(" and status = 'active' and expires_at > ?");
+                params.add(now);
+            } else {
+                sql.append(" and status = ?");
+                params.add(status);
+            }
+        } else if (!includeExpired) {
+            sql.append(" and status <> 'expired' and (status <> 'active' or expires_at > ?)");
+            params.add(now);
+        }
+
+        if (owner != null) {
+            sql.append(" and owner = ?");
+            params.add(owner);
+        }
+        if (riskLevel != null) {
+            sql.append(" and risk_level = ?");
+            params.add(riskLevel);
+        }
+        if (componentId != null) {
+            sql.append(" and component_id = ?");
+            params.add(componentId);
+        }
+        if (expiresBefore != null) {
+            sql.append(" and expires_at < ?");
+            params.add(expiresBefore);
+        }
+        if (sourceGapId != null) {
+            sql.append(" and source_gap_id = ?");
+            params.add(sourceGapId);
+        }
+
+        sql.append(" order by created_at desc, id desc limit ?");
+        params.add(limit);
+
+        try (var connection = dataSource.getConnection();
+                var statement = connection.prepareStatement(sql.toString())) {
+            for (int i = 0; i < params.size(); i++) {
+                Object p = params.get(i);
+                if (p instanceof Instant inst) {
+                    statement.setObject(i + 1, utc(inst));
+                } else {
+                    statement.setObject(i + 1, p);
+                }
+            }
+            try (var resultSet = statement.executeQuery()) {
+                List<CoverageDebtDetails> list = new ArrayList<>();
+                while (resultSet.next()) {
+                    list.add(readCoverageDebt(resultSet));
+                }
+                return List.copyOf(list);
+            }
+        } catch (SQLException exception) {
+            throw databaseFailure("Failed to list coverage debts", exception);
+        }
+    }
+
+    @Override
+    public CoverageDebtDetails saveCoverageDebt(CoverageDebtDetails debt) {
+        try (var connection = dataSource.getConnection();
+                var statement = connection.prepareStatement("""
+                        insert into vericov.coverage_debt_items (
+                            id, tenant_id, org_id, repository_id, component_id, source_gap_id, source_report_id,
+                            source_commit_sha, pull_request_number, target_type, file_path, line_start, line_end,
+                            symbol_name, risk_level, reason, owner, status, expires_at, resolved_at,
+                            resolved_by_user_id, revoked_at, revoked_by_user_id, linked_issue_url,
+                            metadata_json, created_by_user_id, created_at, updated_at
+                        )
+                        values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?, ?, ?)
+                        """)) {
+            int index = 1;
+            statement.setObject(index++, debt.id());
+            statement.setObject(index++, debt.tenantId());
+            statement.setObject(index++, debt.organizationId());
+            statement.setObject(index++, debt.repositoryId());
+            statement.setObject(index++, debt.componentId());
+            statement.setObject(index++, debt.sourceGapId());
+            statement.setObject(index++, debt.sourceReportId());
+            statement.setString(index++, debt.sourceCommitSha());
+            statement.setObject(index++, debt.pullRequestNumber());
+            statement.setString(index++, debt.targetType());
+            statement.setString(index++, debt.filePath());
+            statement.setObject(index++, debt.lineStart());
+            statement.setObject(index++, debt.lineEnd());
+            statement.setString(index++, debt.symbolName());
+            statement.setString(index++, debt.riskLevel());
+            statement.setString(index++, debt.reason());
+            statement.setString(index++, debt.owner());
+            statement.setString(index++, debt.status());
+            setNullableInstant(statement, index++, debt.expiresAt());
+            setNullableInstant(statement, index++, debt.resolvedAt());
+            statement.setObject(index++, debt.resolvedByUserId());
+            setNullableInstant(statement, index++, debt.revokedAt());
+            statement.setObject(index++, debt.revokedByUserId());
+            statement.setString(index++, debt.linkedIssueUrl());
+            statement.setString(index++, jsonObject(debt.metadata()));
+            statement.setObject(index++, debt.createdByUserId());
+            statement.setObject(index++, utc(debt.createdAt()));
+            statement.setObject(index, utc(debt.updatedAt()));
+            statement.executeUpdate();
+            return debt;
+        } catch (SQLException exception) {
+            throw mapIntegrityFailure("Failed to save coverage debt item", exception);
+        }
+    }
+
+    @Override
+    public CoverageDebtDetails updateCoverageDebt(CoverageDebtDetails debt) {
+        try (var connection = dataSource.getConnection();
+                var statement = connection.prepareStatement("""
+                        update vericov.coverage_debt_items
+                        set component_id = ?,
+                            source_gap_id = ?,
+                            source_report_id = ?,
+                            source_commit_sha = ?,
+                            pull_request_number = ?,
+                            target_type = ?,
+                            file_path = ?,
+                            line_start = ?,
+                            line_end = ?,
+                            symbol_name = ?,
+                            risk_level = ?,
+                            reason = ?,
+                            owner = ?,
+                            status = ?,
+                            expires_at = ?,
+                            resolved_at = ?,
+                            resolved_by_user_id = ?,
+                            revoked_at = ?,
+                            revoked_by_user_id = ?,
+                            linked_issue_url = ?,
+                            metadata_json = ?::jsonb,
+                            updated_at = ?
+                        where id = ?
+                          and repository_id = ?
+                        """)) {
+            int index = 1;
+            statement.setObject(index++, debt.componentId());
+            statement.setObject(index++, debt.sourceGapId());
+            statement.setObject(index++, debt.sourceReportId());
+            statement.setString(index++, debt.sourceCommitSha());
+            statement.setObject(index++, debt.pullRequestNumber());
+            statement.setString(index++, debt.targetType());
+            statement.setString(index++, debt.filePath());
+            statement.setObject(index++, debt.lineStart());
+            statement.setObject(index++, debt.lineEnd());
+            statement.setString(index++, debt.symbolName());
+            statement.setString(index++, debt.riskLevel());
+            statement.setString(index++, debt.reason());
+            statement.setString(index++, debt.owner());
+            statement.setString(index++, debt.status());
+            setNullableInstant(statement, index++, debt.expiresAt());
+            setNullableInstant(statement, index++, debt.resolvedAt());
+            statement.setObject(index++, debt.resolvedByUserId());
+            setNullableInstant(statement, index++, debt.revokedAt());
+            statement.setObject(index++, debt.revokedByUserId());
+            statement.setString(index++, debt.linkedIssueUrl());
+            statement.setString(index++, jsonObject(debt.metadata()));
+            statement.setObject(index++, utc(debt.updatedAt()));
+            statement.setObject(index++, debt.id());
+            statement.setObject(index, debt.repositoryId());
+            int updated = statement.executeUpdate();
+            if (updated == 0) {
+                throw new OrganizationException("not_found", "Coverage debt item not found");
+            }
+            return debt;
+        } catch (SQLException exception) {
+            throw databaseFailure("Failed to update coverage debt item", exception);
+        }
+    }
+
+    @Override
+    public void saveCoverageDebtEvent(CoverageDebtEventDetails event) {
+        try (var connection = dataSource.getConnection();
+                var statement = connection.prepareStatement("""
+                        insert into vericov.coverage_debt_events (
+                            id, tenant_id, org_id, repository_id, debt_item_id, event_type, actor_user_id, payload_json, created_at
+                        )
+                        values (?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?)
+                        """)) {
+            int index = 1;
+            statement.setObject(index++, event.id());
+            statement.setObject(index++, event.tenantId());
+            statement.setObject(index++, event.organizationId());
+            statement.setObject(index++, event.repositoryId());
+            statement.setObject(index++, event.debtItemId());
+            statement.setString(index++, event.eventType());
+            statement.setObject(index++, event.actorUserId());
+            statement.setString(index++, jsonObject(event.payload()));
+            statement.setObject(index, utc(event.createdAt()));
+            statement.executeUpdate();
+        } catch (SQLException exception) {
+            throw mapIntegrityFailure("Failed to save coverage debt event", exception);
+        }
+    }
+
+    @Override
+    public List<CoverageDebtEventDetails> listCoverageDebtEvents(UUID debtItemId) {
+        try (var connection = dataSource.getConnection();
+                var statement = connection.prepareStatement("""
+                        select id, tenant_id, org_id, repository_id, debt_item_id, event_type, actor_user_id, payload_json, created_at
+                        from vericov.coverage_debt_events
+                        where debt_item_id = ?
+                        order by created_at, id
+                        """)) {
+            statement.setObject(1, debtItemId);
+            try (var resultSet = statement.executeQuery()) {
+                List<CoverageDebtEventDetails> list = new ArrayList<>();
+                while (resultSet.next()) {
+                    list.add(new CoverageDebtEventDetails(
+                            resultSet.getObject("id", UUID.class),
+                            resultSet.getObject("tenant_id", UUID.class),
+                            resultSet.getObject("org_id", UUID.class),
+                            resultSet.getObject("repository_id", UUID.class),
+                            resultSet.getObject("debt_item_id", UUID.class),
+                            resultSet.getString("event_type"),
+                            resultSet.getObject("actor_user_id", UUID.class),
+                            jsonMap(resultSet, "payload_json"),
+                            instant(resultSet, "created_at")));
+                }
+                return List.copyOf(list);
+            }
+        } catch (SQLException exception) {
+            throw databaseFailure("Failed to list coverage debt events", exception);
+        }
+    }
+
+    private static CoverageDebtDetails readCoverageDebt(ResultSet resultSet) throws SQLException {
+        return new CoverageDebtDetails(
+                resultSet.getObject("id", UUID.class),
+                resultSet.getObject("tenant_id", UUID.class),
+                resultSet.getObject("org_id", UUID.class),
+                resultSet.getObject("repository_id", UUID.class),
+                resultSet.getObject("component_id", UUID.class),
+                resultSet.getObject("source_gap_id", UUID.class),
+                resultSet.getObject("source_report_id", UUID.class),
+                resultSet.getString("source_commit_sha"),
+                resultSet.getObject("pull_request_number") == null ? null : resultSet.getInt("pull_request_number"),
+                resultSet.getString("target_type"),
+                resultSet.getString("file_path"),
+                resultSet.getObject("line_start") == null ? null : resultSet.getInt("line_start"),
+                resultSet.getObject("line_end") == null ? null : resultSet.getInt("line_end"),
+                resultSet.getString("symbol_name"),
+                resultSet.getString("risk_level"),
+                resultSet.getString("reason"),
+                resultSet.getString("owner"),
+                resultSet.getString("status"),
+                instant(resultSet, "expires_at"),
+                instant(resultSet, "resolved_at"),
+                resultSet.getObject("resolved_by_user_id", UUID.class),
+                instant(resultSet, "revoked_at"),
+                resultSet.getObject("revoked_by_user_id", UUID.class),
+                resultSet.getString("linked_issue_url"),
+                jsonMap(resultSet, "metadata_json"),
+                resultSet.getObject("created_by_user_id", UUID.class),
+                instant(resultSet, "created_at"),
+                instant(resultSet, "updated_at"));
+    }
+
 
     private static List<DiffCoverageFileDetails> readDiffCoverageFiles(
             Connection connection,

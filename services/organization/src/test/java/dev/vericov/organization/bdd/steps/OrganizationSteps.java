@@ -15,6 +15,10 @@ import dev.vericov.organization.api.MembershipHttpResponse;
 import dev.vericov.organization.api.OrganizationHttpResponse;
 import dev.vericov.organization.api.OrganizationResource;
 import dev.vericov.organization.api.RepositoryHttpResponse;
+import dev.vericov.organization.api.RepositoryControlPlaneResource;
+import dev.vericov.organization.api.CreateCoverageDebtHttpRequest;
+import dev.vericov.organization.api.UpdateCoverageDebtHttpRequest;
+import dev.vericov.organization.api.CoverageDebtHttpResponse;
 import dev.vericov.organization.application.InMemoryOrganizationRepository;
 import dev.vericov.organization.application.OrganizationApplicationService;
 import dev.vericov.organization.application.port.UserPrincipalResolver;
@@ -34,6 +38,7 @@ import java.util.UUID;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class OrganizationSteps {
     private static final Instant NOW = Instant.parse("2026-05-22T10:00:00Z");
@@ -44,6 +49,8 @@ public class OrganizationSteps {
             Clock.fixed(NOW, ZoneOffset.UTC));
     private final OrganizationResource organizationResource = new OrganizationResource(service, resolver);
     private final AuthorizationResource authorizationResource = new AuthorizationResource(service, resolver);
+    private final RepositoryControlPlaneResource repositoryControlPlaneResource = new RepositoryControlPlaneResource(service, resolver);
+    private CoverageDebtHttpResponse coverageDebt;
 
     private OrganizationHttpResponse organization;
     private InvitationHttpResponse invitation;
@@ -197,6 +204,179 @@ public class OrganizationSteps {
         assertEquals(
                 "/api/v1/orgs/" + organization.id() + "/repositories/" + repository.id(),
                 latestResponse.getLocation().toString());
+    }
+
+    @When("the current user creates coverage debt for file {string} with risk {string} and reason {string} and owner {string}")
+    public void createCoverageDebt(String filePath, String risk, String reason, String owner) {
+        CreateCoverageDebtHttpRequest request = new CreateCoverageDebtHttpRequest(
+                null,
+                null,
+                "commit-sha-bdd",
+                null,
+                "file",
+                filePath,
+                null,
+                null,
+                null,
+                risk,
+                reason,
+                owner,
+                Instant.now().plusSeconds(86400),
+                null,
+                java.util.Map.of()
+        );
+        latestResponse = repositoryControlPlaneResource.createCoverageDebt(
+                "Bearer test-token",
+                null,
+                organization.id(),
+                repository.id(),
+                request
+        );
+        if (latestResponse.getStatus() == 201) {
+            coverageDebt = responseBody(latestResponse, CoverageDebtHttpResponse.class);
+        }
+    }
+
+    @Then("the coverage debt is successfully created with status {string}")
+    public void coverageDebtCreatedWithStatus(String status) {
+        assertEquals(201, latestResponse.getStatus());
+        assertEquals(status, coverageDebt.status());
+    }
+
+    @Then("the current user can retrieve details for the created coverage debt")
+    public void canRetrieveCoverageDebtDetails() {
+        Response response = repositoryControlPlaneResource.getCoverageDebt(
+                "Bearer test-token",
+                null,
+                organization.id(),
+                repository.id(),
+                coverageDebt.id()
+        );
+        assertEquals(200, response.getStatus());
+        CoverageDebtHttpResponse retrieved = responseBody(response, CoverageDebtHttpResponse.class);
+        assertEquals(coverageDebt.id(), retrieved.id());
+    }
+
+    @When("the current user lists coverage debts with status {string}")
+    public void listCoverageDebts(String status) {
+        latestResponse = repositoryControlPlaneResource.listCoverageDebts(
+                "Bearer test-token",
+                null,
+                organization.id(),
+                repository.id(),
+                status,
+                null,
+                null,
+                null,
+                null,
+                true,
+                null,
+                100
+        );
+    }
+
+    @Then("the list contains the created coverage debt")
+    public void listContainsCreatedDebt() {
+        assertEquals(200, latestResponse.getStatus());
+        List<?> debts = responseBody(latestResponse, List.class);
+        boolean found = debts.stream()
+                .filter(d -> d instanceof CoverageDebtHttpResponse)
+                .map(d -> (CoverageDebtHttpResponse) d)
+                .anyMatch(d -> d.id().equals(coverageDebt.id()));
+        assertTrue(found);
+    }
+
+    @When("the current user updates the coverage debt owner to {string} and reason to {string}")
+    public void updateCoverageDebt(String newOwner, String newReason) {
+        UpdateCoverageDebtHttpRequest request = new UpdateCoverageDebtHttpRequest(
+                newOwner,
+                null,
+                newReason,
+                null,
+                null,
+                null
+        );
+        latestResponse = repositoryControlPlaneResource.updateCoverageDebt(
+                "Bearer test-token",
+                null,
+                organization.id(),
+                repository.id(),
+                coverageDebt.id(),
+                request
+        );
+        if (latestResponse.getStatus() == 200) {
+            coverageDebt = responseBody(latestResponse, CoverageDebtHttpResponse.class);
+        }
+    }
+
+    @Then("the coverage debt details reflect the updated owner {string} and reason {string}")
+    public void coverageDebtReflectsUpdates(String owner, String reason) {
+        assertEquals(200, latestResponse.getStatus());
+        assertEquals(owner, coverageDebt.owner());
+        assertEquals(reason, coverageDebt.reason());
+    }
+
+    @When("the current user resolves the coverage debt")
+    public void resolveCoverageDebt() {
+        latestResponse = repositoryControlPlaneResource.resolveCoverageDebt(
+                "Bearer test-token",
+                null,
+                organization.id(),
+                repository.id(),
+                coverageDebt.id()
+        );
+        if (latestResponse.getStatus() == 200) {
+            coverageDebt = responseBody(latestResponse, CoverageDebtHttpResponse.class);
+        }
+    }
+
+    @Then("the coverage debt status is {string}")
+    public void coverageDebtStatusIs(String status) {
+        assertEquals(200, latestResponse.getStatus());
+        assertEquals(status, coverageDebt.status());
+    }
+
+    @When("the current user revokes the coverage debt")
+    public void revokeCoverageDebt() {
+        latestResponse = repositoryControlPlaneResource.revokeCoverageDebt(
+                "Bearer test-token",
+                null,
+                organization.id(),
+                repository.id(),
+                coverageDebt.id()
+        );
+        if (latestResponse.getStatus() == 200) {
+            coverageDebt = responseBody(latestResponse, CoverageDebtHttpResponse.class);
+        }
+    }
+
+    @When("the user {string} attempts to create coverage debt for file {string}")
+    public void attemptCreateCoverageDebtViewer(String email, String filePath) {
+        authenticate(email);
+        CreateCoverageDebtHttpRequest request = new CreateCoverageDebtHttpRequest(
+                null,
+                null,
+                "commit-sha-bdd",
+                null,
+                "file",
+                filePath,
+                null,
+                null,
+                null,
+                "high",
+                "viewer attempting bypass",
+                "viewer",
+                Instant.now().plusSeconds(86400),
+                null,
+                java.util.Map.of()
+        );
+        latestResponse = repositoryControlPlaneResource.createCoverageDebt(
+                "Bearer test-token",
+                null,
+                organization.id(),
+                repository.id(),
+                request
+        );
     }
 
     private void authenticate(String email) {
