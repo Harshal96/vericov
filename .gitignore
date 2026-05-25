@@ -203,6 +203,12 @@ cython_debug/
 # Temporary file for partial code execution
 tempCodeRunnerFile.py
 
+# Local Supabase self-hosted state
+infra/supabase/.env
+infra/supabase/volumes/db/data/
+infra/supabase/volumes/storage/
+infra/kong/.env
+
 # Ruff stuff:
 .ruff_cache/
 

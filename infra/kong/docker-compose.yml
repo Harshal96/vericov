@@ -1,0 +1,41 @@
+name: vericov-gateway
+
+services:
+  kong:
+    image: kong/kong:3.9.1
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${VERICOV_KONG_HTTP_PORT:-9000}:8000"
+      - "127.0.0.1:${VERICOV_KONG_ADMIN_PORT:-9001}:8001"
+    environment:
+      KONG_DATABASE: "off"
+      KONG_DECLARATIVE_CONFIG: /tmp/vericov-kong/kong.yml
+      KONG_PROXY_ACCESS_LOG: /dev/stdout
+      KONG_ADMIN_ACCESS_LOG: /dev/stdout
+      KONG_PROXY_ERROR_LOG: /dev/stderr
+      KONG_ADMIN_ERROR_LOG: /dev/stderr
+      KONG_PROXY_LISTEN: 0.0.0.0:8000
+      KONG_ADMIN_LISTEN: 0.0.0.0:8001
+      KONG_PLUGINS: bundled
+      KONG_NGINX_PROXY_CLIENT_MAX_BODY_SIZE: 120m
+      ORGANIZATION_SERVICE_URL: ${ORGANIZATION_SERVICE_URL:-http://host.docker.internal:8082}
+      UPLOAD_SERVICE_URL: ${UPLOAD_SERVICE_URL:-http://host.docker.internal:8080}
+      COVERAGE_ANALYSIS_SERVICE_URL: ${COVERAGE_ANALYSIS_SERVICE_URL:-http://host.docker.internal:8081}
+      VERICOV_CORS_ORIGIN: ${VERICOV_CORS_ORIGIN:-*}
+      VERICOV_UPLOAD_RATE_LIMIT_MINUTE: ${VERICOV_UPLOAD_RATE_LIMIT_MINUTE:-60}
+      VERICOV_UPLOAD_RATE_LIMIT_HOUR: ${VERICOV_UPLOAD_RATE_LIMIT_HOUR:-1000}
+      VERICOV_UPLOAD_MAX_BODY_MB: ${VERICOV_UPLOAD_MAX_BODY_MB:-110}
+      VERICOV_PUBLIC_RATE_LIMIT_MINUTE: ${VERICOV_PUBLIC_RATE_LIMIT_MINUTE:-120}
+      VERICOV_INTERNAL_RATE_LIMIT_MINUTE: ${VERICOV_INTERNAL_RATE_LIMIT_MINUTE:-120}
+    volumes:
+      - ./kong.yml:/home/kong/kong.yml.template:ro
+      - ./kong-entrypoint.sh:/home/kong/kong-entrypoint.sh:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    entrypoint: ["/home/kong/kong-entrypoint.sh"]
+    healthcheck:
+      test: ["CMD", "kong", "health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
