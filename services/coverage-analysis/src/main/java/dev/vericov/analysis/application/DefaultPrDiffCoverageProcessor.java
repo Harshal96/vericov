@@ -29,9 +29,9 @@ public class DefaultPrDiffCoverageProcessor implements PrDiffCoverageProcessor {
     }
 
     @Override
-    public void process(CoverageAnalysisInput input, CoverageReport headReport) {
+    public DiffCoverageReport process(CoverageAnalysisInput input, CoverageReport headReport) {
         if (input.pullRequestNumber() == null) {
-            return;
+            return null;
         }
         PullRequestDiff diff = diffClient.fetch(input, headReport);
         if (!headReport.commitSha().equals(diff.headSha())) {
@@ -49,6 +49,7 @@ public class DefaultPrDiffCoverageProcessor implements PrDiffCoverageProcessor {
                 input.provider(),
                 baseCoverage.status(),
                 diffCoverage);
+        return diffCoverage;
     }
 
     private record BaseCoverage(String status, List<CoverageLineHit> lineHits) {

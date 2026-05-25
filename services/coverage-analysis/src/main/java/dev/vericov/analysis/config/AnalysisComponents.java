@@ -19,6 +19,7 @@ import dev.vericov.analysis.application.UploadAnalysisEventHandler;
 import dev.vericov.analysis.application.port.AnalysisJobQueue;
 import dev.vericov.analysis.application.port.AnalysisJobRepository;
 import dev.vericov.analysis.application.port.CoverageAnalysisProcessor;
+import dev.vericov.analysis.application.port.RepositoryContextRepository;
 import dev.vericov.analysis.coverage.CloverCoverageParser;
 import dev.vericov.analysis.coverage.CoberturaCoverageParser;
 import dev.vericov.analysis.coverage.CoverageParserRegistry;
@@ -73,7 +74,17 @@ public class AnalysisComponents {
 
     @Produces
     @ApplicationScoped
-    public CoverageAnalysisProcessor coverageAnalysisProcessor() {
+    public RepositoryContextRepository repositoryContextRepository() {
+        return (tenantId, repositoryId, commitSha, branch, pr) -> new dev.vericov.analysis.gates.RepositoryContext(
+                "ctx-" + Instant.now().toString(),
+                List.of(),
+                List.of(),
+                Map.of());
+    }
+
+    @Produces
+    @ApplicationScoped
+    public CoverageAnalysisProcessor coverageAnalysisProcessor(RepositoryContextRepository repositoryContextRepository) {
         String jdbcUrl = System.getenv("VERICOV_ANALYSIS_DB_URL");
         if (jdbcUrl == null || jdbcUrl.isBlank()) {
             return new PlaceholderCoverageAnalysisProcessor();
@@ -88,6 +99,7 @@ public class AnalysisComponents {
                         requiredEnv("SUPABASE_SERVICE_ROLE_KEY")),
                 reportRepository,
                 new JdbcGateConfigurationRepository(dataSource),
+                repositoryContextRepository,
                 new CoverageParserRegistry(List.of(
                         new LcovCoverageParser(),
                         new CoberturaCoverageParser(xmlReader),

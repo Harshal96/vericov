@@ -220,6 +220,130 @@ class DefaultCoverageAnalysisProcessorTest {
     }
 
     @Test
+    void processesUploadWithDebtAwareGateEvaluation() {
+        FakeInputRepository inputs = new FakeInputRepository(new CoverageAnalysisInput(
+                UPLOAD_ID,
+                TENANT_ID,
+                REPOSITORY_ID,
+                "abc123",
+                "main",
+                42,
+                List.of(
+                        new CoverageInputArtifact(
+                                "unit.lcov",
+                                "coverage",
+                                "lcov",
+                                "coverage-raw",
+                                "tenant/upload/coverage/unit.lcov",
+                                "sha-1"))));
+        FakeContentStore content = new FakeContentStore(Map.of(
+                "coverage-raw/tenant/upload/coverage/unit.lcov", """
+                        TN:
+                        SF:src/App.java
+                        DA:1,1
+                        DA:2,0
+                        DA:3,1
+                        DA:4,0
+                        end_of_record
+                        """.getBytes(StandardCharsets.UTF_8)));
+        FakeReportRepository reports = new FakeReportRepository();
+
+        // Gate requires 90% coverage
+        FakeGateConfigurationRepository gates = new FakeGateConfigurationRepository(List.of(new GateConfiguration(
+                UUID.fromString("6ca2b9dc-75f0-45e7-b28b-a76c4db133d9"),
+                TENANT_ID,
+                UUID.fromString("2ca9c094-7c28-4cb9-9b99-aae95cf07050"),
+                REPOSITORY_ID,
+                "line-minimum",
+                "project_coverage",
+                "line",
+                new BigDecimal("90.0"),
+                null,
+                true,
+                Map.of("debt", Map.of("mode", "adjust_metric")),
+                "active")));
+
+        // Active debt on line 2 (uncovered), expired debt on line 4 (uncovered)
+        UUID activeDebtId = UUID.fromString("11111111-1111-1111-1111-111111111111");
+        UUID expiredDebtId = UUID.fromString("22222222-2222-2222-2222-222222222222");
+
+        dev.vericov.analysis.gates.DebtItem activeDebt = new dev.vericov.analysis.gates.DebtItem(
+                activeDebtId,
+                "src/App.java",
+                2,
+                2,
+                "active",
+                NOW.plusSeconds(3600));
+        dev.vericov.analysis.gates.DebtItem expiredDebt = new dev.vericov.analysis.gates.DebtItem(
+                expiredDebtId,
+                "src/App.java",
+                4,
+                4,
+                "active",
+                NOW.minusSeconds(3600));
+
+        dev.vericov.analysis.gates.RepositoryContext repositoryContext = new dev.vericov.analysis.gates.RepositoryContext(
+                "ctx-version-123",
+                List.of(),
+                List.of(activeDebt, expiredDebt),
+                Map.of());
+
+        dev.vericov.analysis.application.port.RepositoryContextRepository contextRepo =
+                (tenantId, repositoryId, commitSha, branch, pr) -> {
+                    assertEquals(TENANT_ID, tenantId);
+                    assertEquals(REPOSITORY_ID, repositoryId);
+                    assertEquals("abc123", commitSha);
+                    assertEquals("main", branch);
+                    assertEquals(42, pr);
+                    return repositoryContext;
+                };
+
+        DefaultCoverageAnalysisProcessor processor = new DefaultCoverageAnalysisProcessor(
+                inputs,
+                content,
+                reports,
+                gates,
+                contextRepo,
+                lcovParserRegistry(),
+                PrDiffCoverageProcessor.noop(),
+                Clock.fixed(NOW, ZoneOffset.UTC));
+
+        processor.process(event());
+
+        // Report has total lines: 4, covered: 2 (lines 1, 3 are covered, 2, 4 are uncovered)
+        // Raw coverage is 50%
+        // Under adjust_metric, the active debt on line 2 reduces the total to 3.
+        // Effective coverage becomes 2/3 = 66.67%
+        // But since there is an expired debt on line 4, the gate should fail with expired_debt_reappeared!
+        CoverageReport report = reports.savedReport;
+        assertEquals(4, report.line().total());
+        assertEquals(2, report.line().covered());
+
+        assertEquals(1, reports.savedEvaluations.size());
+        GateEvaluation evaluation = reports.savedEvaluations.getFirst();
+        assertEquals("line-minimum", evaluation.gateName());
+        assertEquals("failed", evaluation.status()); // failed due to expired debt
+        assertEquals(new BigDecimal("66.6667"), evaluation.actual()); // effective actual metric
+
+        Map<?, ?> details = evaluation.details();
+        assertEquals(2, details.get("schema_version"));
+
+        Map<?, ?> raw = (Map<?, ?>) details.get("raw");
+        assertEquals(2, raw.get("covered"));
+        assertEquals(4, raw.get("total"));
+        assertEquals("failed", raw.get("status"));
+
+        Map<?, ?> debt = (Map<?, ?>) details.get("debt");
+        assertEquals("adjust_metric", debt.get("mode"));
+        assertEquals(List.of(activeDebtId.toString()), debt.get("suppressed_debt_item_ids"));
+        assertEquals(List.of(expiredDebtId.toString()), debt.get("expired_debt_item_ids"));
+
+        Map<?, ?> effective = (Map<?, ?>) details.get("effective");
+        assertEquals("failed", effective.get("status"));
+        assertEquals("expired_debt_reappeared", effective.get("reason"));
+    }
+
+    @Test
     void failsWhenCoverageArtifactFormatIsUnsupported() {
         DefaultCoverageAnalysisProcessor processor = new DefaultCoverageAnalysisProcessor(
                 new FakeInputRepository(new CoverageAnalysisInput(
