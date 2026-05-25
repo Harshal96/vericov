@@ -157,10 +157,12 @@ public class JdbcCoverageReportRepository implements CoverageReportRepository {
                     function_total,
                     statement_covered,
                     statement_total,
+                    normalized_storage_bucket,
+                    normalized_storage_path,
                     created_at,
                     updated_at
                 )
-                values (?, ?, ?, ?, ?, ?, ?, 'complete', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                values (?, ?, ?, ?, ?, ?, ?, 'complete', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """)) {
             int index = 1;
             statement.setObject(index++, report.reportId());
@@ -182,6 +184,8 @@ public class JdbcCoverageReportRepository implements CoverageReportRepository {
             index += 2;
             setMetric(statement, index, report.statement());
             index += 2;
+            statement.setString(index++, report.normalizedStorageBucket());
+            statement.setString(index++, report.normalizedStoragePath());
             statement.setObject(index++, utc(report.generatedAt()));
             statement.setObject(index, utc(report.generatedAt()));
             statement.executeUpdate();

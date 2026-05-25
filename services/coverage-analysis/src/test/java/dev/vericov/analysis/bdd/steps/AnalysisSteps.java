@@ -10,6 +10,8 @@ import dev.vericov.analysis.application.port.ArtifactContentStore;
 import dev.vericov.analysis.application.port.CoverageAnalysisInputRepository;
 import dev.vericov.analysis.application.port.CoverageReportRepository;
 import dev.vericov.analysis.application.port.GateConfigurationRepository;
+import dev.vericov.analysis.application.port.NormalizedCoverageLocation;
+import dev.vericov.analysis.application.port.NormalizedCoverageStore;
 import dev.vericov.analysis.coverage.CloverCoverageParser;
 import dev.vericov.analysis.coverage.CoberturaCoverageParser;
 import dev.vericov.analysis.coverage.CoverageAnalysisInput;
@@ -64,6 +66,7 @@ public class AnalysisSteps {
     private final FakeQueue queue = new FakeQueue();
     private final FakeJobRepository jobs = new FakeJobRepository();
     private final FakeContentStore contentStore = new FakeContentStore();
+    private final FakeNormalizedCoverageStore normalizedCoverageStore = new FakeNormalizedCoverageStore();
     private final FakeReportRepository reports = new FakeReportRepository();
     private final FakeGateConfigurationRepository gates = new FakeGateConfigurationRepository();
 
@@ -298,6 +301,17 @@ public class AnalysisSteps {
         assertTrue(contentStore.readLocations.isEmpty());
     }
 
+    @Then("a normalized coverage map is stored")
+    public void normalizedCoverageMapIsStored() {
+        CoverageReport report = reports.savedReport;
+        assertNotNull(report);
+        assertEquals(1, normalizedCoverageStore.storedReports.size());
+        assertEquals("coverage-normalized", report.normalizedStorageBucket());
+        assertEquals(
+                TENANT_ID + "/" + UPLOAD_ID + "/coverage-normalized/coverage-map.json.gz",
+                report.normalizedStoragePath());
+    }
+
     @Then("the queue message is moved to the dead-letter queue")
     public void queueMessageIsMovedToTheDeadLetterQueue() {
         assertEquals(List.of(MESSAGE_ID), queue.deadLetterMessageIds);
@@ -335,6 +349,7 @@ public class AnalysisSteps {
                 contentStore,
                 reports,
                 gates,
+                normalizedCoverageStore,
                 parserRegistry(),
                 Clock.fixed(NOW, ZoneOffset.UTC));
     }
@@ -420,6 +435,18 @@ public class AnalysisSteps {
             assertEquals(TENANT_ID, tenantId);
             assertEquals(REPOSITORY_ID, repositoryId);
             return gates;
+        }
+    }
+
+    private static final class FakeNormalizedCoverageStore implements NormalizedCoverageStore {
+        private final List<CoverageReport> storedReports = new ArrayList<>();
+
+        @Override
+        public NormalizedCoverageLocation store(CoverageReport report) {
+            storedReports.add(report);
+            return new NormalizedCoverageLocation(
+                    "coverage-normalized",
+                    report.tenantId() + "/" + report.uploadId() + "/coverage-normalized/coverage-map.json.gz");
         }
     }
 

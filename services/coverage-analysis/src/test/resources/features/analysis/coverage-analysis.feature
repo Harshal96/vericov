@@ -9,6 +9,7 @@ Feature: Analyze uploaded coverage
       And an active project coverage gate requiring 95 percent line coverage
       When the analysis worker polls once
       Then the coverage report is persisted with 3 covered lines out of 3
+      And a normalized coverage map is stored
       And a passed line coverage gate evaluation is persisted
       And the analysis job is completed
       And the queue message is archived

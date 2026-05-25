@@ -35,3 +35,6 @@ Issues = "https://github.com/Harshal96/vericov/issues"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.pytest.ini_options]
+norecursedirs = [".git", ".worktrees", "worktrees"]

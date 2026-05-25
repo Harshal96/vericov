@@ -40,7 +40,7 @@ On first database initialization, `volumes/db/vericov.sql` creates:
 - Organization and upload service tables: tenants, organizations, memberships, organization invitations, repositories, API keys, uploads, upload artifacts, analysis jobs, and upload events
 - PGMQ queues: `coverage_analysis_jobs` and `coverage_analysis_dead_letters`
 - `vericov.enqueue_coverage_analysis_job(uuid)`, the trusted database function that emits an `upload.received` queue message for an analysis job
-- Private Supabase Storage buckets: `coverage-raw`, `test-results-raw`, and `metadata-raw`
+- Private Supabase Storage buckets: `coverage-raw`, `coverage-normalized`, `test-results-raw`, and `metadata-raw`
 
 The `vericov` schema is not exposed through PostgREST. It is intended for trusted backend services over JDBC or a future server-side adapter using the service key.
 
@@ -124,9 +124,10 @@ VERICOV_ANALYSIS_WORKER_ID=coverage-analysis-local
 VERICOV_ANALYSIS_VISIBILITY_TIMEOUT_SECONDS=300
 VERICOV_ANALYSIS_BATCH_SIZE=10
 VERICOV_ANALYSIS_WORKER_IDLE_DELAY_MS=1000
+VERICOV_NORMALIZED_COVERAGE_BUCKET=coverage-normalized
 ```
 
-The worker downloads raw coverage files from private Supabase Storage buckets using the service-role key, merges shards by repository file path, evaluates active project coverage gates, writes `coverage_reports`, `coverage_file_summaries`, `coverage_line_hits`, and `gate_evaluations`, marks the upload processed, and emits `coverage.report.completed` plus `coverage.gates.evaluated` upload events when gates run.
+The worker downloads raw coverage files from private Supabase Storage buckets using the service-role key, merges shards by repository file path, writes a gzip-compressed normalized coverage map to `coverage-normalized`, evaluates active project coverage gates, writes `coverage_reports`, `coverage_file_summaries`, `coverage_line_hits`, and `gate_evaluations`, marks the upload processed, and emits `coverage.report.completed` plus `coverage.gates.evaluated` upload events when gates run.
 
 ## Reset
 

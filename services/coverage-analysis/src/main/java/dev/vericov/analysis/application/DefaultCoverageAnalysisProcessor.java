@@ -5,6 +5,8 @@ import dev.vericov.analysis.application.port.CoverageAnalysisInputRepository;
 import dev.vericov.analysis.application.port.CoverageAnalysisProcessor;
 import dev.vericov.analysis.application.port.CoverageReportRepository;
 import dev.vericov.analysis.application.port.GateConfigurationRepository;
+import dev.vericov.analysis.application.port.NormalizedCoverageLocation;
+import dev.vericov.analysis.application.port.NormalizedCoverageStore;
 import dev.vericov.analysis.application.port.RepositoryContextRepository;
 import dev.vericov.analysis.coverage.CoverageAnalysisInput;
 import dev.vericov.analysis.coverage.CoverageInputArtifact;
@@ -30,6 +32,7 @@ public class DefaultCoverageAnalysisProcessor implements CoverageAnalysisProcess
     private final CoverageReportRepository reports;
     private final GateConfigurationRepository gates;
     private final RepositoryContextRepository contextRepository;
+    private final NormalizedCoverageStore normalizedCoverageStore;
     private final CoverageParserRegistry parserRegistry;
     private final PrDiffCoverageProcessor prDiffCoverageProcessor;
     private final CoverageReportMerger merger = new CoverageReportMerger();
@@ -40,9 +43,19 @@ public class DefaultCoverageAnalysisProcessor implements CoverageAnalysisProcess
             CoverageAnalysisInputRepository inputs,
             ArtifactContentStore contentStore,
             CoverageReportRepository reports,
+            NormalizedCoverageStore normalizedCoverageStore,
             CoverageParserRegistry parserRegistry,
             Clock clock) {
-        this(inputs, contentStore, reports, emptyGateConfigurationRepository(), emptyRepositoryContextRepository(), parserRegistry, PrDiffCoverageProcessor.noop(), clock);
+        this(
+                inputs,
+                contentStore,
+                reports,
+                emptyGateConfigurationRepository(),
+                emptyRepositoryContextRepository(),
+                normalizedCoverageStore,
+                parserRegistry,
+                PrDiffCoverageProcessor.noop(),
+                clock);
     }
 
     public DefaultCoverageAnalysisProcessor(
@@ -50,19 +63,39 @@ public class DefaultCoverageAnalysisProcessor implements CoverageAnalysisProcess
             ArtifactContentStore contentStore,
             CoverageReportRepository reports,
             GateConfigurationRepository gates,
+            NormalizedCoverageStore normalizedCoverageStore,
             CoverageParserRegistry parserRegistry,
             Clock clock) {
-        this(inputs, contentStore, reports, gates, emptyRepositoryContextRepository(), parserRegistry, PrDiffCoverageProcessor.noop(), clock);
+        this(
+                inputs,
+                contentStore,
+                reports,
+                gates,
+                emptyRepositoryContextRepository(),
+                normalizedCoverageStore,
+                parserRegistry,
+                PrDiffCoverageProcessor.noop(),
+                clock);
     }
 
     public DefaultCoverageAnalysisProcessor(
             CoverageAnalysisInputRepository inputs,
             ArtifactContentStore contentStore,
             CoverageReportRepository reports,
+            NormalizedCoverageStore normalizedCoverageStore,
             CoverageParserRegistry parserRegistry,
             PrDiffCoverageProcessor prDiffCoverageProcessor,
             Clock clock) {
-        this(inputs, contentStore, reports, emptyGateConfigurationRepository(), emptyRepositoryContextRepository(), parserRegistry, prDiffCoverageProcessor, clock);
+        this(
+                inputs,
+                contentStore,
+                reports,
+                emptyGateConfigurationRepository(),
+                emptyRepositoryContextRepository(),
+                normalizedCoverageStore,
+                parserRegistry,
+                prDiffCoverageProcessor,
+                clock);
     }
 
     public DefaultCoverageAnalysisProcessor(
@@ -70,10 +103,20 @@ public class DefaultCoverageAnalysisProcessor implements CoverageAnalysisProcess
             ArtifactContentStore contentStore,
             CoverageReportRepository reports,
             GateConfigurationRepository gates,
+            NormalizedCoverageStore normalizedCoverageStore,
             CoverageParserRegistry parserRegistry,
             PrDiffCoverageProcessor prDiffCoverageProcessor,
             Clock clock) {
-        this(inputs, contentStore, reports, gates, emptyRepositoryContextRepository(), parserRegistry, prDiffCoverageProcessor, clock);
+        this(
+                inputs,
+                contentStore,
+                reports,
+                gates,
+                emptyRepositoryContextRepository(),
+                normalizedCoverageStore,
+                parserRegistry,
+                prDiffCoverageProcessor,
+                clock);
     }
 
     public DefaultCoverageAnalysisProcessor(
@@ -82,6 +125,7 @@ public class DefaultCoverageAnalysisProcessor implements CoverageAnalysisProcess
             CoverageReportRepository reports,
             GateConfigurationRepository gates,
             RepositoryContextRepository contextRepository,
+            NormalizedCoverageStore normalizedCoverageStore,
             CoverageParserRegistry parserRegistry,
             PrDiffCoverageProcessor prDiffCoverageProcessor,
             Clock clock) {
@@ -90,6 +134,7 @@ public class DefaultCoverageAnalysisProcessor implements CoverageAnalysisProcess
         this.reports = Objects.requireNonNull(reports, "reports");
         this.gates = Objects.requireNonNull(gates, "gates");
         this.contextRepository = Objects.requireNonNull(contextRepository, "contextRepository");
+        this.normalizedCoverageStore = Objects.requireNonNull(normalizedCoverageStore, "normalizedCoverageStore");
         this.parserRegistry = Objects.requireNonNull(parserRegistry, "parserRegistry");
         this.prDiffCoverageProcessor = Objects.requireNonNull(prDiffCoverageProcessor, "prDiffCoverageProcessor");
         this.clock = Objects.requireNonNull(clock, "clock");
@@ -110,28 +155,30 @@ public class DefaultCoverageAnalysisProcessor implements CoverageAnalysisProcess
         }
 
         CoverageReport report = merger.merge(input, parsedCoverages, clock.instant());
+        NormalizedCoverageLocation location = normalizedCoverageStore.store(report);
+        CoverageReport reportWithStorage = report.withNormalizedStorage(location.bucket(), location.path());
 
         // 1. Process diff coverage first so we have the DiffCoverageReport
-        DiffCoverageReport diffCoverage = prDiffCoverageProcessor.process(input, report);
+        DiffCoverageReport diffCoverage = prDiffCoverageProcessor.process(input, reportWithStorage);
 
         // 2. Load RepositoryContext
         RepositoryContext repositoryContext = contextRepository.loadContext(
-                report.tenantId(),
-                report.repositoryId(),
-                report.commitSha(),
-                report.branchName(),
-                report.pullRequestNumber());
+                reportWithStorage.tenantId(),
+                reportWithStorage.repositoryId(),
+                reportWithStorage.commitSha(),
+                reportWithStorage.branchName(),
+                reportWithStorage.pullRequestNumber());
 
         // 3. Evaluate gates with report, context, and diff coverage
         List<GateEvaluation> evaluations = gateEvaluator.evaluate(
-                report,
-                gates.listActiveForRepository(report.tenantId(), report.repositoryId()),
+                reportWithStorage,
+                gates.listActiveForRepository(reportWithStorage.tenantId(), reportWithStorage.repositoryId()),
                 repositoryContext,
                 diffCoverage,
-                report.generatedAt());
+                reportWithStorage.generatedAt());
 
         // 4. Save report and evaluations
-        reports.save(report, evaluations);
+        reports.save(reportWithStorage, evaluations);
     }
 
     private static GateConfigurationRepository emptyGateConfigurationRepository() {

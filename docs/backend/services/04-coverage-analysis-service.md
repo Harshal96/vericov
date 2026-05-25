@@ -11,7 +11,7 @@ The Coverage Analysis Service is an internal worker-facing service. It parses up
 
 This service has no public business API in v1. Public report reads are served by the API / Control Plane Service.
 
-The first implementation milestone is queue-driven: the service consumes `upload.received` events from Supabase Postgres via PGMQ, claims the matching `analysis_jobs` row, downloads coverage artifacts from Supabase Storage, merges shard coverage, persists project/file summaries and per-line hit maps, evaluates active project coverage gates, computes PR diff coverage when the upload belongs to a pull request, and archives or reschedules the queue message. The HTTP surface below remains the intended internal control API, but worker execution does not require another service to call an HTTP `complete` endpoint.
+The first implementation milestone is queue-driven: the service consumes `upload.received` events from Supabase Postgres via PGMQ, claims the matching `analysis_jobs` row, downloads coverage artifacts from Supabase Storage, merges shard coverage, stores a gzip-compressed normalized coverage map, persists project/file summaries and per-line hit maps, evaluates active project coverage gates, computes PR diff coverage when the upload belongs to a pull request, and archives or reschedules the queue message. The HTTP surface below remains the intended internal control API, but worker execution does not require another service to call an HTTP `complete` endpoint.
 
 Initial parser support:
 
@@ -246,7 +246,8 @@ If the matching base coverage report is not available, the PR diff record is sto
 | `function_total` | integer | Total function count |
 | `statement_covered` | integer | Covered statement count |
 | `statement_total` | integer | Total statement count |
-| `normalized_storage_path` | text | Supabase Storage object |
+| `normalized_storage_bucket` | text | Supabase Storage bucket for normalized coverage map |
+| `normalized_storage_path` | text | Supabase Storage object for normalized coverage map |
 | `created_at` | timestamptz | Created time |
 | `updated_at` | timestamptz | Updated time |
 
