@@ -30,6 +30,8 @@ public class InMemoryOrganizationRepository implements OrganizationRepository {
             new ConcurrentHashMap<>();
     private final Map<UUID, GateEvaluationDetails> gateEvaluationsById = new ConcurrentHashMap<>();
     private final Map<UUID, TestRunDetails> testRunsById = new ConcurrentHashMap<>();
+    private final Map<UUID, CoverageDebtDetails> coverageDebtsById = new ConcurrentHashMap<>();
+    private final Map<UUID, List<CoverageDebtEventDetails>> coverageDebtEventsByDebtItemId = new ConcurrentHashMap<>();
 
     @Override
     public List<OrganizationDetails> findOrganizationsForUser(UUID userId) {
@@ -615,5 +617,63 @@ public class InMemoryOrganizationRepository implements OrganizationRepository {
                         .toList(),
                 details.createdAt(),
                 details.updatedAt());
+    }
+
+    @Override
+    public Optional<CoverageDebtDetails> findCoverageDebt(UUID repositoryId, UUID debtId) {
+        CoverageDebtDetails debt = coverageDebtsById.get(debtId);
+        if (debt != null && debt.repositoryId().equals(repositoryId)) {
+            return Optional.of(debt);
+        }
+        return Optional.empty();
+    }
+
+    @Override
+    public List<CoverageDebtDetails> listCoverageDebts(
+            UUID repositoryId,
+            String status,
+            String owner,
+            String riskLevel,
+            UUID componentId,
+            Instant expiresBefore,
+            boolean includeExpired,
+            UUID sourceGapId,
+            int limit) {
+        Instant now = Instant.now();
+        return coverageDebtsById.values().stream()
+                .filter(debt -> debt.repositoryId().equals(repositoryId))
+                .filter(debt -> status == null || debt.effectiveStatus(now).equals(status))
+                .filter(debt -> owner == null || debt.owner().equals(owner))
+                .filter(debt -> riskLevel == null || debt.riskLevel().equals(riskLevel))
+                .filter(debt -> componentId == null || componentId.equals(debt.componentId()))
+                .filter(debt -> expiresBefore == null || debt.expiresAt().isBefore(expiresBefore))
+                .filter(debt -> includeExpired || !debt.effectiveStatus(now).equals("expired"))
+                .filter(debt -> sourceGapId == null || sourceGapId.equals(debt.sourceGapId()))
+                .sorted(Comparator.comparing(CoverageDebtDetails::createdAt).reversed())
+                .limit(limit)
+                .toList();
+    }
+
+    @Override
+    public CoverageDebtDetails saveCoverageDebt(CoverageDebtDetails debtItem) {
+        coverageDebtsById.put(debtItem.id(), debtItem);
+        return debtItem;
+    }
+
+    @Override
+    public CoverageDebtDetails updateCoverageDebt(CoverageDebtDetails debtItem) {
+        coverageDebtsById.put(debtItem.id(), debtItem);
+        return debtItem;
+    }
+
+    @Override
+    public void saveCoverageDebtEvent(CoverageDebtEventDetails event) {
+        coverageDebtEventsByDebtItemId.computeIfAbsent(event.debtItemId(), k -> new java.util.concurrent.CopyOnWriteArrayList<>()).add(event);
+    }
+
+    @Override
+    public List<CoverageDebtEventDetails> listCoverageDebtEvents(UUID debtItemId) {
+        List<CoverageDebtEventDetails> events = coverageDebtEventsByDebtItemId.get(debtItemId);
+        return events == null ? List.of() : List.copyOf(events);
     }
 }

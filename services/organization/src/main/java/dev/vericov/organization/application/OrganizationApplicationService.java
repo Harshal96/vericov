@@ -58,6 +58,9 @@ public class OrganizationApplicationService {
             "brightgreen", new BigDecimal("90"),
             "green", new BigDecimal("80"),
             "yellow", new BigDecimal("60"));
+    private static final Set<String> DEBT_TARGET_TYPES = Set.of("line", "range", "file", "function", "branch", "component");
+    private static final Set<String> DEBT_RISK_LEVELS = Set.of("critical", "high", "medium", "low");
+    private static final Set<String> DEBT_STATUSES = Set.of("active", "resolved", "expired", "revoked");
     private static final Set<String> ADMIN_ROLES = Set.of("owner", "admin");
     private static final Set<String> MEMBER_READ_ACTIONS = Set.of(
             "org.read",
@@ -904,6 +907,452 @@ public class OrganizationApplicationService {
                 .map(registeredRepository -> repositoryDashboardSummary(query.organizationId(), registeredRepository, requestedBranch))
                 .flatMap(Optional::stream)
                 .toList();
+    }
+
+    public CoverageDebtDetails createCoverageDebt(CreateCoverageDebtCommand command) {
+        requireUser(command.requesterUserId());
+        requireId(command.organizationId(), "organization_id is required");
+        requireId(command.repositoryId(), "repository_id is required");
+        requireDeveloper(command.requesterUserId(), command.organizationId());
+
+        RepositoryDetails repoDetails = requireRepositoryForRead(command.requesterUserId(), command.organizationId(), command.repositoryId());
+
+        // Validate reason
+        String trimmedReason = command.reason() == null ? null : command.reason().trim();
+        if (trimmedReason == null || trimmedReason.length() < 10 || trimmedReason.length() > 2000) {
+            throw new OrganizationException("validation_error", "reason must be between 10 and 2000 characters");
+        }
+
+        // Validate owner
+        String trimmedOwner = command.owner() == null ? null : command.owner().trim();
+        if (trimmedOwner == null || trimmedOwner.isEmpty()) {
+            throw new OrganizationException("validation_error", "owner is required");
+        }
+
+        // Validate expires_at
+        if (command.expiresAt() == null) {
+            throw new OrganizationException("validation_error", "expires_at is required");
+        }
+        Instant now = clock.instant();
+        if (!command.expiresAt().isAfter(now)) {
+            throw new OrganizationException("validation_error", "expires_at must be in the future");
+        }
+
+        // Validate risk_level
+        String riskLevel = validateAllowed("risk_level", command.riskLevel(), DEBT_RISK_LEVELS);
+        if ("critical".equals(riskLevel) && !allowsCriticalDebt(command.organizationId(), command.repositoryId())) {
+            throw new OrganizationException("validation_error", "Critical-path coverage debt is not allowed by policy");
+        }
+
+        // Validate target_type
+        String targetType = validateAllowed("target_type", command.targetType(), DEBT_TARGET_TYPES);
+
+        // Validate coordinates/files based on target type
+        Integer lineStart = command.lineStart();
+        Integer lineEnd = command.lineEnd();
+        String filePath = command.filePath();
+
+        if ("line".equals(targetType) || "range".equals(targetType)) {
+            if (lineStart == null || lineStart <= 0) {
+                throw new OrganizationException("validation_error", "line_start must be positive");
+            }
+            if ("range".equals(targetType)) {
+                if (lineEnd == null || lineEnd <= 0) {
+                    throw new OrganizationException("validation_error", "line_end must be positive");
+                }
+                if (lineEnd < lineStart) {
+                    throw new OrganizationException("validation_error", "line_end must be greater than or equal to line_start");
+                }
+            } else {
+                if (lineEnd != null) {
+                    throw new OrganizationException("validation_error", "line_end is not allowed for target type 'line'");
+                }
+            }
+        } else {
+            if (lineStart != null || lineEnd != null) {
+                throw new OrganizationException("validation_error", "line numbers are only allowed for target types 'line' or 'range'");
+            }
+        }
+
+        if (!"component".equals(targetType)) {
+            if (filePath == null || filePath.isBlank()) {
+                throw new OrganizationException("validation_error", "file_path is required");
+            }
+            filePath = validateRepositoryFilePath(filePath);
+        } else {
+            if (filePath != null && !filePath.isBlank()) {
+                throw new OrganizationException("validation_error", "file_path must be null for component target type");
+            }
+            filePath = null;
+        }
+
+        UUID debtId = UUID.randomUUID();
+        CoverageDebtDetails debt = new CoverageDebtDetails(
+                debtId,
+                repoDetails.tenantId(),
+                command.organizationId(),
+                command.repositoryId(),
+                command.componentId(),
+                command.sourceGapId(),
+                command.sourceReportId(),
+                command.sourceCommitSha(),
+                command.pullRequestNumber(),
+                targetType,
+                filePath,
+                lineStart,
+                lineEnd,
+                command.symbolName(),
+                riskLevel,
+                trimmedReason,
+                trimmedOwner,
+                "active",
+                command.expiresAt(),
+                null,
+                null,
+                null,
+                null,
+                command.linkedIssueUrl(),
+                command.metadata(),
+                command.requesterUserId(),
+                now,
+                now
+        );
+
+        CoverageDebtDetails saved = repository.saveCoverageDebt(debt);
+
+        // Emit audit event vericov.coverage_debt_events
+        Map<String, Object> payload = Map.of(
+                "risk_level", riskLevel,
+                "target_type", targetType,
+                "file_path", filePath == null ? "" : filePath,
+                "reason", trimmedReason
+        );
+        CoverageDebtEventDetails event = new CoverageDebtEventDetails(
+                UUID.randomUUID(),
+                repoDetails.tenantId(),
+                command.organizationId(),
+                command.repositoryId(),
+                debtId,
+                "created",
+                command.requesterUserId(),
+                payload,
+                now
+        );
+        repository.saveCoverageDebtEvent(event);
+
+        return saved;
+    }
+
+    public CoverageDebtDetails updateCoverageDebt(UpdateCoverageDebtCommand command) {
+        requireUser(command.requesterUserId());
+        requireId(command.organizationId(), "organization_id is required");
+        requireId(command.repositoryId(), "repository_id is required");
+        requireId(command.debtId(), "debt_id is required");
+        requireDeveloper(command.requesterUserId(), command.organizationId());
+
+        requireRepositoryForRead(command.requesterUserId(), command.organizationId(), command.repositoryId());
+
+        CoverageDebtDetails existing = repository.findCoverageDebt(command.repositoryId(), command.debtId())
+                .orElseThrow(() -> new OrganizationException("not_found", "Coverage debt item not found"));
+
+        Instant now = clock.instant();
+        String effStatus = existing.effectiveStatus(now);
+        if (!"active".equals(effStatus) && !"expired".equals(effStatus)) {
+            throw new OrganizationException("validation_error", "Only active or expired debt items can be updated");
+        }
+
+        String nextOwner = existing.owner();
+        if (command.owner() != null) {
+            String trimmedOwner = command.owner().trim();
+            if (trimmedOwner.isEmpty()) {
+                throw new OrganizationException("validation_error", "owner is required");
+            }
+            nextOwner = trimmedOwner;
+        }
+
+        String nextReason = existing.reason();
+        if (command.reason() != null) {
+            String trimmedReason = command.reason().trim();
+            if (trimmedReason.length() < 10 || trimmedReason.length() > 2000) {
+                throw new OrganizationException("validation_error", "reason must be between 10 and 2000 characters");
+            }
+            nextReason = trimmedReason;
+        }
+
+        Instant nextExpiresAt = existing.expiresAt();
+        if (command.expiresAt() != null) {
+            if (!command.expiresAt().isAfter(now)) {
+                throw new OrganizationException("validation_error", "expires_at must be in the future");
+            }
+            nextExpiresAt = command.expiresAt();
+        }
+
+        String nextRiskLevel = existing.riskLevel();
+        if (command.riskLevel() != null) {
+            nextRiskLevel = validateAllowed("risk_level", command.riskLevel(), DEBT_RISK_LEVELS);
+            if ("critical".equals(nextRiskLevel) && !allowsCriticalDebt(command.organizationId(), command.repositoryId())) {
+                throw new OrganizationException("validation_error", "Critical-path coverage debt is not allowed by policy");
+            }
+        }
+
+        CoverageDebtDetails updated = new CoverageDebtDetails(
+                existing.id(),
+                existing.tenantId(),
+                existing.organizationId(),
+                existing.repositoryId(),
+                existing.componentId(),
+                existing.sourceGapId(),
+                existing.sourceReportId(),
+                existing.sourceCommitSha(),
+                existing.pullRequestNumber(),
+                existing.targetType(),
+                existing.filePath(),
+                existing.lineStart(),
+                existing.lineEnd(),
+                existing.symbolName(),
+                nextRiskLevel,
+                nextReason,
+                nextOwner,
+                "active", // resetting status to active if it was expired, since nextExpiresAt is in the future
+                nextExpiresAt,
+                existing.resolvedAt(),
+                existing.resolvedByUserId(),
+                existing.revokedAt(),
+                existing.revokedByUserId(),
+                command.linkedIssueUrl() != null ? command.linkedIssueUrl() : existing.linkedIssueUrl(),
+                command.metadata() != null ? command.metadata() : existing.metadata(),
+                existing.createdByUserId(),
+                existing.createdAt(),
+                now
+        );
+
+        CoverageDebtDetails saved = repository.updateCoverageDebt(updated);
+
+        // Emit updated event
+        Map<String, Object> payload = Map.of(
+                "risk_level", nextRiskLevel,
+                "reason", nextReason,
+                "owner", nextOwner
+        );
+        CoverageDebtEventDetails event = new CoverageDebtEventDetails(
+                UUID.randomUUID(),
+                existing.tenantId(),
+                command.organizationId(),
+                command.repositoryId(),
+                existing.id(),
+                "updated",
+                command.requesterUserId(),
+                payload,
+                now
+        );
+        repository.saveCoverageDebtEvent(event);
+
+        return saved;
+    }
+
+    public CoverageDebtDetails resolveCoverageDebt(ResolveCoverageDebtCommand command) {
+        requireUser(command.requesterUserId());
+        requireId(command.organizationId(), "organization_id is required");
+        requireId(command.repositoryId(), "repository_id is required");
+        requireId(command.debtId(), "debt_id is required");
+        requireDeveloper(command.requesterUserId(), command.organizationId());
+
+        requireRepositoryForRead(command.requesterUserId(), command.organizationId(), command.repositoryId());
+
+        CoverageDebtDetails existing = repository.findCoverageDebt(command.repositoryId(), command.debtId())
+                .orElseThrow(() -> new OrganizationException("not_found", "Coverage debt item not found"));
+
+        Instant now = clock.instant();
+        String effStatus = existing.effectiveStatus(now);
+        if (!"active".equals(effStatus) && !"expired".equals(effStatus)) {
+            throw new OrganizationException("validation_error", "Only active or expired debt items can be resolved");
+        }
+
+        CoverageDebtDetails updated = new CoverageDebtDetails(
+                existing.id(),
+                existing.tenantId(),
+                existing.organizationId(),
+                existing.repositoryId(),
+                existing.componentId(),
+                existing.sourceGapId(),
+                existing.sourceReportId(),
+                existing.sourceCommitSha(),
+                existing.pullRequestNumber(),
+                existing.targetType(),
+                existing.filePath(),
+                existing.lineStart(),
+                existing.lineEnd(),
+                existing.symbolName(),
+                existing.riskLevel(),
+                existing.reason(),
+                existing.owner(),
+                "resolved",
+                existing.expiresAt(),
+                now,
+                command.requesterUserId(),
+                null,
+                null,
+                existing.linkedIssueUrl(),
+                existing.metadata(),
+                existing.createdByUserId(),
+                existing.createdAt(),
+                now
+        );
+
+        CoverageDebtDetails saved = repository.updateCoverageDebt(updated);
+
+        // Emit resolved event
+        CoverageDebtEventDetails event = new CoverageDebtEventDetails(
+                UUID.randomUUID(),
+                existing.tenantId(),
+                command.organizationId(),
+                command.repositoryId(),
+                existing.id(),
+                "resolved",
+                command.requesterUserId(),
+                Map.of(),
+                now
+        );
+        repository.saveCoverageDebtEvent(event);
+
+        return saved;
+    }
+
+    public CoverageDebtDetails revokeCoverageDebt(RevokeCoverageDebtCommand command) {
+        requireUser(command.requesterUserId());
+        requireId(command.organizationId(), "organization_id is required");
+        requireId(command.repositoryId(), "repository_id is required");
+        requireId(command.debtId(), "debt_id is required");
+        requireDeveloper(command.requesterUserId(), command.organizationId());
+
+        requireRepositoryForRead(command.requesterUserId(), command.organizationId(), command.repositoryId());
+
+        CoverageDebtDetails existing = repository.findCoverageDebt(command.repositoryId(), command.debtId())
+                .orElseThrow(() -> new OrganizationException("not_found", "Coverage debt item not found"));
+
+        Instant now = clock.instant();
+        String effStatus = existing.effectiveStatus(now);
+        if (!"active".equals(effStatus) && !"expired".equals(effStatus)) {
+            throw new OrganizationException("validation_error", "Only active or expired debt items can be revoked");
+        }
+
+        CoverageDebtDetails updated = new CoverageDebtDetails(
+                existing.id(),
+                existing.tenantId(),
+                existing.organizationId(),
+                existing.repositoryId(),
+                existing.componentId(),
+                existing.sourceGapId(),
+                existing.sourceReportId(),
+                existing.sourceCommitSha(),
+                existing.pullRequestNumber(),
+                existing.targetType(),
+                existing.filePath(),
+                existing.lineStart(),
+                existing.lineEnd(),
+                existing.symbolName(),
+                existing.riskLevel(),
+                existing.reason(),
+                existing.owner(),
+                "revoked",
+                existing.expiresAt(),
+                null,
+                null,
+                now,
+                command.requesterUserId(),
+                existing.linkedIssueUrl(),
+                existing.metadata(),
+                existing.createdByUserId(),
+                existing.createdAt(),
+                now
+        );
+
+        CoverageDebtDetails saved = repository.updateCoverageDebt(updated);
+
+        // Emit revoked event
+        CoverageDebtEventDetails event = new CoverageDebtEventDetails(
+                UUID.randomUUID(),
+                existing.tenantId(),
+                command.organizationId(),
+                command.repositoryId(),
+                existing.id(),
+                "revoked",
+                command.requesterUserId(),
+                Map.of(),
+                now
+        );
+        repository.saveCoverageDebtEvent(event);
+
+        return saved;
+    }
+
+    public List<CoverageDebtDetails> listCoverageDebts(ListCoverageDebtsQuery query) {
+        requireUser(query.requesterUserId());
+        requireId(query.organizationId(), "organization_id is required");
+        requireId(query.repositoryId(), "repository_id is required");
+        requireActiveMembership(query.requesterUserId(), query.organizationId());
+
+        requireRepositoryForRead(query.requesterUserId(), query.organizationId(), query.repositoryId());
+
+        Instant now = clock.instant();
+        return repository.listCoverageDebts(
+                query.repositoryId(),
+                query.status(),
+                query.owner(),
+                query.riskLevel(),
+                query.componentId(),
+                query.expiresBefore(),
+                query.includeExpired(),
+                query.sourceGapId(),
+                validateReadLimit(query.limit(), 100)
+        ).stream().map(debt -> debt.normalized(now)).toList();
+    }
+
+    public CoverageDebtDetails getCoverageDebt(GetCoverageDebtQuery query) {
+        requireUser(query.requesterUserId());
+        requireId(query.organizationId(), "organization_id is required");
+        requireId(query.repositoryId(), "repository_id is required");
+        requireId(query.debtId(), "debt_id is required");
+        requireActiveMembership(query.requesterUserId(), query.organizationId());
+
+        requireRepositoryForRead(query.requesterUserId(), query.organizationId(), query.repositoryId());
+
+        CoverageDebtDetails debt = repository.findCoverageDebt(query.repositoryId(), query.debtId())
+                .orElseThrow(() -> new OrganizationException("not_found", "Coverage debt item not found"));
+
+        return debt.normalized(clock.instant());
+    }
+
+    private void requireDeveloper(UUID requesterUserId, UUID organizationId) {
+        requireActiveMembership(requesterUserId, organizationId);
+        MembershipDetails membership = repository.findMembership(organizationId, requesterUserId).orElseThrow();
+        if (!"owner".equals(membership.role()) && !"admin".equals(membership.role()) && !"developer".equals(membership.role())) {
+            throw new OrganizationException("forbidden", "Developer, admin, or owner role is required");
+        }
+    }
+
+    private boolean allowsCriticalDebt(UUID organizationId, UUID repositoryId) {
+        Optional<RepositoryConfigDetails> repoConfig = repository.findRepositoryConfig(organizationId, repositoryId);
+        if (repoConfig.isPresent() && repoConfig.get().config() != null) {
+            Map<String, Object> config = repoConfig.get().config();
+            if (config.get("allow_critical_debt") instanceof Boolean b) {
+                return b;
+            }
+            if (config.get("allow_critical_debt") instanceof String s) {
+                return Boolean.parseBoolean(s);
+            }
+        }
+        Optional<PolicyDefaultsDetails> orgDefaults = repository.findPolicyDefaults(organizationId);
+        if (orgDefaults.isPresent() && orgDefaults.get().defaults() != null) {
+            Map<String, Object> defaults = orgDefaults.get().defaults();
+            if (defaults.get("allow_critical_debt") instanceof Boolean b) {
+                return b;
+            }
+            if (defaults.get("allow_critical_debt") instanceof String s) {
+                return Boolean.parseBoolean(s);
+            }
+        }
+        return false;
     }
 
     private void requireActiveMembership(UUID requesterUserId, UUID organizationId) {

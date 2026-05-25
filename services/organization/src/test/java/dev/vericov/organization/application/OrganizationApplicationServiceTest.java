@@ -1128,6 +1128,288 @@ class OrganizationApplicationServiceTest {
         assertEquals("forbidden", decision.code());
     }
 
+    @Test
+    void createsCoverageDebtSuccessfully() {
+        TestFixture fixture = new TestFixture();
+        var org = fixture.service.createOrganization(new CreateOrganizationCommand(USER_ID, "Acme", "acme", "team"));
+        var repo = fixture.service.registerRepository(new CreateRepositoryCommand(USER_ID, org.id(), "github", "1", "a/b", "main", "private"));
+
+        Instant expiry = NOW.plusSeconds(3600);
+        var command = new CreateCoverageDebtCommand(
+                USER_ID,
+                org.id(),
+                repo.id(),
+                null,
+                null,
+                null,
+                "commit-sha",
+                12,
+                "line",
+                "src/App.java",
+                10,
+                null,
+                "symbolName",
+                "high",
+                "Reason for debt item",
+                "john.doe@example.com",
+                expiry,
+                null,
+                Map.of("meta", "value")
+        );
+
+        var debt = fixture.service.createCoverageDebt(command);
+
+        assertEquals(org.id(), debt.organizationId());
+        assertEquals(repo.id(), debt.repositoryId());
+        assertEquals("line", debt.targetType());
+        assertEquals("src/App.java", debt.filePath());
+        assertEquals(10, debt.lineStart());
+        assertNull(debt.lineEnd());
+        assertEquals("high", debt.riskLevel());
+        assertEquals("Reason for debt item", debt.reason());
+        assertEquals("john.doe@example.com", debt.owner());
+        assertEquals("active", debt.status());
+        assertEquals(expiry, debt.expiresAt());
+        assertEquals(USER_ID, debt.createdByUserId());
+
+        // Check event emitted
+        var events = fixture.repository.listCoverageDebtEvents(debt.id());
+        assertEquals(1, events.size());
+        assertEquals("created", events.getFirst().eventType());
+        assertEquals(USER_ID, events.getFirst().actorUserId());
+    }
+
+    @Test
+    void rejectsCreateCoverageDebtValidationErrors() {
+        TestFixture fixture = new TestFixture();
+        var org = fixture.service.createOrganization(new CreateOrganizationCommand(USER_ID, "Acme", "acme", "team"));
+        var repo = fixture.service.registerRepository(new CreateRepositoryCommand(USER_ID, org.id(), "github", "1", "a/b", "main", "private"));
+
+        Instant expiry = NOW.plusSeconds(3600);
+
+        // Reason too short
+        assertThrows(OrganizationException.class, () -> fixture.service.createCoverageDebt(new CreateCoverageDebtCommand(
+                USER_ID, org.id(), repo.id(), null, null, null, "sha", 1, "line", "src/App.java", 10, null, null, "high",
+                "short", "owner", expiry, null, Map.of()
+        )));
+
+        // Owner empty
+        assertThrows(OrganizationException.class, () -> fixture.service.createCoverageDebt(new CreateCoverageDebtCommand(
+                USER_ID, org.id(), repo.id(), null, null, null, "sha", 1, "line", "src/App.java", 10, null, null, "high",
+                "valid reason text", "", expiry, null, Map.of()
+        )));
+
+        // Expiry in past
+        assertThrows(OrganizationException.class, () -> fixture.service.createCoverageDebt(new CreateCoverageDebtCommand(
+                USER_ID, org.id(), repo.id(), null, null, null, "sha", 1, "line", "src/App.java", 10, null, null, "high",
+                "valid reason text", "owner", NOW.minusSeconds(10), null, Map.of()
+        )));
+
+        // Expiry null
+        assertThrows(OrganizationException.class, () -> fixture.service.createCoverageDebt(new CreateCoverageDebtCommand(
+                USER_ID, org.id(), repo.id(), null, null, null, "sha", 1, "line", "src/App.java", 10, null, null, "high",
+                "valid reason text", "owner", null, null, Map.of()
+        )));
+
+        // Target type line with line_end set
+        assertThrows(OrganizationException.class, () -> fixture.service.createCoverageDebt(new CreateCoverageDebtCommand(
+                USER_ID, org.id(), repo.id(), null, null, null, "sha", 1, "line", "src/App.java", 10, 20, null, "high",
+                "valid reason text", "owner", expiry, null, Map.of()
+        )));
+
+        // Target type range with invalid coordinates
+        assertThrows(OrganizationException.class, () -> fixture.service.createCoverageDebt(new CreateCoverageDebtCommand(
+                USER_ID, org.id(), repo.id(), null, null, null, "sha", 1, "range", "src/App.java", 20, 10, null, "high",
+                "valid reason text", "owner", expiry, null, Map.of()
+        )));
+
+        // File path traversal
+        assertThrows(OrganizationException.class, () -> fixture.service.createCoverageDebt(new CreateCoverageDebtCommand(
+                USER_ID, org.id(), repo.id(), null, null, null, "sha", 1, "file", "../outside.java", null, null, null, "high",
+                "valid reason text", "owner", expiry, null, Map.of()
+        )));
+
+        // File path absolute
+        assertThrows(OrganizationException.class, () -> fixture.service.createCoverageDebt(new CreateCoverageDebtCommand(
+                USER_ID, org.id(), repo.id(), null, null, null, "sha", 1, "file", "/abs/path.java", null, null, null, "high",
+                "valid reason text", "owner", expiry, null, Map.of()
+        )));
+    }
+
+    @Test
+    void validatesCriticalDebtPolicyDefaults() {
+        TestFixture fixture = new TestFixture();
+        var org = fixture.service.createOrganization(new CreateOrganizationCommand(USER_ID, "Acme", "acme", "team"));
+        var repo = fixture.service.registerRepository(new CreateRepositoryCommand(USER_ID, org.id(), "github", "1", "a/b", "main", "private"));
+
+        Instant expiry = NOW.plusSeconds(3600);
+
+        // Critical path by default is blocked
+        assertThrows(OrganizationException.class, () -> fixture.service.createCoverageDebt(new CreateCoverageDebtCommand(
+                USER_ID, org.id(), repo.id(), null, null, null, "sha", 1, "file", "src/App.java", null, null, null, "critical",
+                "valid reason text", "owner", expiry, null, Map.of()
+        )));
+
+        // Allow critical debt via Org defaults
+        fixture.service.upsertPolicyDefaults(new UpsertPolicyDefaultsCommand(
+                USER_ID,
+                org.id(),
+                Map.of("allow_critical_debt", true),
+                1
+        ));
+
+        var debt = fixture.service.createCoverageDebt(new CreateCoverageDebtCommand(
+                USER_ID, org.id(), repo.id(), null, null, null, "sha", 1, "file", "src/App.java", null, null, null, "critical",
+                "valid reason text", "owner", expiry, null, Map.of()
+        ));
+        assertEquals("critical", debt.riskLevel());
+
+        // Block it again using Repository config override
+        fixture.service.upsertRepositoryConfig(new UpsertRepositoryConfigCommand(
+                USER_ID,
+                org.id(),
+                repo.id(),
+                Map.of("allow_critical_debt", false),
+                1
+        ));
+
+        assertThrows(OrganizationException.class, () -> fixture.service.createCoverageDebt(new CreateCoverageDebtCommand(
+                USER_ID, org.id(), repo.id(), null, null, null, "sha", 1, "file", "src/App.java", null, null, null, "critical",
+                "valid reason text2", "owner", expiry, null, Map.of()
+        )));
+    }
+
+    @Test
+    void preventsViewerFromWritingCoverageDebt() {
+        TestFixture fixture = new TestFixture();
+        var org = fixture.service.createOrganization(new CreateOrganizationCommand(USER_ID, "Acme", "acme", "team"));
+        var repo = fixture.service.registerRepository(new CreateRepositoryCommand(USER_ID, org.id(), "github", "1", "a/b", "main", "private"));
+        fixture.service.addMembership(new CreateMembershipCommand(
+                USER_ID, org.id(), OTHER_USER_ID, "viewer", "active"
+        ));
+
+        Instant expiry = NOW.plusSeconds(3600);
+        var command = new CreateCoverageDebtCommand(
+                OTHER_USER_ID,
+                org.id(),
+                repo.id(),
+                null,
+                null,
+                null,
+                "commit-sha",
+                12,
+                "file",
+                "src/App.java",
+                null,
+                null,
+                null,
+                "high",
+                "Reason for debt item",
+                "john.doe@example.com",
+                expiry,
+                null,
+                Map.of()
+        );
+
+        assertThrows(OrganizationException.class, () -> fixture.service.createCoverageDebt(command));
+    }
+
+    @Test
+    void updatesResolvesAndRevokesCoverageDebt() {
+        TestFixture fixture = new TestFixture();
+        var org = fixture.service.createOrganization(new CreateOrganizationCommand(USER_ID, "Acme", "acme", "team"));
+        var repo = fixture.service.registerRepository(new CreateRepositoryCommand(USER_ID, org.id(), "github", "1", "a/b", "main", "private"));
+
+        Instant expiry = NOW.plusSeconds(3600);
+        var debt = fixture.service.createCoverageDebt(new CreateCoverageDebtCommand(
+                USER_ID, org.id(), repo.id(), null, null, null, "sha", 1, "file", "src/App.java", null, null, null, "high",
+                "Reason for debt item", "owner", expiry, null, Map.of()
+        ));
+
+        // Update
+        Instant nextExpiry = NOW.plusSeconds(7200);
+        var updated = fixture.service.updateCoverageDebt(new UpdateCoverageDebtCommand(
+                USER_ID, org.id(), repo.id(), debt.id(), "updated owner", "medium", "Updated reason text", nextExpiry, null, Map.of()
+        ));
+
+        assertEquals("updated owner", updated.owner());
+        assertEquals("Updated reason text", updated.reason());
+        assertEquals(nextExpiry, updated.expiresAt());
+        assertEquals("medium", updated.riskLevel());
+
+        // Resolve
+        var resolved = fixture.service.resolveCoverageDebt(new ResolveCoverageDebtCommand(
+                USER_ID, org.id(), repo.id(), debt.id()
+        ));
+        assertEquals("resolved", resolved.status());
+        assertEquals(NOW, resolved.resolvedAt());
+        assertEquals(USER_ID, resolved.resolvedByUserId());
+
+        // Reject update or revoke after resolved
+        assertThrows(OrganizationException.class, () -> fixture.service.updateCoverageDebt(new UpdateCoverageDebtCommand(
+                USER_ID, org.id(), repo.id(), debt.id(), "owner", "high", "reason long enough", nextExpiry, null, Map.of()
+        )));
+        assertThrows(OrganizationException.class, () -> fixture.service.revokeCoverageDebt(new RevokeCoverageDebtCommand(
+                USER_ID, org.id(), repo.id(), debt.id()
+        )));
+    }
+
+    @Test
+    void revokesCoverageDebtSuccessfully() {
+        TestFixture fixture = new TestFixture();
+        var org = fixture.service.createOrganization(new CreateOrganizationCommand(USER_ID, "Acme", "acme", "team"));
+        var repo = fixture.service.registerRepository(new CreateRepositoryCommand(USER_ID, org.id(), "github", "1", "a/b", "main", "private"));
+
+        Instant expiry = NOW.plusSeconds(3600);
+        var debt = fixture.service.createCoverageDebt(new CreateCoverageDebtCommand(
+                USER_ID, org.id(), repo.id(), null, null, null, "sha", 1, "file", "src/App.java", null, null, null, "high",
+                "Reason for debt item", "owner", expiry, null, Map.of()
+        ));
+
+        var revoked = fixture.service.revokeCoverageDebt(new RevokeCoverageDebtCommand(
+                USER_ID, org.id(), repo.id(), debt.id()
+        ));
+        assertEquals("revoked", revoked.status());
+        assertEquals(NOW, revoked.revokedAt());
+        assertEquals(USER_ID, revoked.revokedByUserId());
+    }
+
+    @Test
+    void readTimeNormalizationOfExpiredDebt() {
+        TestFixture fixture = new TestFixture();
+        var org = fixture.service.createOrganization(new CreateOrganizationCommand(USER_ID, "Acme", "acme", "team"));
+        var repo = fixture.service.registerRepository(new CreateRepositoryCommand(USER_ID, org.id(), "github", "1", "a/b", "main", "private"));
+
+        Instant expiry = NOW.plusSeconds(3600);
+        var debt = fixture.service.createCoverageDebt(new CreateCoverageDebtCommand(
+                USER_ID, org.id(), repo.id(), null, null, null, "sha", 1, "file", "src/App.java", null, null, null, "high",
+                "Reason for debt item", "owner", expiry, null, Map.of()
+        ));
+
+        // Before expiry
+        var retrieved1 = fixture.service.getCoverageDebt(new GetCoverageDebtQuery(USER_ID, org.id(), repo.id(), debt.id()));
+        assertEquals("active", retrieved1.status());
+
+        // Advance clock past expiry
+        fixture.clock.advanceSeconds(3601);
+
+        var retrieved2 = fixture.service.getCoverageDebt(new GetCoverageDebtQuery(USER_ID, org.id(), repo.id(), debt.id()));
+        assertEquals("expired", retrieved2.status());
+
+        // Listing should also normalise
+        var listed = fixture.service.listCoverageDebts(new ListCoverageDebtsQuery(
+                USER_ID, org.id(), repo.id(), null, null, null, null, null, true, null, 100
+        ));
+        assertEquals("expired", listed.getFirst().status());
+
+        // Update expired back to active by extending expiry
+        Instant futureExpiry = fixture.clock.instant().plusSeconds(3600);
+        var updated = fixture.service.updateCoverageDebt(new UpdateCoverageDebtCommand(
+                USER_ID, org.id(), repo.id(), debt.id(), null, null, null, futureExpiry, null, null
+        ));
+        assertEquals("active", updated.status());
+    }
+
     private static final class TestFixture {
         private final MutableClock clock = new MutableClock();
         private final InMemoryOrganizationRepository repository = new InMemoryOrganizationRepository();

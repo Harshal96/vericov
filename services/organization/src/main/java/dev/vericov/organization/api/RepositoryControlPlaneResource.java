@@ -16,6 +16,13 @@ import dev.vericov.organization.application.RotateRepositoryBadgeTokenCommand;
 import dev.vericov.organization.application.RevokeRepositoryApiKeyCommand;
 import dev.vericov.organization.application.UpsertRepositoryGatesCommand;
 import dev.vericov.organization.application.ValidateRepositoryConfigCommand;
+import dev.vericov.organization.application.CreateCoverageDebtCommand;
+import dev.vericov.organization.application.UpdateCoverageDebtCommand;
+import dev.vericov.organization.application.ResolveCoverageDebtCommand;
+import dev.vericov.organization.application.RevokeCoverageDebtCommand;
+import dev.vericov.organization.application.ListCoverageDebtsQuery;
+import dev.vericov.organization.application.GetCoverageDebtQuery;
+import dev.vericov.organization.application.CoverageDebtDetails;
 import dev.vericov.organization.application.port.UserPrincipalResolver;
 import dev.vericov.organization.domain.AuthenticatedUser;
 import dev.vericov.organization.domain.UserAuthContext;
@@ -657,6 +664,142 @@ public class RepositoryControlPlaneResource {
             return Response.ok(new ApiResponse<>(CoverageBadgeHttpResponse.from(badge)))
                     .header("Cache-Control", cacheControl(token))
                     .build();
+        } catch (OrganizationException exception) {
+            return OrganizationResource.errorResponse(exception);
+        }
+    }
+
+    @POST
+    @Path("/{org_id}/repositories/{repository_id}/coverage-debt")
+    public Response createCoverageDebt(
+            @HeaderParam("Authorization") String authorizationHeader,
+            @HeaderParam("X-Vericov-User-Id") String userIdHeader,
+            @PathParam("org_id") UUID organizationId,
+            @PathParam("repository_id") UUID repositoryId,
+            CreateCoverageDebtHttpRequest request) {
+        try {
+            AuthenticatedUser user = resolveUser(authorizationHeader, userIdHeader);
+            var debt = organizationService.createCoverageDebt(request.toCommand(user.userId(), organizationId, repositoryId));
+            return Response.created(URI.create("/api/v1/orgs/" + organizationId
+                            + "/repositories/" + repositoryId
+                            + "/coverage-debt/" + debt.id()))
+                    .entity(new ApiResponse<>(CoverageDebtHttpResponse.from(debt)))
+                    .build();
+        } catch (OrganizationException exception) {
+            return OrganizationResource.errorResponse(exception);
+        }
+    }
+
+    @GET
+    @Path("/{org_id}/repositories/{repository_id}/coverage-debt")
+    public Response listCoverageDebts(
+            @HeaderParam("Authorization") String authorizationHeader,
+            @HeaderParam("X-Vericov-User-Id") String userIdHeader,
+            @PathParam("org_id") UUID organizationId,
+            @PathParam("repository_id") UUID repositoryId,
+            @QueryParam("status") String status,
+            @QueryParam("owner") String owner,
+            @QueryParam("risk_level") String riskLevel,
+            @QueryParam("component_id") UUID componentId,
+            @QueryParam("expires_before") String expiresBeforeStr,
+            @QueryParam("include_expired") Boolean includeExpired,
+            @QueryParam("source_gap_id") UUID sourceGapId,
+            @QueryParam("limit") Integer limit) {
+        try {
+            AuthenticatedUser user = resolveUser(authorizationHeader, userIdHeader);
+            Instant expiresBefore = null;
+            if (expiresBeforeStr != null && !expiresBeforeStr.isBlank()) {
+                expiresBefore = Instant.parse(expiresBeforeStr);
+            }
+            var query = new ListCoverageDebtsQuery(
+                    user.userId(),
+                    organizationId,
+                    repositoryId,
+                    status,
+                    owner,
+                    riskLevel,
+                    componentId,
+                    expiresBefore,
+                    includeExpired != null && includeExpired,
+                    sourceGapId,
+                    limit == null ? 100 : limit
+            );
+            var debts = organizationService.listCoverageDebts(query).stream()
+                    .map(CoverageDebtHttpResponse::from)
+                    .toList();
+            return Response.ok(new ApiResponse<>(debts)).build();
+        } catch (OrganizationException exception) {
+            return OrganizationResource.errorResponse(exception);
+        }
+    }
+
+    @GET
+    @Path("/{org_id}/repositories/{repository_id}/coverage-debt/{debt_id}")
+    public Response getCoverageDebt(
+            @HeaderParam("Authorization") String authorizationHeader,
+            @HeaderParam("X-Vericov-User-Id") String userIdHeader,
+            @PathParam("org_id") UUID organizationId,
+            @PathParam("repository_id") UUID repositoryId,
+            @PathParam("debt_id") UUID debtId) {
+        try {
+            AuthenticatedUser user = resolveUser(authorizationHeader, userIdHeader);
+            var query = new GetCoverageDebtQuery(user.userId(), organizationId, repositoryId, debtId);
+            var debt = organizationService.getCoverageDebt(query);
+            return Response.ok(new ApiResponse<>(CoverageDebtHttpResponse.from(debt))).build();
+        } catch (OrganizationException exception) {
+            return OrganizationResource.errorResponse(exception);
+        }
+    }
+
+    @PATCH
+    @Path("/{org_id}/repositories/{repository_id}/coverage-debt/{debt_id}")
+    public Response updateCoverageDebt(
+            @HeaderParam("Authorization") String authorizationHeader,
+            @HeaderParam("X-Vericov-User-Id") String userIdHeader,
+            @PathParam("org_id") UUID organizationId,
+            @PathParam("repository_id") UUID repositoryId,
+            @PathParam("debt_id") UUID debtId,
+            UpdateCoverageDebtHttpRequest request) {
+        try {
+            AuthenticatedUser user = resolveUser(authorizationHeader, userIdHeader);
+            var updated = organizationService.updateCoverageDebt(request.toCommand(user.userId(), organizationId, repositoryId, debtId));
+            return Response.ok(new ApiResponse<>(CoverageDebtHttpResponse.from(updated))).build();
+        } catch (OrganizationException exception) {
+            return OrganizationResource.errorResponse(exception);
+        }
+    }
+
+    @POST
+    @Path("/{org_id}/repositories/{repository_id}/coverage-debt/{debt_id}/resolve")
+    public Response resolveCoverageDebt(
+            @HeaderParam("Authorization") String authorizationHeader,
+            @HeaderParam("X-Vericov-User-Id") String userIdHeader,
+            @PathParam("org_id") UUID organizationId,
+            @PathParam("repository_id") UUID repositoryId,
+            @PathParam("debt_id") UUID debtId) {
+        try {
+            AuthenticatedUser user = resolveUser(authorizationHeader, userIdHeader);
+            var command = new ResolveCoverageDebtCommand(user.userId(), organizationId, repositoryId, debtId);
+            var resolved = organizationService.resolveCoverageDebt(command);
+            return Response.ok(new ApiResponse<>(CoverageDebtHttpResponse.from(resolved))).build();
+        } catch (OrganizationException exception) {
+            return OrganizationResource.errorResponse(exception);
+        }
+    }
+
+    @POST
+    @Path("/{org_id}/repositories/{repository_id}/coverage-debt/{debt_id}/revoke")
+    public Response revokeCoverageDebt(
+            @HeaderParam("Authorization") String authorizationHeader,
+            @HeaderParam("X-Vericov-User-Id") String userIdHeader,
+            @PathParam("org_id") UUID organizationId,
+            @PathParam("repository_id") UUID repositoryId,
+            @PathParam("debt_id") UUID debtId) {
+        try {
+            AuthenticatedUser user = resolveUser(authorizationHeader, userIdHeader);
+            var command = new RevokeCoverageDebtCommand(user.userId(), organizationId, repositoryId, debtId);
+            var revoked = organizationService.revokeCoverageDebt(command);
+            return Response.ok(new ApiResponse<>(CoverageDebtHttpResponse.from(revoked))).build();
         } catch (OrganizationException exception) {
             return OrganizationResource.errorResponse(exception);
         }

@@ -16,6 +16,8 @@ import dev.vericov.organization.application.RepositoryConfigDetails;
 import dev.vericov.organization.application.RepositoryDetails;
 import dev.vericov.organization.application.RepositoryGateDetails;
 import dev.vericov.organization.application.RepositoryPolicyDetails;
+import dev.vericov.organization.application.CoverageDebtDetails;
+import dev.vericov.organization.application.CoverageDebtEventDetails;
 import dev.vericov.organization.application.TestRunDetails;
 import java.time.Instant;
 import java.util.List;
@@ -136,4 +138,25 @@ public interface OrganizationRepository {
     List<TestRunDetails> listTestRuns(UUID repositoryId, String commitSha, int limit);
 
     List<GateEvaluationDetails> listGateEvaluations(UUID organizationId, UUID repositoryId, String branch, String status, int limit);
+
+    Optional<CoverageDebtDetails> findCoverageDebt(UUID repositoryId, UUID debtId);
+
+    List<CoverageDebtDetails> listCoverageDebts(
+            UUID repositoryId,
+            String status,
+            String owner,
+            String riskLevel,
+            UUID componentId,
+            Instant expiresBefore,
+            boolean includeExpired,
+            UUID sourceGapId,
+            int limit);
+
+    CoverageDebtDetails saveCoverageDebt(CoverageDebtDetails debtItem);
+
+    CoverageDebtDetails updateCoverageDebt(CoverageDebtDetails debtItem);
+
+    void saveCoverageDebtEvent(CoverageDebtEventDetails event);
+
+    List<CoverageDebtEventDetails> listCoverageDebtEvents(UUID debtItemId);
 }
