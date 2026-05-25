@@ -24,7 +24,7 @@ class IntegrationsSkeletonTest {
         try {
             server = Server.create().start();
 
-            assertEquals(8082, server.port());
+            assertEquals(8084, server.port());
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create("http://127.0.0.1:" + server.port() + "/health/live"))
                     .timeout(Duration.ofSeconds(5))
@@ -47,7 +47,7 @@ class IntegrationsSkeletonTest {
         String beansConfig = Files.readString(Path.of("src/main/resources/META-INF/beans.xml"));
 
         assertTrue(applicationConfig.contains("host: 127.0.0.1"));
-        assertTrue(applicationConfig.contains("port: 8082"));
+        assertTrue(applicationConfig.contains("port: 8084"));
         assertTrue(beansConfig.contains("bean-discovery-mode=\"annotated\""));
         assertTrue(beansConfig.contains("version=\"4.0\""));
     }

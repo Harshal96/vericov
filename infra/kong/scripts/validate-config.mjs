@@ -4,12 +4,22 @@ import { fileURLToPath } from "node:url";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const gatewayDir = join(scriptDir, "..");
+const repoDir = join(gatewayDir, "..", "..");
 
 const requiredFiles = [
   "kong.yml",
   "docker-compose.yml",
   ".env.example",
   "README.md",
+];
+
+const requiredRepoFiles = [
+  "infra/docker/helidon-service.Dockerfile",
+  "infra/local/docker-compose.yml",
+  "infra/local/.env.example",
+  "infra/local/scripts/generate-env.mjs",
+  "scripts/dev-up.sh",
+  "scripts/dev-down.sh",
 ];
 
 const failures = [];
@@ -30,10 +40,17 @@ const contents = Object.fromEntries(
   requiredFiles.map((relativePath) => [relativePath, readRequired(relativePath)]),
 );
 
+for (const relativePath of requiredRepoFiles) {
+  check(existsSync(join(repoDir, relativePath)), `${relativePath} must exist`);
+}
+
 const kongConfig = contents["kong.yml"];
 const composeConfig = contents["docker-compose.yml"];
 const envExample = contents[".env.example"];
 const readme = contents["README.md"];
+const integrationsConfig = existsSync(join(repoDir, "services/integrations/src/main/resources/application.yaml"))
+  ? readFileSync(join(repoDir, "services/integrations/src/main/resources/application.yaml"), "utf8")
+  : "";
 
 const requiredKongSnippets = [
   ['_format_version: "3.0"', "uses current Kong declarative config format"],
@@ -46,6 +63,15 @@ const requiredKongSnippets = [
   ["strip_path: false", "preserves backend API paths"],
   ["name: request-size-limiting", "protects upload ingress from oversized bodies"],
   ["name: rate-limiting", "applies gateway-level throttling"],
+  ["consumers:", "defines gateway authentication consumers"],
+  ["jwt_secrets:", "defines Supabase JWT verification material"],
+  ["key_claim_name: iss", "uses the Supabase JWT issuer claim as the credential key"],
+  ["claims_to_verify:", "verifies registered JWT claims at the edge"],
+  ["name: jwt", "enforces JWT authentication on user API routes"],
+  ["name: request-transformer", "strips spoofable identity headers before upstream forwarding"],
+  ["function set_verified_user_headers()", "injects verified user headers after JWT validation"],
+  ["function require_authorization_header()", "requires upload credentials before upstream forwarding"],
+  ["function require_github_webhook_headers()", "requires GitHub webhook guard headers at the edge"],
   ["name: coverage-analysis-service", "defines coverage-analysis upstream service"],
   ["url: ${COVERAGE_ANALYSIS_SERVICE_URL}", "templates coverage-analysis upstream URL"],
   ["name: coverage-analysis-internal", "defines internal coverage-analysis route"],
@@ -56,9 +82,17 @@ const requiredKongSnippets = [
   ["name: organization-api-v1", "defines organization API route"],
   ["- /api/v1/auth", "routes auth API prefix"],
   ["- /api/v1/orgs", "routes organization API prefix"],
+  ["name: organization-badge-api-v1", "defines unauthenticated badge route before org JWT routes"],
   ["name: organization-authz-service", "defines internal authz upstream service"],
   ["name: organization-authz-internal", "defines internal authz route"],
   ["- /internal/v1/authz", "routes internal authz prefix"],
+  ["name: integrations-service", "defines integrations upstream service"],
+  ["url: ${INTEGRATIONS_SERVICE_URL}", "templates integrations upstream URL"],
+  ["name: integrations-api-v1", "defines integrations API route"],
+  ["- /api/v1/integration-providers", "routes integration provider catalog"],
+  ["- /api/v1/integrations", "routes integration connection APIs"],
+  ["name: integrations-internal-service", "defines internal integrations upstream service"],
+  ["- /internal/v1/integrations", "routes internal integrations APIs"],
   ["name: git-integration-service", "defines Git integration upstream service"],
   ["url: ${GIT_INTEGRATION_SERVICE_URL}", "templates Git integration upstream URL"],
   ["name: git-api-v1", "defines Git API route"],
@@ -69,7 +103,9 @@ const requiredKongSnippets = [
   ["name: git-internal-v1", "defines internal Git route"],
   ["- /internal/v1/git", "routes internal Git prefix"],
   ["name: public-api-not-implemented", "documents planned public API prefixes"],
+  ["name: public-api-block", "blocks unknown public API routes by default"],
   ["return kong.response.exit(501", "returns explicit not-implemented responses for future APIs"],
+  ["return kong.response.exit(404", "returns not found for blocked route groups"],
   ["name: correlation-id", "emits request correlation IDs"],
   ["name: prometheus", "exposes Kong metrics"],
 ];
@@ -106,6 +142,9 @@ const requiredComposeSnippets = [
   ["KONG_DECLARATIVE_CONFIG: /tmp/vericov-kong/kong.yml", "loads generated declarative config"],
   ['${VERICOV_KONG_HTTP_PORT:-9000}:8000', "publishes the product gateway proxy port"],
   ['${VERICOV_KONG_ADMIN_PORT:-9001}:8001', "publishes local-only Kong admin port"],
+  ["GIT_INTEGRATION_SERVICE_URL", "configures Git integration upstream URL"],
+  ["INTEGRATIONS_SERVICE_URL", "configures integrations upstream URL"],
+  ["SUPABASE_JWT_SECRET", "passes Supabase JWT verification secret"],
   ["host.docker.internal:host-gateway", "supports host service upstreams on Linux"],
 ];
 
@@ -123,6 +162,11 @@ const requiredDocs = [
 for (const snippet of requiredDocs) {
   check(readme.includes(snippet), `README.md must mention ${snippet}`);
 }
+
+check(
+  integrationsConfig.includes("port: 8084"),
+  "Integrations service must use port 8084 to avoid the Organization service on 8082",
+);
 
 if (failures.length > 0) {
   console.error("Kong gateway config validation failed:");

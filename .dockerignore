@@ -1,0 +1,12 @@
+.git
+.vericov
+.worktrees
+dist
+target
+**/target
+**/.env
+**/volumes/db/data
+**/volumes/storage
+__pycache__
+.pytest_cache
+.ruff_cache
