@@ -129,6 +129,9 @@ public class DevelopmentUploadComponents {
     private static final class EnvironmentRepositoryApiKeyAuthenticator implements RepositoryApiKeyAuthenticator {
         private final String configuredKey = System.getenv("VERICOV_DEV_API_KEY");
         private final UUID tenantId = uuidEnv("VERICOV_DEV_TENANT_ID", "00000000-0000-0000-0000-000000000001");
+        private final UUID repositoryId = uuidEnv(
+                "VERICOV_DEV_REPOSITORY_ID",
+                "00000000-0000-0000-0000-000000000003");
         private final UUID apiKeyId = uuidEnv("VERICOV_DEV_API_KEY_ID", "00000000-0000-0000-0000-000000000002");
 
         @Override
@@ -143,7 +146,7 @@ public class DevelopmentUploadComponents {
             }
             return new RepositoryApiKeyPrincipal(
                     tenantId,
-                    command.repositoryId(),
+                    command.repositoryId() == null ? repositoryId : command.repositoryId(),
                     apiKeyId,
                     Set.of("uploads:create", "uploads:read"),
                     Set.of("*"));

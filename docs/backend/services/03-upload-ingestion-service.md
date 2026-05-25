@@ -50,7 +50,7 @@ Rules:
 
 - The request is authenticated by repository API key, Supabase Auth JWT, runner upload JWT, GitHub Actions OIDC identity, or service JWT.
 - Polling upload status and artifact metadata requires `uploads:read` for the upload repository.
-- The service validates repository, branch, commit, artifact metadata, request size, and key scope before accepting the upload.
+- The service validates repository, branch, commit, artifact metadata, request size, and key scope before accepting the upload. Repo-scoped API key uploads may omit `repository_id`; the service resolves it from the authenticated key and still rejects explicit repository mismatches.
 - The service stores raw artifacts in Supabase Storage before returning success. In production, Supabase Storage must use an S3-compatible backend so raw coverage files live in remote object storage rather than service-local disk.
 - The service creates an internal `upload.received` event and an `analysis_job` in the same transactional boundary as the upload record.
 - The response is `202 Accepted` with a stable `upload_id`.
@@ -115,6 +115,9 @@ Multipart or signed-storage handoff can be added later for large/resumable uploa
   ]
 }
 ```
+
+`repository_id` is optional for repo-scoped API key uploads. When omitted, the
+response still includes the resolved repository id.
 
 ## Response Models
 

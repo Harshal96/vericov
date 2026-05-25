@@ -59,11 +59,12 @@ public class UploadApplicationService {
     public UploadAccepted acceptUpload(CreateUploadCommand command) {
         validate(command);
         RepositoryApiKeyPrincipal principal = authenticator.authenticate(command);
-        authorize(principal, command);
+        CreateUploadCommand resolvedCommand = resolveRepository(command, principal);
+        authorize(principal, resolvedCommand);
 
-        return uploadRepository.findByIdempotencyKey(command.repositoryId(), command.idempotencyKey())
+        return uploadRepository.findByIdempotencyKey(resolvedCommand.repositoryId(), resolvedCommand.idempotencyKey())
                 .map(this::toAccepted)
-                .orElseGet(() -> acceptNewUpload(command, principal));
+                .orElseGet(() -> acceptNewUpload(resolvedCommand, principal));
     }
 
     public UploadDetails getUpload(UUID uploadId) {
@@ -169,9 +170,6 @@ public class UploadApplicationService {
         if (command.idempotencyKey() == null || command.idempotencyKey().isBlank()) {
             throw new InvalidUploadException("validation_error", "Idempotency-Key is required");
         }
-        if (command.repositoryId() == null) {
-            throw new InvalidUploadException("validation_error", "repository_id is required");
-        }
         if (command.commitSha() == null || command.commitSha().isBlank()) {
             throw new InvalidUploadException("validation_error", "commit_sha is required");
         }
@@ -182,6 +180,26 @@ public class UploadApplicationService {
             throw new InvalidUploadException("validation_error", "at least one artifact is required");
         }
         command.artifacts().forEach(this::validateArtifact);
+    }
+
+    private CreateUploadCommand resolveRepository(CreateUploadCommand command, RepositoryApiKeyPrincipal principal) {
+        if (command.repositoryId() != null) {
+            return command;
+        }
+        return new CreateUploadCommand(
+                command.authorizationHeader(),
+                command.idempotencyKey(),
+                principal.repositoryId(),
+                command.commitSha(),
+                command.branch(),
+                command.pullRequestNumber(),
+                command.ciProvider(),
+                command.ciBuildId(),
+                command.ciBuildUrl(),
+                command.flags(),
+                command.component(),
+                command.packageName(),
+                command.artifacts());
     }
 
     private void validateArtifact(dev.vericov.upload.domain.UploadArtifactInput artifact) {

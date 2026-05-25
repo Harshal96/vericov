@@ -10,8 +10,21 @@ metadata only.
 ## Installation
 
 ```bash
-pip install vericov
+uv add vericov
 ```
+
+## Coverage Upload CLI
+
+The coverage upload CLI lives in `clis/coverage-upload` as an independent
+Python package. It installs the `vericov` console script for CI uploads:
+
+```bash
+cd clis/coverage-upload
+VERICOV_API_KEY=vc_live_... uv run vericov upload --coverage coverage/lcov.info --dry-run
+```
+
+See `clis/coverage-upload/README.md` for usage, development, and contribution
+guidelines.
 
 ## Local Backend Stack
 

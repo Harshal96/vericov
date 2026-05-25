@@ -69,6 +69,9 @@ public class JdbcRepositoryApiKeyAuthenticator implements RepositoryApiKeyAuthen
         if (token.startsWith(REPOSITORY_KEY_PREFIX)) {
             return authenticateRepositoryApiKey(token, repositoryId);
         }
+        if (repositoryId == null) {
+            throw unauthorized();
+        }
         if (token.chars().filter(character -> character == '.').count() == 2) {
             JsonObject payload = UploadJwtSupport.parseUnverifiedPayload(token);
             String issuer = UploadJwtSupport.stringClaim(payload, "iss");
@@ -85,42 +88,61 @@ public class JdbcRepositoryApiKeyAuthenticator implements RepositoryApiKeyAuthen
 
     private RepositoryApiKeyPrincipal authenticateRepositoryApiKey(String token, UUID repositoryId) {
         String prefix = tokenPrefix(token);
+        String sql = repositoryId == null
+                ? """
+                select
+                    api_keys.id,
+                    api_keys.tenant_id,
+                    api_keys.repository_id,
+                    api_keys.key_hash,
+                    api_keys.scopes,
+                    api_keys.branch_allow_patterns,
+                    api_keys.expires_at,
+                    api_keys.revoked_at,
+                    repositories.status
+                from vericov.repository_api_keys api_keys
+                join vericov.repositories repositories
+                  on repositories.id = api_keys.repository_id
+                where api_keys.key_prefix = ?
+                """
+                : """
+                select
+                    api_keys.id,
+                    api_keys.tenant_id,
+                    api_keys.repository_id,
+                    api_keys.key_hash,
+                    api_keys.scopes,
+                    api_keys.branch_allow_patterns,
+                    api_keys.expires_at,
+                    api_keys.revoked_at,
+                    repositories.status
+                from vericov.repository_api_keys api_keys
+                join vericov.repositories repositories
+                  on repositories.id = api_keys.repository_id
+                where api_keys.key_prefix = ?
+                  and api_keys.repository_id = ?
+                """;
         try (var connection = dataSource.getConnection();
-                var statement = connection.prepareStatement("""
-                        select
-                            api_keys.id,
-                            api_keys.tenant_id,
-                            api_keys.repository_id,
-                            api_keys.key_hash,
-                            api_keys.scopes,
-                            api_keys.branch_allow_patterns,
-                            api_keys.expires_at,
-                            api_keys.revoked_at,
-                            repositories.status
-                        from vericov.repository_api_keys api_keys
-                        join vericov.repositories repositories
-                          on repositories.id = api_keys.repository_id
-                        where api_keys.key_prefix = ?
-                          and api_keys.repository_id = ?
-                        """)) {
+                var statement = connection.prepareStatement(sql)) {
             statement.setString(1, prefix);
-            statement.setObject(2, repositoryId);
+            if (repositoryId != null) {
+                statement.setObject(2, repositoryId);
+            }
             try (var resultSet = statement.executeQuery()) {
-                if (!resultSet.next()) {
-                    throw unauthorized();
+                while (resultSet.next()) {
+                    if (hasher.matches(token, resultSet.getString("key_hash"))) {
+                        requireActiveCredential(resultSet, "repository");
+                        RepositoryApiKeyPrincipal principal = new RepositoryApiKeyPrincipal(
+                                resultSet.getObject("tenant_id", UUID.class),
+                                resultSet.getObject("repository_id", UUID.class),
+                                resultSet.getObject("id", UUID.class),
+                                Set.copyOf(stringArray(resultSet, "scopes")),
+                                Set.copyOf(stringArray(resultSet, "branch_allow_patterns")));
+                        markApiKeyUsed(resultSet.getObject("id", UUID.class));
+                        return principal;
+                    }
                 }
-                if (!hasher.matches(token, resultSet.getString("key_hash"))) {
-                    throw unauthorized();
-                }
-                requireActiveCredential(resultSet, "repository");
-                RepositoryApiKeyPrincipal principal = new RepositoryApiKeyPrincipal(
-                        resultSet.getObject("tenant_id", UUID.class),
-                        resultSet.getObject("repository_id", UUID.class),
-                        resultSet.getObject("id", UUID.class),
-                        Set.copyOf(stringArray(resultSet, "scopes")),
-                        Set.copyOf(stringArray(resultSet, "branch_allow_patterns")));
-                markApiKeyUsed(resultSet.getObject("id", UUID.class));
-                return principal;
+                throw unauthorized();
             }
         } catch (SQLException exception) {
             throw new InvalidUploadException("unauthorized", "Upload credential lookup failed");
