@@ -208,6 +208,8 @@ infra/supabase/.env
 infra/supabase/volumes/db/data/
 infra/supabase/volumes/storage/
 infra/kong/.env
+infra/local/.env
+.vericov/
 
 # Ruff stuff:
 .ruff_cache/

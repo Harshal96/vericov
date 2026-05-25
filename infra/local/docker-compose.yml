@@ -1,0 +1,140 @@
+name: vericov-local
+
+services:
+  upload:
+    build:
+      context: ../..
+      dockerfile: infra/docker/helidon-service.Dockerfile
+      args:
+        SERVICE_DIR: services/upload
+        SERVICE_JAR: upload.jar
+    env_file:
+      - .env
+    environment:
+      VERICOV_UPLOAD_DB_URL: ${SUPABASE_DB_URL}
+      VERICOV_UPLOAD_DB_USER: ${SUPABASE_DB_USER}
+      VERICOV_UPLOAD_DB_PASSWORD: ${SUPABASE_DB_PASSWORD}
+      VERICOV_ARTIFACT_STORAGE_BACKEND: supabase
+      VERICOV_SERVICE_HOST: 0.0.0.0
+    networks:
+      - product
+      - supabase
+
+  coverage-analysis:
+    build:
+      context: ../..
+      dockerfile: infra/docker/helidon-service.Dockerfile
+      args:
+        SERVICE_DIR: services/coverage-analysis
+        SERVICE_JAR: coverage-analysis.jar
+    env_file:
+      - .env
+    environment:
+      VERICOV_ANALYSIS_DB_URL: ${SUPABASE_DB_URL}
+      VERICOV_ANALYSIS_DB_USER: ${SUPABASE_DB_USER}
+      VERICOV_ANALYSIS_DB_PASSWORD: ${SUPABASE_DB_PASSWORD}
+      VERICOV_GIT_BASE_URL: http://git-integration:8083
+      VERICOV_SERVICE_HOST: 0.0.0.0
+    networks:
+      - product
+      - supabase
+
+  organization:
+    build:
+      context: ../..
+      dockerfile: infra/docker/helidon-service.Dockerfile
+      args:
+        SERVICE_DIR: services/organization
+        SERVICE_JAR: organization.jar
+    env_file:
+      - .env
+    environment:
+      VERICOV_ORGANIZATION_DB_URL: ${SUPABASE_DB_URL}
+      VERICOV_ORGANIZATION_DB_USER: ${SUPABASE_DB_USER}
+      VERICOV_ORGANIZATION_DB_PASSWORD: ${SUPABASE_DB_PASSWORD}
+      VERICOV_SERVICE_HOST: 0.0.0.0
+    networks:
+      - product
+      - supabase
+
+  integrations:
+    build:
+      context: ../..
+      dockerfile: infra/docker/helidon-service.Dockerfile
+      args:
+        SERVICE_DIR: services/integrations
+        SERVICE_JAR: integrations.jar
+    env_file:
+      - .env
+    environment:
+      VERICOV_DATABASE_URL: ${SUPABASE_DB_URL}
+      VERICOV_DATABASE_USER: ${SUPABASE_DB_USER}
+      VERICOV_DATABASE_PASSWORD: ${SUPABASE_DB_PASSWORD}
+      VERICOV_SERVICE_HOST: 0.0.0.0
+    networks:
+      - product
+      - supabase
+
+  git-integration:
+    build:
+      context: ../..
+      dockerfile: infra/docker/helidon-service.Dockerfile
+      args:
+        SERVICE_DIR: services/git-integration
+        SERVICE_JAR: git-integration.jar
+    env_file:
+      - .env
+    environment:
+      VERICOV_DATABASE_URL: ${SUPABASE_DB_URL}
+      VERICOV_DATABASE_USER: ${SUPABASE_DB_USER}
+      VERICOV_DATABASE_PASSWORD: ${SUPABASE_DB_PASSWORD}
+      VERICOV_INTEGRATIONS_BASE_URL: http://integrations:8084
+      VERICOV_SERVICE_HOST: 0.0.0.0
+    networks:
+      - product
+      - supabase
+
+  product-gateway:
+    image: kong/kong:3.9.1
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${VERICOV_KONG_HTTP_PORT:-9000}:8000"
+      - "127.0.0.1:${VERICOV_KONG_ADMIN_PORT:-9001}:8001"
+    env_file:
+      - .env
+    environment:
+      KONG_DATABASE: "off"
+      KONG_DECLARATIVE_CONFIG: /tmp/vericov-kong/kong.yml
+      KONG_PROXY_ACCESS_LOG: /dev/stdout
+      KONG_ADMIN_ACCESS_LOG: /dev/stdout
+      KONG_PROXY_ERROR_LOG: /dev/stderr
+      KONG_ADMIN_ERROR_LOG: /dev/stderr
+      KONG_PROXY_LISTEN: 0.0.0.0:8000
+      KONG_ADMIN_LISTEN: 0.0.0.0:8001
+      KONG_PLUGINS: bundled
+      KONG_NGINX_PROXY_CLIENT_MAX_BODY_SIZE: 120m
+      ORGANIZATION_SERVICE_URL: ${ORGANIZATION_SERVICE_URL:-http://organization:8082}
+      UPLOAD_SERVICE_URL: ${UPLOAD_SERVICE_URL:-http://upload:8080}
+      COVERAGE_ANALYSIS_SERVICE_URL: ${COVERAGE_ANALYSIS_SERVICE_URL:-http://coverage-analysis:8081}
+      INTEGRATIONS_SERVICE_URL: ${INTEGRATIONS_SERVICE_URL:-http://integrations:8084}
+      GIT_INTEGRATION_SERVICE_URL: ${GIT_INTEGRATION_SERVICE_URL:-http://git-integration:8083}
+    volumes:
+      - ../kong/kong.yml:/home/kong/kong.yml.template:ro
+      - ../kong/kong-entrypoint.sh:/home/kong/kong-entrypoint.sh:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    entrypoint: ["/home/kong/kong-entrypoint.sh"]
+    healthcheck:
+      test: ["CMD", "kong", "health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    networks:
+      - product
+
+networks:
+  product:
+  supabase:
+    external: true
+    name: vericov-supabase_default

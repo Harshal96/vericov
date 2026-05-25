@@ -9,6 +9,14 @@ plugins:
       echo_downstream: true
   - name: prometheus
 
+consumers:
+  - username: supabase-auth
+    custom_id: supabase-auth
+    jwt_secrets:
+      - key: ${SUPABASE_JWT_ISSUER}
+        algorithm: HS256
+        secret: ${SUPABASE_JWT_SECRET}
+
 services:
   - name: gateway-health
     url: http://127.0.0.1:1
@@ -69,6 +77,37 @@ services:
           credentials: false
           max_age: 3600
           preflight_continue: false
+      - name: request-transformer
+        config:
+          remove:
+            headers:
+              - X-Vericov-User-Id
+              - X-Vericov-User-Email
+              - X-Vericov-Service-Name
+              - X-Vericov-Service-Token
+      - name: pre-function
+        config:
+          access:
+            - |
+              function require_authorization_header()
+                if kong.request.get_method() == "OPTIONS" then
+                  return
+                end
+
+                local authorization = kong.request.get_header("authorization")
+                if authorization == nil or authorization:match("^[Bb]earer%s+.+") == nil then
+                  return kong.response.exit(401, {
+                    error = {
+                      code = "gateway_unauthorized",
+                      message = "Upload credentials are required"
+                    }
+                  }, {
+                    ["Content-Type"] = "application/json"
+                  })
+                end
+              end
+
+              require_authorization_header()
       - name: rate-limiting
         config:
           minute: ${VERICOV_UPLOAD_RATE_LIMIT_MINUTE}
@@ -79,6 +118,271 @@ services:
       - name: request-size-limiting
         config:
           allowed_payload_size: ${VERICOV_UPLOAD_MAX_BODY_MB}
+
+  - name: organization-public-badge-service
+    url: ${ORGANIZATION_SERVICE_URL}
+    connect_timeout: 5000
+    read_timeout: 300000
+    write_timeout: 300000
+    routes:
+      - name: organization-badge-api-v1
+        paths:
+          - '~/api/v1/orgs/[^/]+/repositories/[^/]+/badges/coverage\.(svg|json)$'
+        methods:
+          - GET
+          - OPTIONS
+        strip_path: false
+        regex_priority: 100
+    plugins:
+      - name: cors
+        config:
+          origins:
+            - "${VERICOV_CORS_ORIGIN}"
+          methods:
+            - GET
+            - OPTIONS
+          headers:
+            - Accept
+            - Authorization
+            - Content-Type
+            - X-Request-Id
+          exposed_headers:
+            - X-Request-Id
+          credentials: false
+          max_age: 3600
+          preflight_continue: false
+      - name: rate-limiting
+        config:
+          minute: ${VERICOV_BADGE_RATE_LIMIT_MINUTE}
+          policy: local
+          fault_tolerant: true
+          hide_client_headers: false
+
+  - name: organization-service
+    url: ${ORGANIZATION_SERVICE_URL}
+    connect_timeout: 5000
+    read_timeout: 300000
+    write_timeout: 300000
+    routes:
+      - name: organization-api-v1
+        paths:
+          - /api/v1/auth
+          - /api/v1/orgs
+        methods:
+          - GET
+          - POST
+          - PUT
+          - PATCH
+          - DELETE
+          - OPTIONS
+        strip_path: false
+    plugins:
+      - name: cors
+        config:
+          origins:
+            - "${VERICOV_CORS_ORIGIN}"
+          methods:
+            - GET
+            - POST
+            - PUT
+            - PATCH
+            - DELETE
+            - OPTIONS
+          headers:
+            - Accept
+            - Authorization
+            - Content-Type
+            - X-Request-Id
+          exposed_headers:
+            - X-Request-Id
+          credentials: false
+          max_age: 3600
+          preflight_continue: false
+      - name: jwt
+        config:
+          header_names:
+            - Authorization
+          uri_param_names: []
+          cookie_names: []
+          key_claim_name: iss
+          claims_to_verify:
+            - exp
+          run_on_preflight: false
+      - name: request-transformer
+        config:
+          remove:
+            headers:
+              - X-Vericov-Service-Name
+              - X-Vericov-Service-Token
+      - name: pre-function
+        config:
+          access:
+            - |
+              function set_verified_user_headers()
+                kong.service.request.clear_header("X-Vericov-User-Id")
+                kong.service.request.clear_header("X-Vericov-User-Email")
+
+                local authorization = kong.request.get_header("authorization")
+                if authorization == nil then
+                  return
+                end
+
+                local token = authorization:match("^[Bb]earer%s+(.+)$")
+                if token == nil then
+                  return
+                end
+
+                local payload_segment = token:match("^[^.]+%.([^.]+)%.")
+                if payload_segment == nil then
+                  return
+                end
+
+                local padding = #payload_segment % 4
+                if padding > 0 then
+                  payload_segment = payload_segment .. string.rep("=", 4 - padding)
+                end
+                payload_segment = payload_segment:gsub("-", "+"):gsub("_", "/")
+
+                local payload_json = ngx.decode_base64(payload_segment)
+                if payload_json == nil then
+                  return
+                end
+
+                local cjson = require "cjson.safe"
+                local claims = cjson.decode(payload_json)
+                if claims == nil then
+                  return
+                end
+
+                if claims.sub ~= nil then
+                  kong.service.request.set_header("X-Vericov-User-Id", claims.sub)
+                end
+                if claims.email ~= nil then
+                  kong.service.request.set_header("X-Vericov-User-Email", claims.email)
+                end
+              end
+
+              set_verified_user_headers()
+      - name: rate-limiting
+        config:
+          minute: ${VERICOV_USER_RATE_LIMIT_MINUTE}
+          policy: local
+          fault_tolerant: true
+          hide_client_headers: false
+
+  - name: integrations-service
+    url: ${INTEGRATIONS_SERVICE_URL}
+    connect_timeout: 5000
+    read_timeout: 300000
+    write_timeout: 300000
+    routes:
+      - name: integrations-api-v1
+        paths:
+          - /api/v1/integration-providers
+          - /api/v1/integrations
+          - '~/api/v1/orgs/[^/]+/integrations(?:/.*)?$'
+        methods:
+          - GET
+          - POST
+          - PUT
+          - PATCH
+          - DELETE
+          - OPTIONS
+        strip_path: false
+        regex_priority: 90
+    plugins:
+      - name: cors
+        config:
+          origins:
+            - "${VERICOV_CORS_ORIGIN}"
+          methods:
+            - GET
+            - POST
+            - PUT
+            - PATCH
+            - DELETE
+            - OPTIONS
+          headers:
+            - Accept
+            - Authorization
+            - Content-Type
+            - X-Request-Id
+          exposed_headers:
+            - X-Request-Id
+          credentials: false
+          max_age: 3600
+          preflight_continue: false
+      - name: jwt
+        config:
+          header_names:
+            - Authorization
+          uri_param_names: []
+          cookie_names: []
+          key_claim_name: iss
+          claims_to_verify:
+            - exp
+          run_on_preflight: false
+      - name: request-transformer
+        config:
+          remove:
+            headers:
+              - X-Vericov-Service-Name
+              - X-Vericov-Service-Token
+      - name: pre-function
+        config:
+          access:
+            - |
+              function set_verified_user_headers()
+                kong.service.request.clear_header("X-Vericov-User-Id")
+                kong.service.request.clear_header("X-Vericov-User-Email")
+
+                local authorization = kong.request.get_header("authorization")
+                if authorization == nil then
+                  return
+                end
+
+                local token = authorization:match("^[Bb]earer%s+(.+)$")
+                if token == nil then
+                  return
+                end
+
+                local payload_segment = token:match("^[^.]+%.([^.]+)%.")
+                if payload_segment == nil then
+                  return
+                end
+
+                local padding = #payload_segment % 4
+                if padding > 0 then
+                  payload_segment = payload_segment .. string.rep("=", 4 - padding)
+                end
+                payload_segment = payload_segment:gsub("-", "+"):gsub("_", "/")
+
+                local payload_json = ngx.decode_base64(payload_segment)
+                if payload_json == nil then
+                  return
+                end
+
+                local cjson = require "cjson.safe"
+                local claims = cjson.decode(payload_json)
+                if claims == nil then
+                  return
+                end
+
+                if claims.sub ~= nil then
+                  kong.service.request.set_header("X-Vericov-User-Id", claims.sub)
+                end
+                if claims.email ~= nil then
+                  kong.service.request.set_header("X-Vericov-User-Email", claims.email)
+                end
+              end
+
+              set_verified_user_headers()
+      - name: rate-limiting
+        config:
+          minute: ${VERICOV_USER_RATE_LIMIT_MINUTE}
+          policy: local
+          fault_tolerant: true
+          hide_client_headers: false
 
   - name: coverage-analysis-service
     url: ${COVERAGE_ANALYSIS_SERVICE_URL}
@@ -110,51 +414,6 @@ services:
           fault_tolerant: true
           hide_client_headers: false
 
-  - name: organization-service
-    url: ${ORGANIZATION_SERVICE_URL}
-    connect_timeout: 5000
-    read_timeout: 300000
-    write_timeout: 300000
-    routes:
-      - name: organization-api-v1
-        paths:
-          - /api/v1/auth
-          - /api/v1/orgs
-        methods:
-          - GET
-          - POST
-          - PATCH
-          - OPTIONS
-        strip_path: false
-    plugins:
-      - name: cors
-        config:
-          origins:
-            - "${VERICOV_CORS_ORIGIN}"
-          methods:
-            - GET
-            - POST
-            - PATCH
-            - OPTIONS
-          headers:
-            - Accept
-            - Authorization
-            - Content-Type
-            - X-Request-Id
-            - X-Vericov-User-Id
-            - X-Vericov-User-Email
-          exposed_headers:
-            - X-Request-Id
-          credentials: false
-          max_age: 3600
-          preflight_continue: false
-      - name: rate-limiting
-        config:
-          minute: ${VERICOV_PUBLIC_RATE_LIMIT_MINUTE}
-          policy: local
-          fault_tolerant: true
-          hide_client_headers: false
-
   - name: organization-authz-service
     url: ${ORGANIZATION_SERVICE_URL}
     connect_timeout: 5000
@@ -165,6 +424,36 @@ services:
         paths:
           - /internal/v1/authz
         methods:
+          - POST
+          - OPTIONS
+        strip_path: false
+    plugins:
+      - name: ip-restriction
+        config:
+          allow:
+            - 127.0.0.1
+            - ::1
+            - 10.0.0.0/8
+            - 172.16.0.0/12
+            - 192.168.0.0/16
+      - name: rate-limiting
+        config:
+          minute: ${VERICOV_INTERNAL_RATE_LIMIT_MINUTE}
+          policy: local
+          fault_tolerant: true
+          hide_client_headers: false
+
+  - name: integrations-internal-service
+    url: ${INTEGRATIONS_SERVICE_URL}
+    connect_timeout: 5000
+    read_timeout: 300000
+    write_timeout: 300000
+    routes:
+      - name: integrations-internal-v1
+        paths:
+          - /internal/v1/integrations
+        methods:
+          - GET
           - POST
           - OPTIONS
         strip_path: false
@@ -229,9 +518,47 @@ services:
           credentials: false
           max_age: 3600
           preflight_continue: false
+      - name: request-transformer
+        config:
+          remove:
+            headers:
+              - X-Vericov-User-Id
+              - X-Vericov-User-Email
+              - X-Vericov-Service-Name
+              - X-Vericov-Service-Token
+      - name: pre-function
+        config:
+          access:
+            - |
+              function require_github_webhook_headers()
+                if kong.request.get_method() == "OPTIONS" then
+                  return
+                end
+
+                local path = kong.request.get_path()
+                if path:match("^/webhooks/github") == nil then
+                  return
+                end
+
+                local delivery = kong.request.get_header("x-github-delivery")
+                local event = kong.request.get_header("x-github-event")
+                local signature = kong.request.get_header("x-hub-signature-256")
+                if delivery == nil or event == nil or signature == nil then
+                  return kong.response.exit(400, {
+                    error = {
+                      code = "gateway_validation_error",
+                      message = "GitHub webhook delivery, event, and signature headers are required"
+                    }
+                  }, {
+                    ["Content-Type"] = "application/json"
+                  })
+                end
+              end
+
+              require_github_webhook_headers()
       - name: rate-limiting
         config:
-          minute: ${VERICOV_PUBLIC_RATE_LIMIT_MINUTE}
+          minute: ${VERICOV_WEBHOOK_RATE_LIMIT_MINUTE}
           policy: local
           fault_tolerant: true
           hide_client_headers: false
@@ -246,6 +573,7 @@ services:
         paths:
           - /internal/v1/git
         methods:
+          - GET
           - POST
           - OPTIONS
         strip_path: false
@@ -298,7 +626,7 @@ services:
           preflight_continue: false
       - name: rate-limiting
         config:
-          minute: ${VERICOV_PUBLIC_RATE_LIMIT_MINUTE}
+          minute: ${VERICOV_USER_RATE_LIMIT_MINUTE}
           policy: local
           fault_tolerant: true
           hide_client_headers: false
@@ -310,6 +638,28 @@ services:
                 error = {
                   code = "service_not_implemented",
                   message = "This Vericov API surface is defined but not implemented yet"
+                }
+              }, {
+                ["Content-Type"] = "application/json"
+              })
+
+  - name: public-api-block
+    url: http://127.0.0.1:1
+    routes:
+      - name: public-api-block
+        paths:
+          - /api/v1
+          - /webhooks
+        strip_path: false
+    plugins:
+      - name: pre-function
+        config:
+          access:
+            - |
+              return kong.response.exit(404, {
+                error = {
+                  code = "not_found",
+                  message = "Route not found"
                 }
               }, {
                 ["Content-Type"] = "application/json"

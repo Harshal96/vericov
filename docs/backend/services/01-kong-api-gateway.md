@@ -1,6 +1,6 @@
 # Kong API Gateway Contract
 
-Status: Implemented scaffold
+Status: Implemented scaffold with gateway-heavy local guardrails
 Runtime: Kong Gateway
 Backend services: Helidon 4
 Auth provider: Supabase Auth
@@ -11,7 +11,7 @@ Kong is the only public ingress for Vericov product APIs. It routes external tra
 
 Decision: Vericov runs a dedicated product Kong instance under `infra/kong`. The Supabase-bundled Kong instance remains scoped to Supabase Auth, REST, Storage, and Studio APIs.
 
-Kong owns routing, TLS termination, request IDs, coarse rate limits, CORS, request size limits, webhook path routing, internal route protection, and future authentication plugin wiring. Business authorization stays in Helidon services.
+Kong owns routing, TLS termination, request IDs, coarse rate limits, CORS, request size limits, webhook path routing, internal route protection, Supabase Auth JWT verification for user API routes, and verified user-header injection for services that need edge-derived identity context. Business authorization stays in Helidon services.
 
 Implementation files:
 
@@ -28,9 +28,10 @@ Implementation files:
 | --- | --- | --- |
 | `/api/v1/auth/**` | Organization Service | Implemented; Supabase Auth JWT-backed current-user APIs |
 | `/api/v1/orgs/**` | Organization / API Control Plane | Implemented for user/org membership management plus repository setup, config, policies, gates, coverage badges, report reads, trends, gate evaluations, and dashboards; future API keys and repo-scoped agent APIs stay nested under orgs |
-| `/api/v1/uploads/**` | Upload / Ingestion | Implemented; upload service validates Vericov API keys |
-| `/api/v1/integration-providers/**` | Integrations Config | Planned; provider catalog |
-| `/api/v1/integrations/**` | Integrations Config | Planned; connection lifecycle and bindings |
+| `/api/v1/orgs/{org_id}/repositories/{repository_id}/badges/coverage.{svg,json}` | Organization / API Control Plane | Implemented; public/tokenized badge read route with separate rate limit |
+| `/api/v1/uploads/**` | Upload / Ingestion | Implemented; gateway requires a bearer credential and upload service validates Vericov API keys |
+| `/api/v1/integration-providers/**` | Integrations Config | Implemented; provider catalog behind user JWT edge verification |
+| `/api/v1/integrations/**` | Integrations Config | Implemented; connection lifecycle and bindings behind user JWT edge verification |
 | `/api/v1/git/**` | Git Integration | Provider action status and Git-specific public APIs |
 | `/webhooks/github/**` | Git Integration | GitHub webhook receiver |
 | `/webhooks/gitlab/**` | Git Integration | GitLab webhook receiver |
@@ -39,7 +40,7 @@ Implementation files:
 | `/runner/v1/**` | Agent / Runner Control Plane | Runner polling protocol |
 | `/internal/v1/coverage-analysis/**` | Coverage Analysis | Implemented; private network only |
 | `/internal/v1/authz/**` | Organization Service | Implemented; private network only |
-| `/internal/v1/integrations/**` | Integrations Config | Planned; private network and service auth only |
+| `/internal/v1/integrations/**` | Integrations Config | Implemented; private network and service auth only |
 | `/internal/v1/**` | Not public | Public ingress catch-all blocked by default |
 
 Route status notes: `Implemented` rows reflect the current scaffold. `Planned` rows are contract-level routes to add as the corresponding service surfaces are wired into Kong.
@@ -100,7 +101,8 @@ Current implementation returns `501 service_not_implemented` until the OpenAPI a
 | Request size limiting | Upload routes | Protect upload ingress |
 | Pre-function | Gateway-owned routes | Returns health and explicit not-implemented responses |
 | IP restriction | Internal routes | Restricts internal routes to loopback and private network ranges |
-| JWT/OIDC validation | Future user routes | Validate Supabase Auth JWT |
+| JWT validation | User routes | Validate Supabase Auth JWT at the edge |
+| Request transformer / pre-function | Public routes | Strip spoofable identity/service headers and inject verified user context after JWT validation |
 | Bot detection / IP allowlist | Future webhooks and runner routes | Reduce abuse surface |
 | Prometheus | Global | Gateway metrics |
 
@@ -108,7 +110,11 @@ Current implementation returns `501 service_not_implemented` until the OpenAPI a
 
 `/api/v1/uploads/**` intentionally does not use Kong key-auth. The upload service authenticates `Authorization: Bearer <api-key>` directly so CI upload clients can send one credential and receive a processing identifier immediately.
 
-`/api/v1/auth/**` and `/api/v1/orgs/**` are routed to the organization service, which validates Supabase Auth JWTs and then enforces Vericov membership/role authorization from application tables. Kong still owns coarse routing, CORS, and rate limits; business authorization remains in Helidon. Local header-based auth is available only behind `VERICOV_DEV_AUTH_BYPASS=true`.
+`/api/v1/auth/**`, `/api/v1/orgs/**`, and Integrations Config user routes require a Supabase Auth JWT at Kong. Kong validates the token with the configured local Supabase JWT secret, strips spoofable incoming identity headers, and forwards `X-Vericov-User-Id` / `X-Vericov-User-Email` derived from the verified token. Organization still validates Supabase Auth JWTs and enforces Vericov membership/role authorization from application tables. Local header-based auth is available only behind `VERICOV_DEV_AUTH_BYPASS=true`.
+
+`/api/v1/uploads/**` intentionally does not use Kong key-auth. Kong checks that a bearer credential is present and the upload service authenticates repository API keys, runner upload tokens, Supabase user JWTs, or trusted CI identity directly.
+
+Unknown `/api/v1/**`, `/webhooks/**`, and `/internal/v1/**` paths are blocked by default after explicit route groups.
 
 ## Request Models
 

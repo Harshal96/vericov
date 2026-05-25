@@ -14,6 +14,12 @@ docker compose up -d
 docker compose ps
 ```
 
+To bring up the full Vericov local backend stack, including this Supabase stack, all Helidon services, and the product Kong gateway, run from the repository root:
+
+```bash
+./scripts/dev-up.sh
+```
+
 Open Supabase Studio at `http://localhost:8000`. The username is `DASHBOARD_USERNAME` from `.env`, and the password is generated into `DASHBOARD_PASSWORD`.
 
 ## Local Endpoints
