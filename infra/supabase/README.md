@@ -73,10 +73,21 @@ VERICOV_ARTIFACT_STORAGE_BACKEND=supabase
 SUPABASE_DB_URL=jdbc:postgresql://localhost:54322/postgres
 SUPABASE_DB_USER=postgres
 SUPABASE_DB_PASSWORD=<POSTGRES_PASSWORD from infra/supabase/.env>
+VERICOV_UPLOAD_DB_URL=jdbc:postgresql://localhost:54322/postgres
+VERICOV_UPLOAD_DB_USER=postgres
+VERICOV_UPLOAD_DB_PASSWORD=<POSTGRES_PASSWORD from infra/supabase/.env>
+VERICOV_REPO_API_KEY_PEPPER=<long random secret distinct from JWT_SECRET>
+SUPABASE_JWT_SECRET=<JWT_SECRET from infra/supabase/.env>
+VERICOV_RUNNER_JWT_SECRET=<long random secret for short-lived upload tokens>
+VERICOV_RUNNER_JWT_ISSUER=vericov-upload
+VERICOV_RUNNER_JWT_AUDIENCE=vericov-runner-upload
+VERICOV_GITHUB_ACTIONS_OIDC_JWKS_URL=https://token.actions.githubusercontent.com/.well-known/jwks
 VERICOV_COVERAGE_BUCKET=coverage-raw
 VERICOV_TEST_RESULTS_BUCKET=test-results-raw
 VERICOV_METADATA_BUCKET=metadata-raw
 ```
+
+When `VERICOV_UPLOAD_DB_URL` is present, upload authentication uses Supabase Postgres-backed repository API keys and repository trust records. `VERICOV_DEV_API_KEY` is only a local bypass when `VERICOV_DEV_AUTH_BYPASS=true`.
 
 ## Organization Service Env Shape
 

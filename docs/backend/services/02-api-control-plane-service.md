@@ -692,15 +692,33 @@ The raw API key is returned only once.
 | `repository_id` | uuid | FK to repositories |
 | `name` | text | Human-readable key name |
 | `key_prefix` | text | Non-secret key prefix for display |
-| `key_hash` | text | Hashed API key secret |
+| `key_hash` | text | HMAC-SHA256 API key secret hash |
 | `scopes` | text[] | `uploads:create`, `uploads:read` |
-| `allowed_branches` | text[] | Optional branch restrictions |
-| `status` | text | `active`, `revoked`, `expired` |
+| `branch_allow_patterns` | text[] | Optional branch restrictions |
+| `revoked_at` | timestamptz | Revocation timestamp |
+| `revoked_by_user_id` | uuid | Supabase user ID that revoked the key |
 | `last_used_at` | timestamptz | Last successful auth |
 | `expires_at` | timestamptz | Optional expiration |
-| `created_by` | uuid | Supabase user ID |
+| `created_by_user_id` | uuid | Supabase user ID |
 | `created_at` | timestamptz | Created time |
 | `updated_at` | timestamptz | Updated time |
+
+### `repository_ci_trusts`
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `id` | uuid | Primary key |
+| `tenant_id` | uuid | Tenant boundary |
+| `repository_id` | uuid | FK to repositories |
+| `provider` | text | `github_actions` in v1 |
+| `issuer` | text | `https://token.actions.githubusercontent.com` |
+| `audience` | text | Expected OIDC audience |
+| `subject_pattern` | text | GitHub OIDC `sub` pattern |
+| `scopes` | text[] | Upload scopes granted by the trust |
+| `branch_allow_patterns` | text[] | Branch restrictions |
+| `expires_at` | timestamptz | Optional expiration |
+| `revoked_at` | timestamptz | Revocation timestamp |
+| `last_used_at` | timestamptz | Last successful auth |
 
 ### `components`
 

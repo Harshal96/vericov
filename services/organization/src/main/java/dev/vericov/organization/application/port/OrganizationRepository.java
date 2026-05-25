@@ -11,6 +11,7 @@ import dev.vericov.organization.application.CoverageLineHitMapDetails;
 import dev.vericov.organization.application.GateEvaluationDetails;
 import dev.vericov.organization.application.PullRequestDiffCoverageDetails;
 import dev.vericov.organization.application.RepositoryBadgeSettingsDetails;
+import dev.vericov.organization.application.RepositoryApiKeyDetails;
 import dev.vericov.organization.application.RepositoryConfigDetails;
 import dev.vericov.organization.application.RepositoryDetails;
 import dev.vericov.organization.application.RepositoryGateDetails;
@@ -65,6 +66,14 @@ public interface OrganizationRepository {
     RepositoryDetails saveRepository(RepositoryDetails repository);
 
     RepositoryDetails updateRepository(RepositoryDetails repository);
+
+    List<RepositoryApiKeyDetails> listRepositoryApiKeys(UUID repositoryId);
+
+    Optional<RepositoryApiKeyDetails> findRepositoryApiKey(UUID repositoryId, UUID apiKeyId);
+
+    RepositoryApiKeyDetails saveRepositoryApiKey(RepositoryApiKeyDetails apiKey);
+
+    RepositoryApiKeyDetails updateRepositoryApiKey(RepositoryApiKeyDetails apiKey);
 
     Optional<PolicyDefaultsDetails> findPolicyDefaults(UUID organizationId);
 

@@ -128,7 +128,7 @@ public class UploadSteps {
 
     @Then("upload status lists {int} stored artifacts")
     public void uploadStatusListsStoredArtifacts(int artifactCount) {
-        Response response = fixture.resource.getUpload(latestUploadId);
+        Response response = fixture.resource.getUpload("Bearer vc_live_test", latestUploadId);
         assertEquals(200, response.getStatus());
         ApiResponse<?> envelope = assertInstanceOf(ApiResponse.class, response.getEntity());
         UploadStatusHttpResponse status = assertInstanceOf(UploadStatusHttpResponse.class, envelope.data());

@@ -740,6 +740,52 @@ class OrganizationResourceTest {
     }
 
     @Test
+    void repositoryApiKeyEndpointsReturnSecretOnlyOnCreate() {
+        OrganizationApplicationService service = service();
+        var organizationResource = resourceWithUser(service, USER_ID, "owner@example.com");
+        var controlPlaneResource = new RepositoryControlPlaneResource(service, fixedUser(USER_ID, "owner@example.com"));
+        OrganizationHttpResponse organization = createOrganization(organizationResource);
+        RepositoryHttpResponse repository = registerRepository(organizationResource, organization);
+
+        Response createResponse = controlPlaneResource.createRepositoryApiKey(
+                "Bearer test-token",
+                null,
+                organization.id(),
+                repository.id(),
+                new CreateRepositoryApiKeyHttpRequest(
+                        "CI uploads",
+                        List.of("uploads:create", "uploads:read"),
+                        List.of("main"),
+                        NOW.plusSeconds(3600)));
+
+        assertEquals(201, createResponse.getStatus());
+        RepositoryApiKeyHttpResponse created = responseBody(createResponse, RepositoryApiKeyHttpResponse.class);
+        assertTrue(created.apiKey().startsWith("vc_repo_"));
+
+        Response listResponse = controlPlaneResource.listRepositoryApiKeys(
+                "Bearer test-token",
+                null,
+                organization.id(),
+                repository.id());
+        assertEquals(200, listResponse.getStatus());
+        List<?> listed = assertInstanceOf(List.class, responseEnvelope(listResponse).data());
+        RepositoryApiKeyHttpResponse listedKey = assertInstanceOf(RepositoryApiKeyHttpResponse.class, listed.getFirst());
+        assertEquals(created.keyPrefix(), listedKey.keyPrefix());
+        assertEquals(null, listedKey.apiKey());
+
+        Response revokeResponse = controlPlaneResource.revokeRepositoryApiKey(
+                "Bearer test-token",
+                null,
+                organization.id(),
+                repository.id(),
+                created.id());
+        assertEquals(200, revokeResponse.getStatus());
+        RepositoryApiKeyHttpResponse revoked = responseBody(revokeResponse, RepositoryApiKeyHttpResponse.class);
+        assertEquals(NOW, revoked.revokedAt());
+        assertEquals(null, revoked.apiKey());
+    }
+
+    @Test
     void mapsMissingAuthToUnauthorized() {
         var resource = new OrganizationResource(
                 service(),

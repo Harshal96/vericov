@@ -12,6 +12,11 @@ import dev.vericov.upload.application.port.RepositoryApiKeyAuthenticator;
 import dev.vericov.upload.application.port.UploadEventPublisher;
 import dev.vericov.upload.application.port.UploadRepository;
 import dev.vericov.upload.application.port.UploadWorkQueue;
+import dev.vericov.upload.adapter.auth.JdbcRepositoryApiKeyAuthenticator;
+import dev.vericov.upload.adapter.auth.GithubActionsOidcVerifier;
+import dev.vericov.upload.adapter.auth.HmacRunnerUploadTokenIssuer;
+import dev.vericov.upload.adapter.auth.RepositoryApiKeySecretHasher;
+import dev.vericov.upload.adapter.jdbc.DriverManagerDataSource;
 import dev.vericov.upload.adapter.storage.HttpSupabaseObjectStorageClient;
 import dev.vericov.upload.adapter.storage.RawArtifactBucketMapping;
 import dev.vericov.upload.adapter.storage.SupabaseStorageArtifactStorage;
@@ -29,6 +34,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import javax.sql.DataSource;
 
 @ApplicationScoped
 public class DevelopmentUploadComponents {
@@ -46,7 +52,8 @@ public class DevelopmentUploadComponents {
                 artifactStorage,
                 eventPublisher,
                 workQueue,
-                Clock.systemUTC());
+                Clock.systemUTC(),
+                runnerUploadTokenIssuer());
     }
 
     @Produces
@@ -58,6 +65,24 @@ public class DevelopmentUploadComponents {
     @Produces
     @ApplicationScoped
     public RepositoryApiKeyAuthenticator repositoryApiKeyAuthenticator() {
+        String jdbcUrl = env("VERICOV_UPLOAD_DB_URL", env("SUPABASE_DB_URL", ""));
+        if (!jdbcUrl.isBlank() && !Boolean.parseBoolean(env("VERICOV_DEV_AUTH_BYPASS", "false"))) {
+            return new JdbcRepositoryApiKeyAuthenticator(
+                    dataSource(jdbcUrl),
+                    new RepositoryApiKeySecretHasher(requiredEnv("VERICOV_REPO_API_KEY_PEPPER")),
+                    Clock.systemUTC(),
+                    env("VERICOV_RUNNER_JWT_SECRET", ""),
+                    env("VERICOV_RUNNER_JWT_ISSUER", "vericov-upload"),
+                    env("VERICOV_RUNNER_JWT_AUDIENCE", "vericov-runner-upload"),
+                    env("SUPABASE_JWT_SECRET", env("JWT_SECRET", "")),
+                    env("SUPABASE_JWT_ISSUER", env("GOTRUE_JWT_ISSUER", "http://localhost:8000/auth/v1")),
+                    env("SUPABASE_JWT_AUDIENCE", env("GOTRUE_JWT_AUD", "authenticated")),
+                    new GithubActionsOidcVerifier(
+                            URI.create(env(
+                                    "VERICOV_GITHUB_ACTIONS_OIDC_JWKS_URL",
+                                    "https://token.actions.githubusercontent.com/.well-known/jwks")),
+                            Clock.systemUTC()));
+        }
         return new EnvironmentRepositoryApiKeyAuthenticator();
     }
 
@@ -87,6 +112,18 @@ public class DevelopmentUploadComponents {
     @ApplicationScoped
     public UploadWorkQueue uploadWorkQueue() {
         return new InMemoryUploadWorkQueue();
+    }
+
+    private static HmacRunnerUploadTokenIssuer runnerUploadTokenIssuer() {
+        String secret = env("VERICOV_RUNNER_JWT_SECRET", "");
+        if (secret.isBlank()) {
+            return null;
+        }
+        return new HmacRunnerUploadTokenIssuer(
+                secret,
+                env("VERICOV_RUNNER_JWT_ISSUER", "vericov-upload"),
+                env("VERICOV_RUNNER_JWT_AUDIENCE", "vericov-runner-upload"),
+                Clock.systemUTC());
     }
 
     private static final class EnvironmentRepositoryApiKeyAuthenticator implements RepositoryApiKeyAuthenticator {
@@ -145,12 +182,27 @@ public class DevelopmentUploadComponents {
         return value == null || value.isBlank() ? fallback : value;
     }
 
+    private static DataSource dataSource(String jdbcUrl) {
+        return new DriverManagerDataSource(
+                jdbcUrl,
+                requiredDbEnv("VERICOV_UPLOAD_DB_USER", "SUPABASE_DB_USER"),
+                requiredDbEnv("VERICOV_UPLOAD_DB_PASSWORD", "SUPABASE_DB_PASSWORD"));
+    }
+
     private static String requiredEnv(String name) {
         String value = System.getenv(name);
         if (value == null || value.isBlank()) {
             throw new IllegalStateException(name + " is required");
         }
         return value;
+    }
+
+    private static String requiredDbEnv(String primaryName, String fallbackName) {
+        String primary = System.getenv(primaryName);
+        if (primary != null && !primary.isBlank()) {
+            return primary;
+        }
+        return requiredEnv(fallbackName);
     }
 
     private static final class InMemoryArtifactStorage implements ArtifactStorage {

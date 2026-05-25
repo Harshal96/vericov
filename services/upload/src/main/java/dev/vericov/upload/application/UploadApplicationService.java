@@ -2,6 +2,7 @@ package dev.vericov.upload.application;
 
 import dev.vericov.upload.application.port.ArtifactStorage;
 import dev.vericov.upload.application.port.RepositoryApiKeyAuthenticator;
+import dev.vericov.upload.application.port.RunnerUploadTokenIssuer;
 import dev.vericov.upload.application.port.UploadEventPublisher;
 import dev.vericov.upload.application.port.UploadRepository;
 import dev.vericov.upload.application.port.UploadWorkQueue;
@@ -9,6 +10,7 @@ import dev.vericov.upload.domain.CreateUploadCommand;
 import dev.vericov.upload.domain.RepositoryApiKeyPrincipal;
 import dev.vericov.upload.domain.UploadStatus;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -16,6 +18,8 @@ import java.util.UUID;
 
 public class UploadApplicationService {
     private static final String CREATE_UPLOAD_SCOPE = "uploads:create";
+    private static final String READ_UPLOAD_SCOPE = "uploads:read";
+    private static final Duration RUNNER_UPLOAD_TOKEN_TTL = Duration.ofMinutes(15);
 
     private final RepositoryApiKeyAuthenticator authenticator;
     private final UploadRepository uploadRepository;
@@ -23,6 +27,7 @@ public class UploadApplicationService {
     private final UploadEventPublisher eventPublisher;
     private final UploadWorkQueue workQueue;
     private final Clock clock;
+    private final RunnerUploadTokenIssuer runnerTokenIssuer;
 
     public UploadApplicationService(
             RepositoryApiKeyAuthenticator authenticator,
@@ -31,12 +36,24 @@ public class UploadApplicationService {
             UploadEventPublisher eventPublisher,
             UploadWorkQueue workQueue,
             Clock clock) {
+        this(authenticator, uploadRepository, artifactStorage, eventPublisher, workQueue, clock, null);
+    }
+
+    public UploadApplicationService(
+            RepositoryApiKeyAuthenticator authenticator,
+            UploadRepository uploadRepository,
+            ArtifactStorage artifactStorage,
+            UploadEventPublisher eventPublisher,
+            UploadWorkQueue workQueue,
+            Clock clock,
+            RunnerUploadTokenIssuer runnerTokenIssuer) {
         this.authenticator = authenticator;
         this.uploadRepository = uploadRepository;
         this.artifactStorage = artifactStorage;
         this.eventPublisher = eventPublisher;
         this.workQueue = workQueue;
         this.clock = clock;
+        this.runnerTokenIssuer = runnerTokenIssuer;
     }
 
     public UploadAccepted acceptUpload(CreateUploadCommand command) {
@@ -52,7 +69,40 @@ public class UploadApplicationService {
     public UploadDetails getUpload(UUID uploadId) {
         QueuedUpload upload = uploadRepository.findById(uploadId)
                 .orElseThrow(() -> new InvalidUploadException("not_found", "Upload not found"));
-        List<ArtifactDetails> artifacts = uploadRepository.artifactsFor(uploadId).stream()
+        return uploadDetails(upload);
+    }
+
+    public UploadDetails getUpload(UUID uploadId, String authorizationHeader) {
+        QueuedUpload upload = uploadRepository.findById(uploadId)
+                .orElseThrow(() -> new InvalidUploadException("not_found", "Upload not found"));
+        RepositoryApiKeyPrincipal principal = authenticator.authenticateRepositoryAccess(
+                authorizationHeader,
+                upload.repositoryId(),
+                upload.branch());
+        authorizeRepositoryAccess(principal, upload.repositoryId(), upload.branch(), READ_UPLOAD_SCOPE);
+        return uploadDetails(upload);
+    }
+
+    public RunnerUploadToken createRunnerUploadToken(String authorizationHeader, UUID repositoryId, String branch) {
+        if (runnerTokenIssuer == null) {
+            throw new InvalidUploadException("unauthorized", "Runner upload tokens are not configured");
+        }
+        if (repositoryId == null) {
+            throw new InvalidUploadException("validation_error", "repository_id is required");
+        }
+        if (branch == null || branch.isBlank()) {
+            throw new InvalidUploadException("validation_error", "branch is required");
+        }
+        RepositoryApiKeyPrincipal principal = authenticator.authenticateRepositoryAccess(
+                authorizationHeader,
+                repositoryId,
+                branch);
+        authorizeRepositoryAccess(principal, repositoryId, branch, CREATE_UPLOAD_SCOPE);
+        return runnerTokenIssuer.issue(principal, repositoryId, branch, RUNNER_UPLOAD_TOKEN_TTL);
+    }
+
+    private UploadDetails uploadDetails(QueuedUpload upload) {
+        List<ArtifactDetails> artifacts = uploadRepository.artifactsFor(upload.uploadId()).stream()
                 .map(artifact -> new ArtifactDetails(
                         artifact.name(),
                         artifact.kind(),
@@ -81,7 +131,7 @@ public class UploadApplicationService {
                 uploadId,
                 principal.tenantId(),
                 command.repositoryId(),
-                java.util.Optional.of(principal.apiKeyId()),
+                java.util.Optional.ofNullable(principal.apiKeyId()),
                 command.commitSha(),
                 command.branch(),
                 command.pullRequestNumber(),
@@ -153,13 +203,21 @@ public class UploadApplicationService {
     }
 
     private void authorize(RepositoryApiKeyPrincipal principal, CreateUploadCommand command) {
-        if (!principal.repositoryId().equals(command.repositoryId())) {
+        authorizeRepositoryAccess(principal, command.repositoryId(), command.branch(), CREATE_UPLOAD_SCOPE);
+    }
+
+    private void authorizeRepositoryAccess(
+            RepositoryApiKeyPrincipal principal,
+            UUID repositoryId,
+            String branch,
+            String requiredScope) {
+        if (!principal.repositoryId().equals(repositoryId)) {
             throw new InvalidUploadException("forbidden", "API key is not valid for this repository");
         }
-        if (!principal.hasScope(CREATE_UPLOAD_SCOPE)) {
-            throw new InvalidUploadException("forbidden", "API key does not have uploads:create scope");
+        if (!principal.hasScope(requiredScope)) {
+            throw new InvalidUploadException("forbidden", "API key does not have " + requiredScope + " scope");
         }
-        if (!principal.allowsBranch(command.branch())) {
+        if (!principal.allowsBranch(branch)) {
             throw new InvalidUploadException("forbidden", "API key is not allowed for this branch");
         }
     }

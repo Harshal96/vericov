@@ -26,7 +26,9 @@ public class OrganizationApplicationService {
     private static final Pattern CONFIG_KEY_PATTERN = Pattern.compile("^[a-z0-9_.-]+$");
     private static final int INVITATION_TOKEN_BYTES = 32;
     private static final int BADGE_TOKEN_BYTES = 24;
+    private static final int REPOSITORY_API_KEY_BYTES = 32;
     private static final String BADGE_TOKEN_PREFIX = "vc_badge_";
+    private static final String REPOSITORY_API_KEY_PREFIX = "vc_repo_";
     private static final String BADGE_CACHE_SCOPE_TOKEN = "token";
     private static final String BADGE_CACHE_SCOPE_AUTHENTICATED = "authenticated";
     private static final long TOKEN_BADGE_CACHE_TTL_SECONDS = 60;
@@ -51,6 +53,7 @@ public class OrganizationApplicationService {
             "agent_review_required");
     private static final Set<String> GATE_METRICS = Set.of("line", "branch", "function", "statement", "mutation", "risk");
     private static final Set<String> BADGE_METRICS = Set.of("line", "branch", "function", "statement");
+    private static final Set<String> REPOSITORY_API_KEY_SCOPES = Set.of("uploads:create", "uploads:read");
     private static final Map<String, Object> DEFAULT_BADGE_THRESHOLDS = Map.of(
             "brightgreen", new BigDecimal("90"),
             "green", new BigDecimal("80"),
@@ -75,11 +78,15 @@ public class OrganizationApplicationService {
     private final OrganizationRepository repository;
     private final Clock clock;
     private final SecureRandom secureRandom;
+    private final RepositoryApiKeySecretHasher apiKeyHasher;
 
     public OrganizationApplicationService(OrganizationRepository repository, Clock clock) {
         this.repository = Objects.requireNonNull(repository, "repository");
         this.clock = Objects.requireNonNull(clock, "clock");
         this.secureRandom = new SecureRandom();
+        this.apiKeyHasher = new RepositoryApiKeySecretHasher(env(
+                "VERICOV_REPO_API_KEY_PEPPER",
+                "local-development-repository-api-key-pepper"));
     }
 
     public List<OrganizationDetails> listOrganizations(UUID requesterUserId) {
@@ -373,6 +380,60 @@ public class OrganizationApplicationService {
                 nextVisibility,
                 nextStatus,
                 clock.instant()));
+    }
+
+    public RepositoryApiKeyDetails createRepositoryApiKey(CreateRepositoryApiKeyCommand command) {
+        RepositoryDetails registeredRepository = requireRepositoryForAdmin(
+                command.requesterUserId(),
+                command.organizationId(),
+                command.repositoryId());
+        String name = validateRepositoryApiKeyName(command.name());
+        List<String> scopes = validateRepositoryApiKeyScopes(command.scopes());
+        List<String> branchAllowPatterns = validateBranchAllowPatterns(command.branchAllowPatterns());
+        Instant now = clock.instant();
+        Instant expiresAt = validateApiKeyExpiry(command.expiresAt(), now);
+        String plaintextKey = generateRepositoryApiKey();
+        RepositoryApiKeyDetails apiKey = new RepositoryApiKeyDetails(
+                UUID.randomUUID(),
+                registeredRepository.tenantId(),
+                registeredRepository.id(),
+                name,
+                tokenPrefix(plaintextKey),
+                apiKeyHasher.hash(plaintextKey),
+                plaintextKey,
+                scopes,
+                branchAllowPatterns,
+                expiresAt,
+                null,
+                command.requesterUserId(),
+                null,
+                null,
+                now,
+                now);
+        repository.saveRepositoryApiKey(apiKey.withoutPlaintextKey());
+        return apiKey;
+    }
+
+    public List<RepositoryApiKeyDetails> listRepositoryApiKeys(
+            UUID requesterUserId,
+            UUID organizationId,
+            UUID repositoryId) {
+        requireRepositoryForAdmin(requesterUserId, organizationId, repositoryId);
+        return repository.listRepositoryApiKeys(repositoryId).stream()
+                .map(RepositoryApiKeyDetails::withoutPlaintextKey)
+                .toList();
+    }
+
+    public RepositoryApiKeyDetails revokeRepositoryApiKey(RevokeRepositoryApiKeyCommand command) {
+        requireRepositoryForAdmin(command.requesterUserId(), command.organizationId(), command.repositoryId());
+        requireId(command.apiKeyId(), "api_key_id is required");
+        RepositoryApiKeyDetails current = repository.findRepositoryApiKey(command.repositoryId(), command.apiKeyId())
+                .orElseThrow(() -> new OrganizationException("not_found", "Repository API key not found"));
+        if (current.revokedAt() != null) {
+            return current.withoutPlaintextKey();
+        }
+        return repository.updateRepositoryApiKey(current.revoke(command.requesterUserId(), clock.instant()))
+                .withoutPlaintextKey();
     }
 
     public PolicyDefaultsDetails getPolicyDefaults(UUID requesterUserId, UUID organizationId) {
@@ -1269,6 +1330,60 @@ public class OrganizationApplicationService {
         return validateAllowed("status", status, REPOSITORY_STATUSES);
     }
 
+    private static String validateRepositoryApiKeyName(String name) {
+        String normalized = trim(name);
+        if (normalized == null || normalized.length() > 120) {
+            throw new OrganizationException("validation_error", "api key name must be 1 to 120 characters");
+        }
+        return normalized;
+    }
+
+    private static List<String> validateRepositoryApiKeyScopes(List<String> scopes) {
+        List<String> normalized = (scopes == null || scopes.isEmpty()
+                ? List.of("uploads:create", "uploads:read")
+                : scopes).stream()
+                        .map(scope -> validateAllowed("scope", scope, REPOSITORY_API_KEY_SCOPES))
+                        .distinct()
+                        .toList();
+        if (normalized.isEmpty()) {
+            throw new OrganizationException("validation_error", "at least one scope is required");
+        }
+        return normalized;
+    }
+
+    private static List<String> validateBranchAllowPatterns(List<String> patterns) {
+        List<String> normalized = (patterns == null || patterns.isEmpty() ? List.of("*") : patterns).stream()
+                .map(OrganizationApplicationService::validateBranchAllowPattern)
+                .distinct()
+                .toList();
+        if (normalized.isEmpty()) {
+            throw new OrganizationException("validation_error", "at least one branch allow pattern is required");
+        }
+        return normalized;
+    }
+
+    private static String validateBranchAllowPattern(String pattern) {
+        String normalized = trim(pattern);
+        if (normalized == null) {
+            throw new OrganizationException("validation_error", "branch allow pattern is required");
+        }
+        if ("*".equals(normalized)) {
+            return normalized;
+        }
+        String branchLike = normalized.endsWith("*")
+                ? normalized.substring(0, normalized.length() - 1) + "placeholder"
+                : normalized;
+        validateDefaultBranch(branchLike);
+        return normalized;
+    }
+
+    private static Instant validateApiKeyExpiry(Instant expiresAt, Instant now) {
+        if (expiresAt != null && !expiresAt.isAfter(now)) {
+            throw new OrganizationException("validation_error", "expires_at must be in the future");
+        }
+        return expiresAt;
+    }
+
     private static String validateProviderRepositoryId(String providerRepositoryId) {
         String normalized = trim(providerRepositoryId);
         if (normalized == null || normalized.length() > 120) {
@@ -1395,8 +1510,19 @@ public class OrganizationApplicationService {
         return BADGE_TOKEN_PREFIX + Base64.getUrlEncoder().withoutPadding().encodeToString(tokenBytes);
     }
 
+    private String generateRepositoryApiKey() {
+        byte[] tokenBytes = new byte[REPOSITORY_API_KEY_BYTES];
+        secureRandom.nextBytes(tokenBytes);
+        return REPOSITORY_API_KEY_PREFIX + Base64.getUrlEncoder().withoutPadding().encodeToString(tokenBytes);
+    }
+
     private static String tokenPrefix(String token) {
         return token.substring(0, Math.min(18, token.length()));
+    }
+
+    private static String env(String name, String fallback) {
+        String value = System.getenv(name);
+        return value == null || value.isBlank() ? fallback : value;
     }
 
     private static String hashToken(String token) {
