@@ -1,5 +1,6 @@
 package dev.vericov.analysis.coverage;
 
+import dev.vericov.analysis.gaps.CoverageGapFinding;
 import java.time.Instant;
 import java.util.List;
 import java.util.Objects;
@@ -20,6 +21,7 @@ public record CoverageReport(
         List<CoverageFileSummary> files,
         List<CoverageLineHit> lineHits,
         List<CoverageComponentRollup> componentRollups,
+        List<CoverageGapFinding> gapFindings,
         String normalizedStorageBucket,
         String normalizedStoragePath,
         Instant generatedAt) {
@@ -28,6 +30,7 @@ public record CoverageReport(
         files = List.copyOf(files == null ? List.of() : files);
         lineHits = List.copyOf(lineHits == null ? List.of() : lineHits);
         componentRollups = List.copyOf(componentRollups == null ? List.of() : componentRollups);
+        gapFindings = List.copyOf(gapFindings == null ? List.of() : gapFindings);
     }
 
     public CoverageReport(
@@ -60,6 +63,7 @@ public record CoverageReport(
                 files,
                 lineHits,
                 List.of(),
+                List.of(),
                 null,
                 null,
                 generatedAt);
@@ -89,6 +93,7 @@ public record CoverageReport(
                 files,
                 lineHits,
                 componentRollups,
+                gapFindings,
                 bucket,
                 path,
                 generatedAt);
@@ -110,6 +115,7 @@ public record CoverageReport(
                 resolvedFiles,
                 lineHits,
                 componentRollups,
+                gapFindings,
                 normalizedStorageBucket,
                 normalizedStoragePath,
                 generatedAt);
@@ -131,6 +137,29 @@ public record CoverageReport(
                 files,
                 lineHits,
                 rollups,
+                gapFindings,
+                normalizedStorageBucket,
+                normalizedStoragePath,
+                generatedAt);
+    }
+
+    public CoverageReport withGapFindings(List<CoverageGapFinding> findings) {
+        return new CoverageReport(
+                reportId,
+                uploadId,
+                tenantId,
+                repositoryId,
+                commitSha,
+                branchName,
+                pullRequestNumber,
+                line,
+                branch,
+                function,
+                statement,
+                files,
+                lineHits,
+                componentRollups,
+                findings,
                 normalizedStorageBucket,
                 normalizedStoragePath,
                 generatedAt);

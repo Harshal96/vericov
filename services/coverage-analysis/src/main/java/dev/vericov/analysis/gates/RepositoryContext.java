@@ -11,7 +11,8 @@ public record RepositoryContext(
         Map<String, ComponentRollup> componentRollups,
         List<RepositoryComponentContext> components,
         List<RepositoryOwnerRuleContext> ownerRules,
-        List<RepositoryPackageNodeContext> packageNodes) {
+        List<RepositoryPackageNodeContext> packageNodes,
+        Map<String, Object> riskConfig) {
 
     public RepositoryContext {
         Objects.requireNonNull(contextVersion, "contextVersion");
@@ -21,6 +22,18 @@ public record RepositoryContext(
         components = components == null ? List.of() : List.copyOf(components);
         ownerRules = ownerRules == null ? List.of() : List.copyOf(ownerRules);
         packageNodes = packageNodes == null ? List.of() : List.copyOf(packageNodes);
+        riskConfig = riskConfig == null ? Map.of() : Map.copyOf(riskConfig);
+    }
+
+    public RepositoryContext(
+            String contextVersion,
+            List<Finding> findings,
+            List<DebtItem> debtItems,
+            Map<String, ComponentRollup> componentRollups,
+            List<RepositoryComponentContext> components,
+            List<RepositoryOwnerRuleContext> ownerRules,
+            List<RepositoryPackageNodeContext> packageNodes) {
+        this(contextVersion, findings, debtItems, componentRollups, components, ownerRules, packageNodes, Map.of());
     }
 
     public RepositoryContext(
@@ -39,6 +52,19 @@ public record RepositoryContext(
                 nextComponentRollups,
                 components,
                 ownerRules,
-                packageNodes);
+                packageNodes,
+                riskConfig);
+    }
+
+    public RepositoryContext withFindings(List<Finding> nextFindings) {
+        return new RepositoryContext(
+                contextVersion,
+                nextFindings,
+                debtItems,
+                componentRollups,
+                components,
+                ownerRules,
+                packageNodes,
+                riskConfig);
     }
 }

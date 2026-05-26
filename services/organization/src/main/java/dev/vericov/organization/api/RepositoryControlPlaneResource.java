@@ -9,6 +9,8 @@ import dev.vericov.organization.application.GetOrganizationDashboardQuery;
 import dev.vericov.organization.application.GetPullRequestCoverageReportQuery;
 import dev.vericov.organization.application.GetRepositoryDashboardQuery;
 import dev.vericov.organization.application.ListCoverageTrendsQuery;
+import dev.vericov.organization.application.ListCoverageGapsQuery;
+import dev.vericov.organization.application.ListFixFirstCoverageGapsQuery;
 import dev.vericov.organization.application.ListGateEvaluationsQuery;
 import dev.vericov.organization.application.ListRepositoryDashboardsQuery;
 import dev.vericov.organization.application.ListTestRunsQuery;
@@ -543,6 +545,93 @@ public class RepositoryControlPlaneResource {
                     null,
                     limit));
             return Response.ok(new ApiResponse<>(CoverageTrendHttpResponse.from(trend))).build();
+        } catch (OrganizationException exception) {
+            return OrganizationResource.errorResponse(exception);
+        }
+    }
+
+    @GET
+    @Path("/{org_id}/repositories/{repository_id}/coverage-gaps")
+    public Response listCoverageGaps(
+            @HeaderParam("Authorization") String authorizationHeader,
+            @HeaderParam("X-Vericov-User-Id") String userIdHeader,
+            @PathParam("org_id") UUID organizationId,
+            @PathParam("repository_id") UUID repositoryId,
+            @QueryParam("commit_sha") String commitSha,
+            @QueryParam("pull_request_number") Integer pullRequestNumber,
+            @QueryParam("component_id") UUID componentId,
+            @QueryParam("owner") String owner,
+            @QueryParam("min_risk") String minRisk,
+            @QueryParam("risk_level") String riskLevel,
+            @QueryParam("status") String status,
+            @QueryParam("include_debt") Boolean includeDebt,
+            @QueryParam("limit") Integer limit) {
+        try {
+            AuthenticatedUser user = resolveUser(authorizationHeader, userIdHeader);
+            var query = new ListCoverageGapsQuery(
+                    user.userId(),
+                    organizationId,
+                    repositoryId,
+                    commitSha,
+                    pullRequestNumber,
+                    componentId,
+                    owner,
+                    minRisk,
+                    riskLevel,
+                    status,
+                    includeDebt != null && includeDebt,
+                    limit == null ? 100 : limit);
+            var gaps = organizationService.listCoverageGaps(query).stream()
+                    .map(CoverageGapFindingHttpResponse::from)
+                    .toList();
+            return Response.ok(new ApiResponse<>(gaps)).build();
+        } catch (OrganizationException exception) {
+            return OrganizationResource.errorResponse(exception);
+        }
+    }
+
+    @GET
+    @Path("/{org_id}/repositories/{repository_id}/coverage-gaps/fix-first")
+    public Response listFixFirstCoverageGaps(
+            @HeaderParam("Authorization") String authorizationHeader,
+            @HeaderParam("X-Vericov-User-Id") String userIdHeader,
+            @PathParam("org_id") UUID organizationId,
+            @PathParam("repository_id") UUID repositoryId,
+            @QueryParam("commit_sha") String commitSha,
+            @QueryParam("pull_request_number") Integer pullRequestNumber,
+            @QueryParam("include_source_required") Boolean includeSourceRequired,
+            @QueryParam("limit") Integer limit) {
+        try {
+            AuthenticatedUser user = resolveUser(authorizationHeader, userIdHeader);
+            var query = new ListFixFirstCoverageGapsQuery(
+                    user.userId(),
+                    organizationId,
+                    repositoryId,
+                    commitSha,
+                    pullRequestNumber,
+                    includeSourceRequired != null && includeSourceRequired,
+                    limit == null ? 5 : limit);
+            var gaps = organizationService.listFixFirstCoverageGaps(query).stream()
+                    .map(CoverageGapFindingHttpResponse::from)
+                    .toList();
+            return Response.ok(new ApiResponse<>(gaps)).build();
+        } catch (OrganizationException exception) {
+            return OrganizationResource.errorResponse(exception);
+        }
+    }
+
+    @GET
+    @Path("/{org_id}/repositories/{repository_id}/coverage-gaps/{gap_id}")
+    public Response getCoverageGap(
+            @HeaderParam("Authorization") String authorizationHeader,
+            @HeaderParam("X-Vericov-User-Id") String userIdHeader,
+            @PathParam("org_id") UUID organizationId,
+            @PathParam("repository_id") UUID repositoryId,
+            @PathParam("gap_id") UUID gapId) {
+        try {
+            AuthenticatedUser user = resolveUser(authorizationHeader, userIdHeader);
+            var gap = organizationService.getCoverageGap(user.userId(), organizationId, repositoryId, gapId);
+            return Response.ok(new ApiResponse<>(CoverageGapFindingHttpResponse.from(gap))).build();
         } catch (OrganizationException exception) {
             return OrganizationResource.errorResponse(exception);
         }

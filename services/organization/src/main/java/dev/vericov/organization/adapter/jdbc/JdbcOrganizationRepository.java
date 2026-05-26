@@ -10,6 +10,7 @@ import dev.vericov.organization.application.CoverageLineHitMapDetails;
 import dev.vericov.organization.application.CoverageMetricDetails;
 import dev.vericov.organization.application.CoverageReportSummary;
 import dev.vericov.organization.application.CoverageFileSummaryDetails;
+import dev.vericov.organization.application.CoverageGapFindingDetails;
 import dev.vericov.organization.application.DiffCoverageFileDetails;
 import dev.vericov.organization.application.DiffCoverageLineDetails;
 import dev.vericov.organization.application.GateEvaluationDetails;
@@ -1694,6 +1695,119 @@ public class JdbcOrganizationRepository implements OrganizationRepository {
             throw databaseFailure("Failed to list gate evaluations", exception);
         }
     }
+
+    @Override
+    public Optional<CoverageGapFindingDetails> findCoverageGap(UUID repositoryId, UUID gapId) {
+        try (var connection = dataSource.getConnection();
+                var statement = connection.prepareStatement("""
+                        select id, tenant_id, org_id, repository_id, coverage_report_id, pr_diff_id,
+                               component_id, commit_sha, pull_request_number, file_path, target_type,
+                               line_start, line_end, symbol_name, reason_code, explanation,
+                               confidence, risk_score, risk_level, owners, next_action, status,
+                               evidence_json, created_at, updated_at
+                        from vericov.coverage_gap_findings
+                        where repository_id = ?
+                          and id = ?
+                        """)) {
+            statement.setObject(1, repositoryId);
+            statement.setObject(2, gapId);
+            try (var resultSet = statement.executeQuery()) {
+                return resultSet.next() ? Optional.of(readCoverageGap(resultSet)) : Optional.empty();
+            }
+        } catch (SQLException exception) {
+            throw databaseFailure("Failed to find coverage gap", exception);
+        }
+    }
+
+    @Override
+    public List<CoverageGapFindingDetails> listCoverageGaps(
+            UUID organizationId,
+            UUID repositoryId,
+            String commitSha,
+            Integer pullRequestNumber,
+            UUID componentId,
+            String owner,
+            String minRisk,
+            String riskLevel,
+            String status,
+            boolean includeDebt,
+            int limit) {
+        try (var connection = dataSource.getConnection();
+                var statement = connection.prepareStatement("""
+                        select id, tenant_id, org_id, repository_id, coverage_report_id, pr_diff_id,
+                               component_id, commit_sha, pull_request_number, file_path, target_type,
+                               line_start, line_end, symbol_name, reason_code, explanation,
+                               confidence, risk_score, risk_level, owners, next_action, status,
+                               evidence_json, created_at, updated_at
+                        from vericov.coverage_gap_findings
+                        where org_id = ?
+                          and repository_id = ?
+                          and (? is null or commit_sha = ?)
+                          and (? is null or pull_request_number = ?)
+                          and (? is null or component_id = ?)
+                          and (? is null or ? = any(owners))
+                          and (? is null or risk_level = ?)
+                          and (? is null or status = ?)
+                          and (? or status <> 'debt_suppressed')
+                          and (? is null or
+                              case risk_level
+                                  when 'critical' then 4
+                                  when 'high' then 3
+                                  when 'medium' then 2
+                                  else 1
+                              end >=
+                              case ?
+                                  when 'critical' then 4
+                                  when 'high' then 3
+                                  when 'medium' then 2
+                                  else 1
+                              end)
+                        order by
+                          case when status = 'debt_suppressed' then 1 else 0 end,
+                          risk_score desc,
+                          case when reason_code in ('new_uncovered_changed_line', 'lost_existing_coverage', 'expired_debt_reappeared') then 0 else 1 end,
+                          created_at,
+                          file_path,
+                          line_start nulls last,
+                          id
+                        limit ?
+                        """)) {
+            int index = 1;
+            statement.setObject(index++, organizationId);
+            statement.setObject(index++, repositoryId);
+            statement.setString(index++, commitSha);
+            statement.setString(index++, commitSha);
+            if (pullRequestNumber == null) {
+                statement.setNull(index++, java.sql.Types.INTEGER);
+                statement.setNull(index++, java.sql.Types.INTEGER);
+            } else {
+                statement.setInt(index++, pullRequestNumber);
+                statement.setInt(index++, pullRequestNumber);
+            }
+            statement.setObject(index++, componentId);
+            statement.setObject(index++, componentId);
+            statement.setString(index++, owner);
+            statement.setString(index++, owner);
+            statement.setString(index++, riskLevel);
+            statement.setString(index++, riskLevel);
+            statement.setString(index++, status);
+            statement.setString(index++, status);
+            statement.setBoolean(index++, includeDebt);
+            statement.setString(index++, minRisk);
+            statement.setString(index++, minRisk);
+            statement.setInt(index, limit);
+            try (var resultSet = statement.executeQuery()) {
+                List<CoverageGapFindingDetails> gaps = new ArrayList<>();
+                while (resultSet.next()) {
+                    gaps.add(readCoverageGap(resultSet));
+                }
+                return List.copyOf(gaps);
+            }
+        } catch (SQLException exception) {
+            throw databaseFailure("Failed to list coverage gaps", exception);
+        }
+    }
+
     @Override
     public Optional<CoverageDebtDetails> findCoverageDebt(UUID repositoryId, UUID debtId) {
         try (var connection = dataSource.getConnection();
@@ -2801,6 +2915,35 @@ public class JdbcOrganizationRepository implements OrganizationRepository {
                 resultSet.getBoolean("blocking"),
                 jsonMap(resultSet, "details_json"),
                 instant(resultSet, "evaluated_at"));
+    }
+
+    private static CoverageGapFindingDetails readCoverageGap(ResultSet resultSet) throws SQLException {
+        return new CoverageGapFindingDetails(
+                resultSet.getObject("id", UUID.class),
+                resultSet.getObject("tenant_id", UUID.class),
+                resultSet.getObject("org_id", UUID.class),
+                resultSet.getObject("repository_id", UUID.class),
+                resultSet.getObject("coverage_report_id", UUID.class),
+                resultSet.getObject("pr_diff_id", UUID.class),
+                resultSet.getObject("component_id", UUID.class),
+                resultSet.getString("commit_sha"),
+                nullableInteger(resultSet, "pull_request_number"),
+                resultSet.getString("file_path"),
+                resultSet.getString("target_type"),
+                nullableInteger(resultSet, "line_start"),
+                nullableInteger(resultSet, "line_end"),
+                resultSet.getString("symbol_name"),
+                resultSet.getString("reason_code"),
+                resultSet.getString("explanation"),
+                resultSet.getString("confidence"),
+                resultSet.getBigDecimal("risk_score"),
+                resultSet.getString("risk_level"),
+                stringArray(resultSet, "owners"),
+                resultSet.getString("next_action"),
+                resultSet.getString("status"),
+                jsonMap(resultSet, "evidence_json"),
+                instant(resultSet, "created_at"),
+                instant(resultSet, "updated_at"));
     }
 
     private static Map<String, Object> jsonMap(ResultSet resultSet, String columnName) throws SQLException {

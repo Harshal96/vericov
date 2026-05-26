@@ -21,6 +21,7 @@ import dev.vericov.organization.application.RepositoryPackageNodeDetails;
 import dev.vericov.organization.application.RepositoryPolicyDetails;
 import dev.vericov.organization.application.CoverageDebtDetails;
 import dev.vericov.organization.application.CoverageDebtEventDetails;
+import dev.vericov.organization.application.CoverageGapFindingDetails;
 import dev.vericov.organization.application.TestRunDetails;
 import java.time.Instant;
 import java.util.List;
@@ -159,6 +160,21 @@ public interface OrganizationRepository {
     List<TestRunDetails> listTestRuns(UUID repositoryId, String commitSha, int limit);
 
     List<GateEvaluationDetails> listGateEvaluations(UUID organizationId, UUID repositoryId, String branch, String status, int limit);
+
+    Optional<CoverageGapFindingDetails> findCoverageGap(UUID repositoryId, UUID gapId);
+
+    List<CoverageGapFindingDetails> listCoverageGaps(
+            UUID organizationId,
+            UUID repositoryId,
+            String commitSha,
+            Integer pullRequestNumber,
+            UUID componentId,
+            String owner,
+            String minRisk,
+            String riskLevel,
+            String status,
+            boolean includeDebt,
+            int limit);
 
     Optional<CoverageDebtDetails> findCoverageDebt(UUID repositoryId, UUID debtId);
 

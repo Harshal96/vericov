@@ -76,7 +76,7 @@ public class GateEvaluator {
                 .toList();
 
         List<Finding> highRiskFindings = activeFindings.stream()
-                .filter(f -> "high".equalsIgnoreCase(f.riskLevel()))
+                .filter(f -> "high".equalsIgnoreCase(f.riskLevel()) || "critical".equalsIgnoreCase(f.riskLevel()))
                 .toList();
 
         List<UUID> suppressedFindingIds = new ArrayList<>();
@@ -96,7 +96,7 @@ public class GateEvaluator {
                 for (DebtItem debtItem : repositoryContext.debtItems()) {
                     if (debtItem.matches(finding)) {
                         if (isActive(debtItem, evaluatedAt)) {
-                            if (allowRiskLevels.contains("high")) {
+                            if (allowRiskLevels.contains(finding.riskLevel().toLowerCase(Locale.ROOT))) {
                                 suppressed = true;
                                 suppressedFindingIds.add(finding.id());
                                 suppressedDebtIds.add(debtItem.id());

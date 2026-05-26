@@ -2,6 +2,7 @@ package dev.vericov.organization.application;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -16,7 +17,7 @@ final class ConfigurationValues {
         }
         Map<String, Object> copy = new LinkedHashMap<>();
         value.forEach((key, entryValue) -> copy.put(key, deepCopyValue(entryValue)));
-        return Map.copyOf(copy);
+        return Collections.unmodifiableMap(copy);
     }
 
     static List<Object> deepCopyList(List<?> value) {
@@ -49,7 +50,7 @@ final class ConfigurationValues {
                 }
                 copy.put(stringKey, deepCopyValue(entryValue));
             });
-            return Map.copyOf(copy);
+            return Collections.unmodifiableMap(copy);
         }
         if (value instanceof List<?> listValue) {
             return deepCopyList(listValue);

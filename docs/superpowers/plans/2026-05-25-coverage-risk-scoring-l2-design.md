@@ -1,8 +1,14 @@
 # Coverage Risk Scoring and Prioritization L2 Design
 
 Date: 2026-05-25
-Status: Proposed
+Status: Implemented
 Owner: Coverage Analysis service, Organization service
+
+## Implementation Notes
+
+- Coverage Analysis now extracts gap findings, assigns deterministic risk scores and levels, persists factor evidence, updates component rollups, and emits scoring events.
+- Organization now merges risk policy config into coverage context and exposes ranked coverage gap, fix-first, and gap detail reads.
+- Supabase schema now includes `coverage_gap_findings` plus component rollup highest active risk level metadata.
 
 ## Current State
 

@@ -20,9 +20,12 @@ import dev.vericov.analysis.coverage.CoverageReportMerger;
 import dev.vericov.analysis.coverage.ParsedCoverage;
 import dev.vericov.analysis.diff.DiffCoverageReport;
 import dev.vericov.analysis.domain.UploadReceivedEvent;
+import dev.vericov.analysis.gaps.CoverageGapExtractor;
+import dev.vericov.analysis.gaps.CoverageGapFinding;
 import dev.vericov.analysis.gates.GateEvaluation;
 import dev.vericov.analysis.gates.GateEvaluator;
 import dev.vericov.analysis.gates.ComponentRollup;
+import dev.vericov.analysis.gates.Finding;
 import dev.vericov.analysis.gates.RepositoryContext;
 import dev.vericov.analysis.gates.RepositoryComponentContext;
 import dev.vericov.analysis.gates.RepositoryOwnerRuleContext;
@@ -56,6 +59,7 @@ public class DefaultCoverageAnalysisProcessor implements CoverageAnalysisProcess
     private final PrDiffCoverageProcessor prDiffCoverageProcessor;
     private final CoverageReportMerger merger = new CoverageReportMerger();
     private final GateEvaluator gateEvaluator = new GateEvaluator();
+    private final CoverageGapExtractor gapExtractor = new CoverageGapExtractor();
     private final Clock clock;
 
     public DefaultCoverageAnalysisProcessor(
@@ -253,24 +257,34 @@ public class DefaultCoverageAnalysisProcessor implements CoverageAnalysisProcess
                 report.branchName(),
                 report.pullRequestNumber());
         CoverageReport contextualReport = applyRepositoryContext(report, repositoryContext);
-        RepositoryContext gateContext = repositoryContext.withComponentRollups(gateComponentRollups(contextualReport));
 
         NormalizedCoverageLocation location = normalizedCoverageStore.store(contextualReport);
         CoverageReport reportWithStorage = contextualReport.withNormalizedStorage(location.bucket(), location.path());
 
         // 1. Process diff coverage first so we have the DiffCoverageReport
         DiffCoverageReport diffCoverage = prDiffCoverageProcessor.process(input, reportWithStorage);
+        List<CoverageGapFinding> gapFindings = gapExtractor.extract(
+                reportWithStorage,
+                repositoryContext,
+                diffCoverage,
+                reportWithStorage.generatedAt());
+        CoverageReport reportWithFindings = reportWithStorage
+                .withGapFindings(gapFindings)
+                .withComponentRollups(coverageComponentRollups(reportWithStorage.files(), gapFindings));
+        RepositoryContext gateContext = repositoryContext
+                .withComponentRollups(gateComponentRollups(reportWithFindings))
+                .withFindings(gateFindings(gapFindings));
 
         // 3. Evaluate gates with report, context, and diff coverage
         List<GateEvaluation> evaluations = gateEvaluator.evaluate(
-                reportWithStorage,
-                gates.listActiveForRepository(reportWithStorage.tenantId(), reportWithStorage.repositoryId()),
+                reportWithFindings,
+                gates.listActiveForRepository(reportWithFindings.tenantId(), reportWithFindings.repositoryId()),
                 gateContext,
                 diffCoverage,
-                reportWithStorage.generatedAt());
+                reportWithFindings.generatedAt());
 
         // 4. Save report and evaluations
-        reports.save(reportWithStorage, evaluations);
+        reports.save(reportWithFindings, evaluations);
     }
 
     private CoverageReport applyRepositoryContext(CoverageReport report, RepositoryContext context) {
@@ -281,7 +295,7 @@ public class DefaultCoverageAnalysisProcessor implements CoverageAnalysisProcess
                 .map(file -> resolveFile(file, context))
                 .toList();
         return report.withResolvedFiles(resolvedFiles)
-                .withComponentRollups(coverageComponentRollups(resolvedFiles));
+                .withComponentRollups(coverageComponentRollups(resolvedFiles, List.of()));
     }
 
     private static CoverageFileSummary resolveFile(CoverageFileSummary file, RepositoryContext context) {
@@ -349,7 +363,9 @@ public class DefaultCoverageAnalysisProcessor implements CoverageAnalysisProcess
                         .thenComparing(RepositoryPackageNodeContext::packageName));
     }
 
-    private static List<CoverageComponentRollup> coverageComponentRollups(List<CoverageFileSummary> files) {
+    private static List<CoverageComponentRollup> coverageComponentRollups(
+            List<CoverageFileSummary> files,
+            List<CoverageGapFinding> findings) {
         Map<String, RollupAccumulator> accumulators = new LinkedHashMap<>();
         for (CoverageFileSummary file : files) {
             if (file.componentId() == null) {
@@ -360,8 +376,28 @@ public class DefaultCoverageAnalysisProcessor implements CoverageAnalysisProcess
             accumulators.computeIfAbsent(key, ignored -> new RollupAccumulator(file.componentId(), owner))
                     .add(file);
         }
+        for (CoverageGapFinding finding : findings) {
+            if (finding.componentId() == null) {
+                continue;
+            }
+            String owner = finding.owners().isEmpty() ? "unowned" : finding.owners().getFirst();
+            String key = finding.componentId() + ":" + owner;
+            accumulators.computeIfAbsent(key, ignored -> new RollupAccumulator(finding.componentId(), owner))
+                    .add(finding);
+        }
         return accumulators.values().stream()
                 .map(RollupAccumulator::toCoverageRollup)
+                .toList();
+    }
+
+    private static List<Finding> gateFindings(List<CoverageGapFinding> gapFindings) {
+        return gapFindings.stream()
+                .map(finding -> new Finding(
+                        finding.id(),
+                        finding.filePath(),
+                        finding.lineStart(),
+                        finding.riskLevel(),
+                        finding.status()))
                 .toList();
     }
 
@@ -488,6 +524,10 @@ public class DefaultCoverageAnalysisProcessor implements CoverageAnalysisProcess
         private int functionTotal;
         private int statementCovered;
         private int statementTotal;
+        private int gapCount;
+        private int debtCount;
+        private BigDecimal riskScoreTotal = BigDecimal.ZERO;
+        private String highestActiveRiskLevel;
 
         private RollupAccumulator(UUID componentId, String owner) {
             this.componentId = componentId;
@@ -514,6 +554,20 @@ public class DefaultCoverageAnalysisProcessor implements CoverageAnalysisProcess
             functionTotal += rollup.function().total();
             statementCovered += rollup.statement().covered();
             statementTotal += rollup.statement().total();
+            gapCount += rollup.gapCount();
+            debtCount += rollup.debtCount();
+            riskScoreTotal = riskScoreTotal.add(rollup.riskScoreTotal());
+            highestActiveRiskLevel = higherRiskLevel(highestActiveRiskLevel, rollup.highestActiveRiskLevel());
+        }
+
+        private void add(CoverageGapFinding finding) {
+            if ("debt_suppressed".equals(finding.status())) {
+                debtCount++;
+            } else if ("active".equals(finding.status())) {
+                gapCount++;
+                riskScoreTotal = riskScoreTotal.add(finding.riskScore());
+                highestActiveRiskLevel = higherRiskLevel(highestActiveRiskLevel, finding.riskLevel());
+            }
         }
 
         private CoverageComponentRollup toCoverageRollup() {
@@ -524,9 +578,30 @@ public class DefaultCoverageAnalysisProcessor implements CoverageAnalysisProcess
                     new CoverageMetric(branchCovered, branchTotal),
                     new CoverageMetric(functionCovered, functionTotal),
                     new CoverageMetric(statementCovered, statementTotal),
-                    0,
-                    0,
-                    BigDecimal.ZERO);
+                    gapCount,
+                    debtCount,
+                    riskScoreTotal,
+                    highestActiveRiskLevel);
+        }
+
+        private static String higherRiskLevel(String current, String candidate) {
+            if (candidate == null) {
+                return current;
+            }
+            if (current == null || riskRank(candidate) > riskRank(current)) {
+                return candidate;
+            }
+            return current;
+        }
+
+        private static int riskRank(String level) {
+            return switch (level) {
+                case "critical" -> 4;
+                case "high" -> 3;
+                case "medium" -> 2;
+                case "low" -> 1;
+                default -> 0;
+            };
         }
     }
 
