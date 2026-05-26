@@ -655,6 +655,7 @@ public class InMemoryOrganizationRepository implements OrganizationRepository {
             String minRisk,
             String riskLevel,
             String status,
+            String reasonCode,
             boolean includeDebt,
             int limit) {
         return coverageGapsById.values().stream()
@@ -667,6 +668,7 @@ public class InMemoryOrganizationRepository implements OrganizationRepository {
                 .filter(gap -> minRisk == null || riskRank(gap.riskLevel()) >= riskRank(minRisk))
                 .filter(gap -> riskLevel == null || gap.riskLevel().equals(riskLevel))
                 .filter(gap -> status == null || gap.status().equals(status))
+                .filter(gap -> reasonCode == null || gap.reasonCode().equals(reasonCode))
                 .filter(gap -> includeDebt || !"debt_suppressed".equals(gap.status()))
                 .sorted(coverageGapRanking())
                 .limit(limit)

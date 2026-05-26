@@ -1419,6 +1419,17 @@ class OrganizationApplicationServiceTest {
         var highDebt = fixture.repository.saveCoverageGap(gap(org, repo, "src/Debt.java", 6, "high", new BigDecimal("70.0"), "debt_suppressed", List.of("@acme/app"), "create_debt"));
         var critical = fixture.repository.saveCoverageGap(gap(org, repo, "src/Critical.java", 7, "critical", new BigDecimal("91.0"), "active", List.of("@acme/core"), "add_test"));
         var high = fixture.repository.saveCoverageGap(gap(org, repo, "src/High.java", 8, "high", new BigDecimal("72.0"), "active", List.of("@acme/app"), "add_test"));
+        var mismatch = fixture.repository.saveCoverageGap(gap(
+                org,
+                repo,
+                "src/Mismatch.java",
+                9,
+                "high",
+                new BigDecimal("71.0"),
+                "active",
+                List.of("@acme/app"),
+                "inspect_instrumentation",
+                "possible_path_mismatch"));
 
         var gaps = fixture.service.listCoverageGaps(new ListCoverageGapsQuery(
                 USER_ID,
@@ -1431,10 +1442,11 @@ class OrganizationApplicationServiceTest {
                 "high",
                 null,
                 null,
+                null,
                 false,
                 100));
 
-        assertEquals(List.of(critical.id(), high.id()), gaps.stream().map(CoverageGapFindingDetails::id).toList());
+        assertEquals(List.of(critical.id(), high.id(), mismatch.id()), gaps.stream().map(CoverageGapFindingDetails::id).toList());
         assertFalse(gaps.stream().map(CoverageGapFindingDetails::id).toList().contains(low.id()));
         assertFalse(gaps.stream().map(CoverageGapFindingDetails::id).toList().contains(highDebt.id()));
 
@@ -1449,10 +1461,28 @@ class OrganizationApplicationServiceTest {
                 null,
                 "high",
                 "active",
+                null,
                 true,
                 100));
 
-        assertEquals(List.of(high.id()), owned.stream().map(CoverageGapFindingDetails::id).toList());
+        assertEquals(List.of(high.id(), mismatch.id()), owned.stream().map(CoverageGapFindingDetails::id).toList());
+
+        var mismatches = fixture.service.listCoverageGaps(new ListCoverageGapsQuery(
+                USER_ID,
+                org.id(),
+                repo.id(),
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                "possible_path_mismatch",
+                true,
+                100));
+
+        assertEquals(List.of(mismatch.id()), mismatches.stream().map(CoverageGapFindingDetails::id).toList());
     }
 
     @Test
@@ -1574,6 +1604,30 @@ class OrganizationApplicationServiceTest {
             String status,
             List<String> owners,
             String nextAction) {
+        return gap(
+                organization,
+                repository,
+                filePath,
+                line,
+                riskLevel,
+                riskScore,
+                status,
+                owners,
+                nextAction,
+                "new_uncovered_changed_line");
+    }
+
+    private static CoverageGapFindingDetails gap(
+            OrganizationDetails organization,
+            RepositoryDetails repository,
+            String filePath,
+            int line,
+            String riskLevel,
+            BigDecimal riskScore,
+            String status,
+            List<String> owners,
+            String nextAction,
+            String reasonCode) {
         return new CoverageGapFindingDetails(
                 UUID.randomUUID(),
                 repository.tenantId(),
@@ -1589,7 +1643,7 @@ class OrganizationApplicationServiceTest {
                 line,
                 line,
                 null,
-                "new_uncovered_changed_line",
+                reasonCode,
                 "Added executable line " + line + " is uncovered in the head report.",
                 "high",
                 riskScore,

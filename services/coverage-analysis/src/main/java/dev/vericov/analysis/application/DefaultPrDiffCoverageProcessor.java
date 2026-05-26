@@ -40,7 +40,8 @@ public class DefaultPrDiffCoverageProcessor implements PrDiffCoverageProcessor {
         BaseCoverage baseCoverage = reports.findLatestByCommit(input.repositoryId(), diff.baseSha())
                 .map(summary -> new BaseCoverage("complete", reports.findLineHits(summary.reportId())))
                 .orElseGet(() -> new BaseCoverage("base_coverage_missing", List.of()));
-        DiffCoverageReport diffCoverage = calculator.calculate(diff, headReport.lineHits(), baseCoverage.lineHits());
+        DiffCoverageReport diffCoverage = calculator.calculate(diff, headReport.lineHits(), baseCoverage.lineHits())
+                .withStatus(baseCoverage.status());
         diffCoverageRepository.save(
                 headReport.tenantId(),
                 headReport.repositoryId(),

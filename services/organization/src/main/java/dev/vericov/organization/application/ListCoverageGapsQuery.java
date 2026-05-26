@@ -13,6 +13,7 @@ public record ListCoverageGapsQuery(
         String minRisk,
         String riskLevel,
         String status,
+        String reasonCode,
         boolean includeDebt,
         int limit) {
 }

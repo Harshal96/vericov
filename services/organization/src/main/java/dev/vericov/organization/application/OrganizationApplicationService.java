@@ -1015,6 +1015,7 @@ public class OrganizationApplicationService {
         String minRisk = query.minRisk() == null ? null : validateAllowed("min_risk", query.minRisk(), DEBT_RISK_LEVELS);
         String riskLevel = query.riskLevel() == null ? null : validateAllowed("risk_level", query.riskLevel(), DEBT_RISK_LEVELS);
         String status = query.status() == null ? null : validateAllowed("status", query.status(), GAP_STATUSES);
+        String reasonCode = trim(query.reasonCode());
         return repository.listCoverageGaps(
                 query.organizationId(),
                 query.repositoryId(),
@@ -1025,6 +1026,7 @@ public class OrganizationApplicationService {
                 minRisk,
                 riskLevel,
                 status,
+                reasonCode,
                 query.includeDebt(),
                 validateReadLimit(query.limit(), 500));
     }
@@ -1041,6 +1043,7 @@ public class OrganizationApplicationService {
                 "high",
                 null,
                 "active",
+                null,
                 false,
                 500));
         List<CoverageGapFindingDetails> selected = new ArrayList<>();
@@ -1679,6 +1682,8 @@ public class OrganizationApplicationService {
             return;
         }
         appendList(merged, "path_overrides", risk.get("path_overrides"));
+        appendList(merged, "generated_path_patterns", risk.get("generated_path_patterns"));
+        appendList(merged, "ignored_path_patterns", risk.get("ignored_path_patterns"));
         appendList(merged, "component_overrides", risk.get("component_overrides"));
         if (risk.get("rank_comments") instanceof Map<?, ?> rankComments) {
             Map<String, Object> next = new LinkedHashMap<>();
@@ -1940,10 +1945,27 @@ public class OrganizationApplicationService {
         Object risk = copy.get("risk");
         if (risk instanceof Map<?, ?> riskConfig) {
             validateRiskPathOverrides(riskConfig.get("path_overrides"));
+            validateRiskPatternList(riskConfig.get("generated_path_patterns"), "risk.generated_path_patterns");
+            validateRiskPatternList(riskConfig.get("ignored_path_patterns"), "risk.ignored_path_patterns");
             validateRiskComponentOverrides(registeredRepository, riskConfig.get("component_overrides"));
             validateRankComments(riskConfig.get("rank_comments"));
         }
         return copy;
+    }
+
+    private static void validateRiskPatternList(Object value, String name) {
+        if (value == null) {
+            return;
+        }
+        if (!(value instanceof List<?> patterns)) {
+            throw new OrganizationException("validation_error", name + " must be a list");
+        }
+        for (Object pattern : patterns) {
+            if (!(pattern instanceof String stringPattern)) {
+                throw new OrganizationException("validation_error", name + " item is invalid");
+            }
+            validatePathPattern(stringPattern);
+        }
     }
 
     private static void validateRiskPathOverrides(Object value) {

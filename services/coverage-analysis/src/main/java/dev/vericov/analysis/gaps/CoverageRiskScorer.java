@@ -56,8 +56,12 @@ public class CoverageRiskScorer {
             case "new_uncovered_changed_line" -> factor("change_exposure", 25, "new_uncovered_changed_line");
             case "lost_existing_coverage", "expired_debt_reappeared" ->
                     factor("change_exposure", 22, "lost_existing_coverage");
+            case "base_coverage_missing" -> factor("change_exposure", 12, "base_coverage_missing");
             case "uncovered_executable_line" -> factor("change_exposure", 10, "existing_uncovered_line");
             case "file_has_no_executable_coverage" -> factor("change_exposure", 8, "existing_zero_covered_file");
+            case "path_not_in_report", "possible_path_mismatch" ->
+                    factor("change_exposure", 6, "diff_path_without_coverage_records");
+            case "generated_or_ignored_candidate" -> factor("change_exposure", 0, "generated_or_ignored_candidate");
             default -> factor("change_exposure", 0, "no_change_exposure");
         };
     }
@@ -80,8 +84,12 @@ public class CoverageRiskScorer {
             case "new_uncovered_changed_line" -> factor("coverage_severity", 15, "zero_hit_changed_line");
             case "lost_existing_coverage", "expired_debt_reappeared" ->
                     factor("coverage_severity", 12, "coverage_regressed_to_zero");
+            case "base_coverage_missing" -> factor("coverage_severity", 8, "base_coverage_unavailable");
             case "file_has_no_executable_coverage" -> factor("coverage_severity", 12, "zero_covered_file");
             case "uncovered_executable_line" -> factor("coverage_severity", 8, "zero_hit_executable_line");
+            case "path_not_in_report", "possible_path_mismatch" ->
+                    factor("coverage_severity", 6, "coverage_record_missing_for_diff_path");
+            case "generated_or_ignored_candidate" -> factor("coverage_severity", 0, "generated_or_ignored_candidate");
             default -> factor("coverage_severity", 0, "no_coverage_severity");
         };
     }
