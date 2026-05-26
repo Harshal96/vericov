@@ -40,3 +40,14 @@ Feature: Manage organizations and memberships
       And the current user created organization "Acme Engineering" with slug "repository-flow"
       When the current user registers GitHub repository "acme/payments-api"
       Then the repository API creates an active repository for the organization
+
+    Scenario: Owners manage repository API keys
+      Given authenticated user "owner@example.com"
+      And the current user created organization "Acme Engineering" with slug "api-key-flow"
+      And the current user registers GitHub repository "acme/payments-api"
+      When the current user creates repository API key "CI upload" for branch "main"
+      Then a plaintext repository API key is returned once
+      When the current user lists repository API keys
+      Then the list contains the repository API key without plaintext secret
+      When the current user revokes the repository API key
+      Then the repository API key is revoked

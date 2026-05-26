@@ -47,6 +47,24 @@ Feature: Analyze uploaded coverage
       And no coverage report is persisted
       And the coverage artifacts are not downloaded
 
+    Scenario: Already completed jobs are archived without processing
+      Given an upload received message with LCOV coverage artifacts
+      And object storage contains the LCOV shards
+      And the analysis job is already completed
+      When the analysis worker polls once
+      Then the queue message is archived
+      And no coverage report is persisted
+      And the coverage artifacts are not downloaded
+
+    Scenario: Exhausted processing failures are dead-lettered
+      Given an upload received message without analyzable artifacts
+      And the analysis retry budget is exhausted
+      When the analysis worker polls once
+      Then the analysis job failure is recorded
+      And the queue message is moved to the dead-letter queue with a processing failure
+      And the queue message is archived
+      And no coverage report is persisted
+
     Scenario: Unsupported events are dead-lettered
       Given an unsupported analysis message
       When the analysis worker polls once

@@ -2,18 +2,22 @@ package dev.vericov.upload.bdd.steps;
 
 import dev.vericov.upload.api.ApiError;
 import dev.vericov.upload.api.ApiResponse;
+import dev.vericov.upload.api.CreateRunnerUploadTokenHttpRequest;
 import dev.vericov.upload.api.CreateUploadHttpRequest;
 import dev.vericov.upload.api.CreateUploadHttpResponse;
+import dev.vericov.upload.api.RunnerUploadTokenHttpResponse;
 import dev.vericov.upload.api.UploadArtifactHttpRequest;
 import dev.vericov.upload.api.UploadResource;
 import dev.vericov.upload.api.UploadStatusHttpResponse;
 import dev.vericov.upload.application.AnalysisJob;
 import dev.vericov.upload.application.InMemoryUploadRepository;
+import dev.vericov.upload.application.RunnerUploadToken;
 import dev.vericov.upload.application.StoredArtifact;
 import dev.vericov.upload.application.UploadApplicationService;
 import dev.vericov.upload.application.UploadEvent;
 import dev.vericov.upload.application.port.ArtifactStorage;
 import dev.vericov.upload.application.port.RepositoryApiKeyAuthenticator;
+import dev.vericov.upload.application.port.RunnerUploadTokenIssuer;
 import dev.vericov.upload.application.port.UploadEventPublisher;
 import dev.vericov.upload.application.port.UploadWorkQueue;
 import dev.vericov.upload.domain.CreateUploadCommand;
@@ -24,6 +28,7 @@ import io.cucumber.java.en.Then;
 import io.cucumber.java.en.When;
 import jakarta.ws.rs.core.Response;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
@@ -137,6 +142,33 @@ public class UploadSteps {
         assertEquals(artifactCount, status.artifacts().size());
     }
 
+    @Then("artifact metadata lists {int} stored artifacts")
+    public void artifactMetadataListsStoredArtifacts(int artifactCount) {
+        Response response = fixture.resource.getArtifacts("Bearer vc_live_test", latestUploadId);
+        assertEquals(200, response.getStatus());
+        List<?> artifacts = responseBody(response, List.class);
+        assertEquals(artifactCount, artifacts.size());
+        assertInstanceOf(dev.vericov.upload.api.UploadArtifactHttpResponse.class, artifacts.getFirst());
+    }
+
+    @When("the repository requests a runner upload token for branch {string}")
+    public void repositoryRequestsRunnerUploadTokenForBranch(String requestedBranch) {
+        latestResponse = fixture.resource.createRunnerUploadToken(
+                "Bearer vc_live_test",
+                new CreateRunnerUploadTokenHttpRequest(REPOSITORY_ID, requestedBranch));
+    }
+
+    @Then("the API returns a runner upload token")
+    public void apiReturnsRunnerUploadToken() {
+        assertEquals(200, latestResponse.getStatus());
+        RunnerUploadTokenHttpResponse token = responseBody(latestResponse, RunnerUploadTokenHttpResponse.class);
+        assertEquals("runner-token-main", token.token());
+        assertEquals(NOW.plus(Duration.ofMinutes(15)), token.expiresAt());
+        assertEquals(REPOSITORY_ID, fixture.runnerTokenIssuer.repositoryId);
+        assertEquals("main", fixture.runnerTokenIssuer.branch);
+        assertEquals(Duration.ofMinutes(15), fixture.runnerTokenIssuer.ttl);
+    }
+
     @Then("coverage analysis is queued once")
     public void coverageAnalysisIsQueuedOnce() {
         assertEquals(1, fixture.queue.jobs.size());
@@ -201,8 +233,12 @@ public class UploadSteps {
     }
 
     private static CreateUploadHttpResponse acceptedBody(Response response) {
+        return responseBody(response, CreateUploadHttpResponse.class);
+    }
+
+    private static <T> T responseBody(Response response, Class<T> type) {
         ApiResponse<?> envelope = assertInstanceOf(ApiResponse.class, response.getEntity());
-        return assertInstanceOf(CreateUploadHttpResponse.class, envelope.data());
+        return assertInstanceOf(type, envelope.data());
     }
 
     private static final class TestFixture {
@@ -210,6 +246,7 @@ public class UploadSteps {
         private final FakeStorage storage = new FakeStorage();
         private final FakePublisher publisher = new FakePublisher();
         private final FakeQueue queue = new FakeQueue();
+        private final FakeRunnerTokenIssuer runnerTokenIssuer = new FakeRunnerTokenIssuer();
         private final UploadResource resource;
 
         private TestFixture(Set<String> scopes, Set<String> allowedBranches) {
@@ -220,7 +257,8 @@ public class UploadSteps {
                     storage,
                     publisher,
                     queue,
-                    Clock.fixed(NOW, ZoneOffset.UTC)));
+                    Clock.fixed(NOW, ZoneOffset.UTC),
+                    runnerTokenIssuer));
         }
 
         private void setPrincipal(Set<String> scopes, Set<String> allowedBranches) {
@@ -290,6 +328,24 @@ public class UploadSteps {
                     upload.commitSha());
             jobs.add(job);
             return job;
+        }
+    }
+
+    private static final class FakeRunnerTokenIssuer implements RunnerUploadTokenIssuer {
+        private UUID repositoryId;
+        private String branch;
+        private Duration ttl;
+
+        @Override
+        public RunnerUploadToken issue(
+                RepositoryApiKeyPrincipal principal,
+                UUID repositoryId,
+                String branch,
+                Duration ttl) {
+            this.repositoryId = repositoryId;
+            this.branch = branch;
+            this.ttl = ttl;
+            return new RunnerUploadToken("runner-token-" + branch, NOW.plus(ttl));
         }
     }
 }

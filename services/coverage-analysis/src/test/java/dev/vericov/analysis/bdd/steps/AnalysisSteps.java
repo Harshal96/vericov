@@ -259,6 +259,16 @@ public class AnalysisSteps {
         jobs.startResult = AnalysisJobStartResult.busy();
     }
 
+    @Given("the analysis job is already completed")
+    public void analysisJobIsAlreadyCompleted() {
+        jobs.startResult = AnalysisJobStartResult.alreadyFinished();
+    }
+
+    @Given("the analysis retry budget is exhausted")
+    public void analysisRetryBudgetIsExhausted() {
+        jobs.failureDecision = AnalysisFailureDecision.deadLetter();
+    }
+
     @Given("an unsupported analysis message")
     public void unsupportedAnalysisMessage() {
         UploadReceivedEvent unsupported = new UploadReceivedEvent(
@@ -365,6 +375,13 @@ public class AnalysisSteps {
     public void queueMessageIsMovedToTheDeadLetterQueue() {
         assertEquals(List.of(MESSAGE_ID), queue.deadLetterMessageIds);
         assertEquals(List.of("Unsupported event type or schema version"), queue.deadLetterReasons);
+    }
+
+    @Then("the queue message is moved to the dead-letter queue with a processing failure")
+    public void queueMessageIsMovedToTheDeadLetterQueueWithAProcessingFailure() {
+        assertEquals(List.of(MESSAGE_ID), queue.deadLetterMessageIds);
+        assertEquals(1, queue.deadLetterReasons.size());
+        assertFalse(queue.deadLetterReasons.getFirst().isBlank());
     }
 
     @Then("analysis processing is not started")

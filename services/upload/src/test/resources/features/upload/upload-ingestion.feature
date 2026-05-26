@@ -10,6 +10,7 @@ Feature: Upload coverage artifacts
       Then the API accepts the upload
       And the response contains a poll URL
       And upload status lists 2 stored artifacts
+      And artifact metadata lists 2 stored artifacts
       And coverage analysis is queued once
       And an upload received event is published once
 
@@ -46,3 +47,8 @@ Feature: Upload coverage artifacts
       When the repository submits the upload with idempotency key "upload-5"
       Then the API rejects the upload with status 400 and code "validation_error"
       And no upload side effects are recorded
+
+    Scenario: Runner upload tokens are issued for authorized branches
+      Given repository "payments-api" accepts uploads on branch "main"
+      When the repository requests a runner upload token for branch "main"
+      Then the API returns a runner upload token

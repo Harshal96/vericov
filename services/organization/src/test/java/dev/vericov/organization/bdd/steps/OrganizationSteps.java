@@ -9,11 +9,13 @@ import dev.vericov.organization.api.AuthorizationResource;
 import dev.vericov.organization.api.CreateInvitationHttpRequest;
 import dev.vericov.organization.api.CreateMembershipHttpRequest;
 import dev.vericov.organization.api.CreateOrganizationHttpRequest;
+import dev.vericov.organization.api.CreateRepositoryApiKeyHttpRequest;
 import dev.vericov.organization.api.CreateRepositoryHttpRequest;
 import dev.vericov.organization.api.InvitationHttpResponse;
 import dev.vericov.organization.api.MembershipHttpResponse;
 import dev.vericov.organization.api.OrganizationHttpResponse;
 import dev.vericov.organization.api.OrganizationResource;
+import dev.vericov.organization.api.RepositoryApiKeyHttpResponse;
 import dev.vericov.organization.api.RepositoryHttpResponse;
 import dev.vericov.organization.api.RepositoryControlPlaneResource;
 import dev.vericov.organization.api.CreateCoverageDebtHttpRequest;
@@ -38,6 +40,7 @@ import java.util.UUID;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class OrganizationSteps {
@@ -56,6 +59,7 @@ public class OrganizationSteps {
     private InvitationHttpResponse invitation;
     private MembershipHttpResponse membership;
     private RepositoryHttpResponse repository;
+    private RepositoryApiKeyHttpResponse repositoryApiKey;
     private AuthorizationDecisionHttpResponse authorizationDecision;
     private Response latestResponse;
     private String currentEmail;
@@ -204,6 +208,81 @@ public class OrganizationSteps {
         assertEquals(
                 "/api/v1/orgs/" + organization.id() + "/repositories/" + repository.id(),
                 latestResponse.getLocation().toString());
+    }
+
+    @When("the current user creates repository API key {string} for branch {string}")
+    public void currentUserCreatesRepositoryApiKeyForBranch(String name, String branch) {
+        latestResponse = repositoryControlPlaneResource.createRepositoryApiKey(
+                "Bearer test-token",
+                null,
+                organization.id(),
+                repository.id(),
+                new CreateRepositoryApiKeyHttpRequest(
+                        name,
+                        List.of("uploads:create", "uploads:read"),
+                        List.of(branch),
+                        NOW.plusSeconds(3600)));
+        if (latestResponse.getStatus() == 201) {
+            repositoryApiKey = responseBody(latestResponse, RepositoryApiKeyHttpResponse.class);
+        }
+    }
+
+    @Then("a plaintext repository API key is returned once")
+    public void plaintextRepositoryApiKeyIsReturnedOnce() {
+        assertEquals(201, latestResponse.getStatus());
+        assertEquals(repository.id(), repositoryApiKey.repositoryId());
+        assertEquals("CI upload", repositoryApiKey.name());
+        assertEquals(List.of("uploads:create", "uploads:read"), repositoryApiKey.scopes());
+        assertEquals(List.of("main"), repositoryApiKey.branchAllowPatterns());
+        assertFalse(repositoryApiKey.apiKey().isBlank());
+        assertTrue(repositoryApiKey.apiKey().startsWith("vc_repo_"));
+        assertEquals(
+                repositoryApiKey.apiKey().substring(0, repositoryApiKey.keyPrefix().length()),
+                repositoryApiKey.keyPrefix());
+    }
+
+    @When("the current user lists repository API keys")
+    public void currentUserListsRepositoryApiKeys() {
+        latestResponse = repositoryControlPlaneResource.listRepositoryApiKeys(
+                "Bearer test-token",
+                null,
+                organization.id(),
+                repository.id());
+    }
+
+    @Then("the list contains the repository API key without plaintext secret")
+    public void listContainsRepositoryApiKeyWithoutPlaintextSecret() {
+        assertEquals(200, latestResponse.getStatus());
+        List<?> keys = responseBody(latestResponse, List.class);
+        RepositoryApiKeyHttpResponse listed = keys.stream()
+                .filter(RepositoryApiKeyHttpResponse.class::isInstance)
+                .map(RepositoryApiKeyHttpResponse.class::cast)
+                .filter(key -> key.id().equals(repositoryApiKey.id()))
+                .findFirst()
+                .orElseThrow();
+        assertEquals(repositoryApiKey.keyPrefix(), listed.keyPrefix());
+        assertNull(listed.apiKey());
+    }
+
+    @When("the current user revokes the repository API key")
+    public void currentUserRevokesRepositoryApiKey() {
+        latestResponse = repositoryControlPlaneResource.revokeRepositoryApiKey(
+                "Bearer test-token",
+                null,
+                organization.id(),
+                repository.id(),
+                repositoryApiKey.id());
+        if (latestResponse.getStatus() == 200) {
+            repositoryApiKey = responseBody(latestResponse, RepositoryApiKeyHttpResponse.class);
+        }
+    }
+
+    @Then("the repository API key is revoked")
+    public void repositoryApiKeyIsRevoked() {
+        assertEquals(200, latestResponse.getStatus());
+        assertEquals(repository.id(), repositoryApiKey.repositoryId());
+        assertNull(repositoryApiKey.apiKey());
+        assertEquals(NOW, repositoryApiKey.revokedAt());
     }
 
     @When("the current user creates coverage debt for file {string} with risk {string} and reason {string} and owner {string}")

@@ -15,6 +15,7 @@ import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -106,7 +107,7 @@ public class IntegrationJsonCodec {
     private static Map<String, Object> plainJsonObject(JsonObject object) {
         Map<String, Object> values = new LinkedHashMap<>();
         object.forEach((key, value) -> values.put(key, plainJsonValue(value)));
-        return Map.copyOf(values);
+        return Collections.unmodifiableMap(values);
     }
 
     private static Object plainJsonValue(JsonValue value) {
