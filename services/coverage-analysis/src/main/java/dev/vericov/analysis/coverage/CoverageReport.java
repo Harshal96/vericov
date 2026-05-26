@@ -19,6 +19,7 @@ public record CoverageReport(
         CoverageMetric statement,
         List<CoverageFileSummary> files,
         List<CoverageLineHit> lineHits,
+        List<CoverageComponentRollup> componentRollups,
         String normalizedStorageBucket,
         String normalizedStoragePath,
         Instant generatedAt) {
@@ -26,6 +27,7 @@ public record CoverageReport(
     public CoverageReport {
         files = List.copyOf(files == null ? List.of() : files);
         lineHits = List.copyOf(lineHits == null ? List.of() : lineHits);
+        componentRollups = List.copyOf(componentRollups == null ? List.of() : componentRollups);
     }
 
     public CoverageReport(
@@ -57,6 +59,7 @@ public record CoverageReport(
                 statement,
                 files,
                 lineHits,
+                List.of(),
                 null,
                 null,
                 generatedAt);
@@ -85,8 +88,51 @@ public record CoverageReport(
                 statement,
                 files,
                 lineHits,
+                componentRollups,
                 bucket,
                 path,
+                generatedAt);
+    }
+
+    public CoverageReport withResolvedFiles(List<CoverageFileSummary> resolvedFiles) {
+        return new CoverageReport(
+                reportId,
+                uploadId,
+                tenantId,
+                repositoryId,
+                commitSha,
+                branchName,
+                pullRequestNumber,
+                line,
+                branch,
+                function,
+                statement,
+                resolvedFiles,
+                lineHits,
+                componentRollups,
+                normalizedStorageBucket,
+                normalizedStoragePath,
+                generatedAt);
+    }
+
+    public CoverageReport withComponentRollups(List<CoverageComponentRollup> rollups) {
+        return new CoverageReport(
+                reportId,
+                uploadId,
+                tenantId,
+                repositoryId,
+                commitSha,
+                branchName,
+                pullRequestNumber,
+                line,
+                branch,
+                function,
+                statement,
+                files,
+                lineHits,
+                rollups,
+                normalizedStorageBucket,
+                normalizedStoragePath,
                 generatedAt);
     }
 }

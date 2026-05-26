@@ -13,6 +13,7 @@ public class OrganizationApplication extends Application {
         return Set.of(
                 AuthResource.class,
                 AuthorizationResource.class,
+                InternalCoverageContextResource.class,
                 InternalRepositoryConfigResource.class,
                 RepositoryControlPlaneResource.class,
                 OrganizationResource.class);

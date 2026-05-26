@@ -172,6 +172,94 @@ class DefaultCoverageAnalysisProcessorTest {
     }
 
     @Test
+    void resolvesRepositoryContextOntoFileSummariesAndBuildsComponentRollupsForGates() {
+        UUID componentId = UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
+        FakeInputRepository inputs = new FakeInputRepository(new CoverageAnalysisInput(
+                UPLOAD_ID,
+                TENANT_ID,
+                REPOSITORY_ID,
+                "abc123",
+                "main",
+                42,
+                List.of(new CoverageInputArtifact(
+                        "unit.lcov",
+                        "coverage",
+                        "lcov",
+                        "coverage-raw",
+                        "tenant/upload/coverage/unit.lcov",
+                        "sha-1"))));
+        FakeContentStore content = new FakeContentStore(Map.of(
+                "coverage-raw/tenant/upload/coverage/unit.lcov", """
+                        TN:
+                        SF:src/payments/App.java
+                        DA:1,1
+                        DA:2,0
+                        end_of_record
+                        """.getBytes(StandardCharsets.UTF_8)));
+        FakeReportRepository reports = new FakeReportRepository();
+        FakeGateConfigurationRepository gates = new FakeGateConfigurationRepository(List.of(new GateConfiguration(
+                UUID.fromString("6ca2b9dc-75f0-45e7-b28b-a76c4db133d9"),
+                TENANT_ID,
+                UUID.fromString("2ca9c094-7c28-4cb9-9b99-aae95cf07050"),
+                REPOSITORY_ID,
+                "payments-line-minimum",
+                "component_coverage",
+                "line",
+                new BigDecimal("75.0"),
+                null,
+                true,
+                Map.of("scope", Map.of("component_id", componentId.toString())),
+                "active")));
+        dev.vericov.analysis.gates.RepositoryContext repositoryContext = new dev.vericov.analysis.gates.RepositoryContext(
+                "ctx-components-1",
+                List.of(),
+                List.of(),
+                Map.of(),
+                List.of(new dev.vericov.analysis.gates.RepositoryComponentContext(
+                        componentId,
+                        "payments",
+                        List.of("src/payments/**"),
+                        List.of("@acme/payments"),
+                        "high",
+                        Map.of())),
+                List.of(),
+                List.of(new dev.vericov.analysis.gates.RepositoryPackageNodeContext(
+                        componentId,
+                        "payments-service",
+                        "src/payments",
+                        "src/payments/package.json",
+                        "npm",
+                        Map.of())));
+        dev.vericov.analysis.application.port.RepositoryContextRepository contextRepo =
+                (tenantId, repositoryId, commitSha, branch, pr) -> repositoryContext;
+
+        DefaultCoverageAnalysisProcessor processor = new DefaultCoverageAnalysisProcessor(
+                inputs,
+                content,
+                reports,
+                gates,
+                contextRepo,
+                new FakeNormalizedCoverageStore(),
+                lcovParserRegistry(),
+                PrDiffCoverageProcessor.noop(),
+                Clock.fixed(NOW, ZoneOffset.UTC));
+
+        processor.process(event());
+
+        CoverageReport report = reports.savedReport;
+        assertEquals(componentId, report.files().getFirst().componentId());
+        assertEquals("payments-service", report.files().getFirst().packageName());
+        assertEquals(List.of("@acme/payments"), report.files().getFirst().owners());
+        assertEquals(1, report.componentRollups().size());
+        assertEquals(componentId, report.componentRollups().getFirst().componentId());
+        assertEquals("@acme/payments", report.componentRollups().getFirst().owner());
+        assertEquals(1, report.componentRollups().getFirst().line().covered());
+        assertEquals(2, report.componentRollups().getFirst().line().total());
+        assertEquals("failed", reports.savedEvaluations.getFirst().status());
+        assertEquals(new BigDecimal("50.0000"), reports.savedEvaluations.getFirst().actual());
+    }
+
+    @Test
     void downloadsMixedCoverageArtifactsAndPersistsMergedCoverageReport() {
         FakeInputRepository inputs = new FakeInputRepository(new CoverageAnalysisInput(
                 UPLOAD_ID,

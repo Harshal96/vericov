@@ -31,6 +31,7 @@ class IntegrationApplicationServiceTest {
     private static final UUID OTHER_ORG_ID = UUID.fromString("55555555-5555-5555-5555-555555555555");
     private static final UUID REPOSITORY_ID = UUID.fromString("66666666-6666-6666-6666-666666666666");
     private static final UUID OTHER_REPOSITORY_ID = UUID.fromString("77777777-7777-7777-7777-777777777777");
+    private static final UUID COMPONENT_ID = UUID.fromString("99999999-9999-9999-9999-999999999999");
     private static final Instant NOW = Instant.parse("2026-05-23T10:00:00Z");
 
     @Test
@@ -1031,17 +1032,30 @@ class IntegrationApplicationServiceTest {
     }
 
     @Test
-    void rejectsComponentScopeUntilCanonicalComponentOwnershipExists() {
+    void acceptsComponentScopeWhenCanonicalComponentOwnershipExists() {
         TestFixture fixture = new TestFixture();
         IntegrationConnectionDetails connection = fixture.createGithubConnection();
+        fixture.scopeValidator.allowComponent(TENANT_ID, ORG_ID, COMPONENT_ID);
 
+        IntegrationBindingDetails binding = fixture.service.upsertBinding(new UpsertIntegrationBindingCommand(
+                REQUESTER_ID,
+                TENANT_ID,
+                ORG_ID,
+                connection.id(),
+                "component",
+                COMPONENT_ID,
+                List.of("git.checks"),
+                Map.of(),
+                "active"));
+
+        assertEquals(COMPONENT_ID, binding.scopeId());
         assertNotFound(() -> fixture.service.upsertBinding(new UpsertIntegrationBindingCommand(
                 REQUESTER_ID,
                 TENANT_ID,
                 ORG_ID,
                 connection.id(),
                 "component",
-                UUID.fromString("99999999-9999-9999-9999-999999999999"),
+                UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
                 List.of("git.checks"),
                 Map.of(),
                 "active")));
@@ -1602,6 +1616,7 @@ class IntegrationApplicationServiceTest {
     private static final class TestScopeValidator implements IntegrationScopeValidator {
         private final Set<ScopeKey> organizations = new HashSet<>();
         private final Set<ScopeKey> repositories = new HashSet<>();
+        private final Set<ScopeKey> components = new HashSet<>();
 
         private TestScopeValidator allowOrganization(UUID tenantId, UUID orgId) {
             organizations.add(new ScopeKey(tenantId, orgId, orgId));
@@ -1610,6 +1625,11 @@ class IntegrationApplicationServiceTest {
 
         private TestScopeValidator allowRepository(UUID tenantId, UUID orgId, UUID repositoryId) {
             repositories.add(new ScopeKey(tenantId, orgId, repositoryId));
+            return this;
+        }
+
+        private TestScopeValidator allowComponent(UUID tenantId, UUID orgId, UUID componentId) {
+            components.add(new ScopeKey(tenantId, orgId, componentId));
             return this;
         }
 
@@ -1629,7 +1649,10 @@ class IntegrationApplicationServiceTest {
                 return;
             }
             if ("component".equals(scopeType)) {
-                throw new IntegrationException("not_found", "Integration scope not found");
+                if (!components.contains(scopeKey)) {
+                    throw new IntegrationException("not_found", "Integration scope not found");
+                }
+                return;
             }
             throw new IntegrationException("validation_error", "scope_type is invalid");
         }

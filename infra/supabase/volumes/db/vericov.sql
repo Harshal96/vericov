@@ -103,6 +103,62 @@ CREATE TABLE IF NOT EXISTS vericov.repositories (
     UNIQUE (tenant_id, provider, provider_repository_id)
 );
 
+CREATE TABLE IF NOT EXISTS vericov.components (
+    id uuid PRIMARY KEY DEFAULT extensions.gen_random_uuid(),
+    tenant_id uuid NOT NULL REFERENCES vericov.tenants (id) ON DELETE CASCADE,
+    org_id uuid NOT NULL REFERENCES vericov.organizations (id) ON DELETE CASCADE,
+    repository_id uuid NOT NULL REFERENCES vericov.repositories (id) ON DELETE CASCADE,
+    name text NOT NULL CHECK (length(trim(name)) BETWEEN 1 AND 120),
+    description text,
+    path_patterns text[] NOT NULL DEFAULT ARRAY[]::text[],
+    owners text[] NOT NULL DEFAULT ARRAY[]::text[],
+    criticality text NOT NULL DEFAULT 'medium'
+        CHECK (criticality IN ('critical', 'high', 'medium', 'low')),
+    metadata_json jsonb NOT NULL DEFAULT '{}'::jsonb,
+    status text NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'disabled')),
+    created_by_user_id uuid NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (org_id, repository_id, name),
+    CHECK (cardinality(path_patterns) > 0),
+    CHECK (jsonb_typeof(metadata_json) = 'object')
+);
+
+CREATE TABLE IF NOT EXISTS vericov.repository_owner_rules (
+    id uuid PRIMARY KEY DEFAULT extensions.gen_random_uuid(),
+    tenant_id uuid NOT NULL REFERENCES vericov.tenants (id) ON DELETE CASCADE,
+    org_id uuid NOT NULL REFERENCES vericov.organizations (id) ON DELETE CASCADE,
+    repository_id uuid NOT NULL REFERENCES vericov.repositories (id) ON DELETE CASCADE,
+    source text NOT NULL CHECK (source IN ('manual', 'codeowners', 'component')),
+    pattern text NOT NULL CHECK (length(trim(pattern)) BETWEEN 1 AND 1024),
+    owners text[] NOT NULL DEFAULT ARRAY[]::text[],
+    priority integer NOT NULL DEFAULT 1000 CHECK (priority >= 0),
+    source_ref text,
+    status text NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'disabled')),
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    CHECK (cardinality(owners) > 0)
+);
+
+CREATE TABLE IF NOT EXISTS vericov.repository_package_nodes (
+    id uuid PRIMARY KEY DEFAULT extensions.gen_random_uuid(),
+    tenant_id uuid NOT NULL REFERENCES vericov.tenants (id) ON DELETE CASCADE,
+    org_id uuid NOT NULL REFERENCES vericov.organizations (id) ON DELETE CASCADE,
+    repository_id uuid NOT NULL REFERENCES vericov.repositories (id) ON DELETE CASCADE,
+    component_id uuid REFERENCES vericov.components (id) ON DELETE SET NULL,
+    package_name text NOT NULL CHECK (length(trim(package_name)) BETWEEN 1 AND 160),
+    package_path text NOT NULL CHECK (length(trim(package_path)) BETWEEN 1 AND 1024),
+    manifest_path text NOT NULL CHECK (length(trim(manifest_path)) BETWEEN 1 AND 1024),
+    ecosystem text NOT NULL DEFAULT 'unknown'
+        CHECK (ecosystem IN ('npm', 'maven', 'gradle', 'python', 'go', 'rust', 'unknown')),
+    metadata_json jsonb NOT NULL DEFAULT '{}'::jsonb,
+    status text NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'disabled')),
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (repository_id, package_path, package_name),
+    CHECK (jsonb_typeof(metadata_json) = 'object')
+);
+
 CREATE TABLE IF NOT EXISTS vericov.organization_policy_defaults (
     id uuid PRIMARY KEY DEFAULT extensions.gen_random_uuid(),
     tenant_id uuid NOT NULL REFERENCES vericov.tenants (id) ON DELETE CASCADE,
@@ -420,6 +476,9 @@ CREATE TABLE IF NOT EXISTS vericov.coverage_file_summaries (
     repository_id uuid NOT NULL REFERENCES vericov.repositories (id) ON DELETE CASCADE,
     commit_sha text NOT NULL,
     file_path text NOT NULL,
+    component_id uuid REFERENCES vericov.components (id) ON DELETE SET NULL,
+    package_name text,
+    owners text[] NOT NULL DEFAULT ARRAY[]::text[],
     line_covered integer NOT NULL CHECK (line_covered >= 0),
     line_total integer NOT NULL CHECK (line_total >= 0),
     branch_covered integer NOT NULL CHECK (branch_covered >= 0),
@@ -430,6 +489,33 @@ CREATE TABLE IF NOT EXISTS vericov.coverage_file_summaries (
     statement_total integer NOT NULL CHECK (statement_total >= 0),
     created_at timestamptz NOT NULL DEFAULT now(),
     UNIQUE (coverage_report_id, file_path),
+    CHECK (line_covered <= line_total),
+    CHECK (branch_covered <= branch_total),
+    CHECK (function_covered <= function_total),
+    CHECK (statement_covered <= statement_total)
+);
+
+CREATE TABLE IF NOT EXISTS vericov.component_coverage_rollups (
+    id uuid PRIMARY KEY DEFAULT extensions.gen_random_uuid(),
+    tenant_id uuid NOT NULL REFERENCES vericov.tenants (id) ON DELETE CASCADE,
+    org_id uuid NOT NULL REFERENCES vericov.organizations (id) ON DELETE CASCADE,
+    repository_id uuid NOT NULL REFERENCES vericov.repositories (id) ON DELETE CASCADE,
+    coverage_report_id uuid NOT NULL REFERENCES vericov.coverage_reports (id) ON DELETE CASCADE,
+    component_id uuid NOT NULL REFERENCES vericov.components (id) ON DELETE CASCADE,
+    owner text NOT NULL,
+    line_covered integer NOT NULL CHECK (line_covered >= 0),
+    line_total integer NOT NULL CHECK (line_total >= 0),
+    branch_covered integer NOT NULL CHECK (branch_covered >= 0),
+    branch_total integer NOT NULL CHECK (branch_total >= 0),
+    function_covered integer NOT NULL CHECK (function_covered >= 0),
+    function_total integer NOT NULL CHECK (function_total >= 0),
+    statement_covered integer NOT NULL CHECK (statement_covered >= 0),
+    statement_total integer NOT NULL CHECK (statement_total >= 0),
+    gap_count integer NOT NULL DEFAULT 0 CHECK (gap_count >= 0),
+    debt_count integer NOT NULL DEFAULT 0 CHECK (debt_count >= 0),
+    risk_score_total numeric(12, 4) NOT NULL DEFAULT 0 CHECK (risk_score_total >= 0),
+    created_at timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (coverage_report_id, component_id, owner),
     CHECK (line_covered <= line_total),
     CHECK (branch_covered <= branch_total),
     CHECK (function_covered <= function_total),
@@ -1101,6 +1187,15 @@ CREATE INDEX IF NOT EXISTS coverage_reports_repository_branch_created_idx
 CREATE INDEX IF NOT EXISTS coverage_reports_upload_idx
     ON vericov.coverage_reports (upload_id);
 
+CREATE INDEX IF NOT EXISTS components_repository_status_idx
+    ON vericov.components (repository_id, status);
+
+CREATE INDEX IF NOT EXISTS repository_owner_rules_repository_status_idx
+    ON vericov.repository_owner_rules (repository_id, status, priority);
+
+CREATE INDEX IF NOT EXISTS repository_package_nodes_repository_status_idx
+    ON vericov.repository_package_nodes (repository_id, status, package_path);
+
 CREATE INDEX IF NOT EXISTS badge_cache_expires_at_idx
     ON vericov.badge_cache (expires_at);
 
@@ -1109,6 +1204,12 @@ CREATE INDEX IF NOT EXISTS coverage_file_summaries_report_idx
 
 CREATE INDEX IF NOT EXISTS coverage_file_summaries_repository_file_idx
     ON vericov.coverage_file_summaries (repository_id, file_path);
+
+CREATE INDEX IF NOT EXISTS component_coverage_rollups_report_idx
+    ON vericov.component_coverage_rollups (coverage_report_id);
+
+CREATE INDEX IF NOT EXISTS component_coverage_rollups_component_idx
+    ON vericov.component_coverage_rollups (component_id, owner);
 
 CREATE INDEX IF NOT EXISTS coverage_line_hits_report_file_idx
     ON vericov.coverage_line_hits (coverage_report_id, file_path, line_number);
@@ -1313,6 +1414,9 @@ ALTER TABLE vericov.organization_invitations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE vericov.repositories ENABLE ROW LEVEL SECURITY;
 ALTER TABLE vericov.organization_policy_defaults ENABLE ROW LEVEL SECURITY;
 ALTER TABLE vericov.repository_configs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE vericov.components ENABLE ROW LEVEL SECURITY;
+ALTER TABLE vericov.repository_owner_rules ENABLE ROW LEVEL SECURITY;
+ALTER TABLE vericov.repository_package_nodes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE vericov.repository_policies ENABLE ROW LEVEL SECURITY;
 ALTER TABLE vericov.repository_gate_configurations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE vericov.repository_badge_settings ENABLE ROW LEVEL SECURITY;
@@ -1326,6 +1430,7 @@ ALTER TABLE vericov.analysis_job_attempts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE vericov.coverage_reports ENABLE ROW LEVEL SECURITY;
 ALTER TABLE vericov.badge_cache ENABLE ROW LEVEL SECURITY;
 ALTER TABLE vericov.coverage_file_summaries ENABLE ROW LEVEL SECURITY;
+ALTER TABLE vericov.component_coverage_rollups ENABLE ROW LEVEL SECURITY;
 ALTER TABLE vericov.coverage_line_hits ENABLE ROW LEVEL SECURITY;
 ALTER TABLE vericov.test_runs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE vericov.pull_request_coverage_diffs ENABLE ROW LEVEL SECURITY;
