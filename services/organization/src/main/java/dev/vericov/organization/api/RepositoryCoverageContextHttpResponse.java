@@ -25,6 +25,8 @@ public record RepositoryCoverageContextHttpResponse(
         List<RepositoryPackageNodeHttpResponse> packageNodes,
         @JsonbProperty("policy_defaults")
         Map<String, Object> policyDefaults,
+        @JsonbProperty("risk_config")
+        Map<String, Object> riskConfig,
         @JsonbProperty("generated_at")
         Instant generatedAt) {
 
@@ -39,6 +41,7 @@ public record RepositoryCoverageContextHttpResponse(
                 details.ownerRules().stream().map(RepositoryOwnerRuleHttpResponse::from).toList(),
                 details.packageNodes().stream().map(RepositoryPackageNodeHttpResponse::from).toList(),
                 details.policyDefaults(),
+                details.riskConfig(),
                 details.generatedAt());
     }
 }

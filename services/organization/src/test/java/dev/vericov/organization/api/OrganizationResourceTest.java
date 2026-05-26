@@ -2,6 +2,7 @@ package dev.vericov.organization.api;
 
 import dev.vericov.organization.application.InMemoryOrganizationRepository;
 import dev.vericov.organization.application.CoverageFileSummaryDetails;
+import dev.vericov.organization.application.CoverageGapFindingDetails;
 import dev.vericov.organization.application.CoverageLineHitMapDetails;
 import dev.vericov.organization.application.CoverageMetricDetails;
 import dev.vericov.organization.application.CoverageReportSummary;
@@ -854,6 +855,62 @@ class OrganizationResourceTest {
     }
 
     @Test
+    void listsCoverageGapsAndFixFirstEnvelope() {
+        InMemoryOrganizationRepository repository = new InMemoryOrganizationRepository();
+        OrganizationApplicationService service = new OrganizationApplicationService(
+                repository,
+                Clock.fixed(NOW, ZoneOffset.UTC));
+        var organizationResource = resourceWithUser(service, USER_ID, "owner@example.com");
+        var controlPlaneResource = new RepositoryControlPlaneResource(service, fixedUser(USER_ID, "owner@example.com"));
+        OrganizationHttpResponse organization = createOrganization(organizationResource);
+        RepositoryHttpResponse registeredRepository = registerRepository(organizationResource, organization);
+        CoverageGapFindingDetails gap = repository.saveCoverageGap(gap(
+                organization,
+                registeredRepository,
+                "src/App.java",
+                10,
+                "high",
+                new BigDecimal("72.5"),
+                "active",
+                "add_test"));
+
+        Response listResponse = controlPlaneResource.listCoverageGaps(
+                "Bearer test-token",
+                null,
+                organization.id(),
+                registeredRepository.id(),
+                "sha",
+                1,
+                null,
+                null,
+                "high",
+                null,
+                null,
+                false,
+                100);
+
+        assertEquals(200, listResponse.getStatus());
+        List<?> listed = assertInstanceOf(List.class, responseEnvelope(listResponse).data());
+        CoverageGapFindingHttpResponse body = assertInstanceOf(CoverageGapFindingHttpResponse.class, listed.getFirst());
+        assertEquals(gap.id(), body.id());
+        assertEquals(new BigDecimal("72.5"), body.riskScore());
+
+        Response fixFirstResponse = controlPlaneResource.listFixFirstCoverageGaps(
+                "Bearer test-token",
+                null,
+                organization.id(),
+                registeredRepository.id(),
+                "sha",
+                1,
+                false,
+                5);
+
+        assertEquals(200, fixFirstResponse.getStatus());
+        List<?> fixFirst = assertInstanceOf(List.class, responseEnvelope(fixFirstResponse).data());
+        assertEquals(1, fixFirst.size());
+    }
+
+    @Test
     void mapsMissingAuthToUnauthorized() {
         var resource = new OrganizationResource(
                 service(),
@@ -935,5 +992,42 @@ class OrganizationResourceTest {
                 return new AuthenticatedUser(userId, email);
             }
         };
+    }
+
+    private static CoverageGapFindingDetails gap(
+            OrganizationHttpResponse organization,
+            RepositoryHttpResponse repository,
+            String filePath,
+            int line,
+            String riskLevel,
+            BigDecimal riskScore,
+            String status,
+            String nextAction) {
+        return new CoverageGapFindingDetails(
+                UUID.randomUUID(),
+                repository.tenantId(),
+                organization.id(),
+                repository.id(),
+                UUID.randomUUID(),
+                null,
+                null,
+                "sha",
+                1,
+                filePath,
+                "line",
+                line,
+                line,
+                null,
+                "new_uncovered_changed_line",
+                "Added executable line " + line + " is uncovered in the head report.",
+                "high",
+                riskScore,
+                riskLevel,
+                List.of("@acme/app"),
+                nextAction,
+                status,
+                Map.of("score", Map.of("total", riskScore, "level", riskLevel)),
+                NOW,
+                NOW);
     }
 }

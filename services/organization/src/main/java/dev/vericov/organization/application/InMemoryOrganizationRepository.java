@@ -33,6 +33,7 @@ public class InMemoryOrganizationRepository implements OrganizationRepository {
             new ConcurrentHashMap<>();
     private final Map<UUID, GateEvaluationDetails> gateEvaluationsById = new ConcurrentHashMap<>();
     private final Map<UUID, TestRunDetails> testRunsById = new ConcurrentHashMap<>();
+    private final Map<UUID, CoverageGapFindingDetails> coverageGapsById = new ConcurrentHashMap<>();
     private final Map<UUID, CoverageDebtDetails> coverageDebtsById = new ConcurrentHashMap<>();
     private final Map<UUID, List<CoverageDebtEventDetails>> coverageDebtEventsByDebtItemId = new ConcurrentHashMap<>();
 
@@ -637,6 +638,41 @@ public class InMemoryOrganizationRepository implements OrganizationRepository {
                 .toList();
     }
 
+    @Override
+    public Optional<CoverageGapFindingDetails> findCoverageGap(UUID repositoryId, UUID gapId) {
+        return Optional.ofNullable(coverageGapsById.get(gapId))
+                .filter(gap -> gap.repositoryId().equals(repositoryId));
+    }
+
+    @Override
+    public List<CoverageGapFindingDetails> listCoverageGaps(
+            UUID organizationId,
+            UUID repositoryId,
+            String commitSha,
+            Integer pullRequestNumber,
+            UUID componentId,
+            String owner,
+            String minRisk,
+            String riskLevel,
+            String status,
+            boolean includeDebt,
+            int limit) {
+        return coverageGapsById.values().stream()
+                .filter(gap -> gap.organizationId().equals(organizationId))
+                .filter(gap -> gap.repositoryId().equals(repositoryId))
+                .filter(gap -> commitSha == null || gap.commitSha().equals(commitSha))
+                .filter(gap -> pullRequestNumber == null || pullRequestNumber.equals(gap.pullRequestNumber()))
+                .filter(gap -> componentId == null || componentId.equals(gap.componentId()))
+                .filter(gap -> owner == null || gap.owners().contains(owner))
+                .filter(gap -> minRisk == null || riskRank(gap.riskLevel()) >= riskRank(minRisk))
+                .filter(gap -> riskLevel == null || gap.riskLevel().equals(riskLevel))
+                .filter(gap -> status == null || gap.status().equals(status))
+                .filter(gap -> includeDebt || !"debt_suppressed".equals(gap.status()))
+                .sorted(coverageGapRanking())
+                .limit(limit)
+                .toList();
+    }
+
     public synchronized CoverageReportSummary saveCoverageReport(CoverageReportSummary report) {
         coverageReportsById.put(report.id(), report);
         return report;
@@ -674,6 +710,11 @@ public class InMemoryOrganizationRepository implements OrganizationRepository {
         return evaluation;
     }
 
+    public synchronized CoverageGapFindingDetails saveCoverageGap(CoverageGapFindingDetails gap) {
+        coverageGapsById.put(gap.id(), gap);
+        return gap;
+    }
+
     private static String orgRepositoryKey(UUID organizationId, UUID repositoryId) {
         return organizationId + ":" + repositoryId;
     }
@@ -689,6 +730,32 @@ public class InMemoryOrganizationRepository implements OrganizationRepository {
 
     private static String lineHitsKey(UUID repositoryId, String commitSha, String filePath) {
         return repositoryId + ":" + commitSha + ":" + filePath;
+    }
+
+    private static Comparator<CoverageGapFindingDetails> coverageGapRanking() {
+        return Comparator
+                .comparing((CoverageGapFindingDetails gap) -> "debt_suppressed".equals(gap.status()) ? 1 : 0)
+                .thenComparing(CoverageGapFindingDetails::riskScore, Comparator.reverseOrder())
+                .thenComparing((CoverageGapFindingDetails gap) -> changedReason(gap.reasonCode()) ? 0 : 1)
+                .thenComparing(CoverageGapFindingDetails::createdAt)
+                .thenComparing(CoverageGapFindingDetails::filePath)
+                .thenComparing(gap -> gap.lineStart() == null ? Integer.MAX_VALUE : gap.lineStart())
+                .thenComparing(CoverageGapFindingDetails::id);
+    }
+
+    private static boolean changedReason(String reasonCode) {
+        return "new_uncovered_changed_line".equals(reasonCode)
+                || "lost_existing_coverage".equals(reasonCode)
+                || "expired_debt_reappeared".equals(reasonCode);
+    }
+
+    private static int riskRank(String level) {
+        return switch (level) {
+            case "critical" -> 4;
+            case "high" -> 3;
+            case "medium" -> 2;
+            default -> 1;
+        };
     }
 
     private static PullRequestDiffCoverageDetails withoutDiffLines(PullRequestDiffCoverageDetails details) {

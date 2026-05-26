@@ -7,6 +7,7 @@ import dev.vericov.analysis.coverage.CoverageLineHit;
 import dev.vericov.analysis.coverage.CoverageMetric;
 import dev.vericov.analysis.coverage.CoverageReport;
 import dev.vericov.analysis.coverage.CoverageReportSummary;
+import dev.vericov.analysis.gaps.CoverageGapFinding;
 import dev.vericov.analysis.gates.GateEvaluation;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -44,10 +45,13 @@ public class JdbcCoverageReportRepository implements CoverageReportRepository {
                 insertCoverageReport(connection, report);
                 insertFileSummaries(connection, report);
                 insertComponentRollups(connection, report);
+                insertGapFindings(connection, report);
                 insertLineHits(connection, report);
                 insertGateEvaluations(connection, evaluations);
                 markUploadProcessed(connection, report);
                 insertReportCompletedEvent(connection, report);
+                insertGapsExtractedEvent(connection, report);
+                insertRiskScoredEvent(connection, report);
                 insertGatesEvaluatedEvent(connection, report, evaluations);
                 connection.commit();
             } catch (SQLException exception) {
@@ -264,12 +268,14 @@ public class JdbcCoverageReportRepository implements CoverageReportRepository {
                     gap_count,
                     debt_count,
                     risk_score_total,
+                    highest_active_risk_level,
                     created_at
                 )
                 values (
                     extensions.gen_random_uuid(),
                     ?,
                     (select org_id from vericov.repositories where id = ?),
+                    ?,
                     ?,
                     ?,
                     ?,
@@ -306,7 +312,105 @@ public class JdbcCoverageReportRepository implements CoverageReportRepository {
                 statement.setInt(index++, rollup.gapCount());
                 statement.setInt(index++, rollup.debtCount());
                 statement.setBigDecimal(index++, rollup.riskScoreTotal());
+                setNullableString(statement, index++, rollup.highestActiveRiskLevel());
                 statement.setObject(index, utc(report.generatedAt()));
+                statement.addBatch();
+            }
+            statement.executeBatch();
+        }
+    }
+
+    private void insertGapFindings(java.sql.Connection connection, CoverageReport report) throws SQLException {
+        if (report.gapFindings().isEmpty()) {
+            return;
+        }
+        try (var statement = connection.prepareStatement("""
+                insert into vericov.coverage_gap_findings (
+                    id,
+                    tenant_id,
+                    org_id,
+                    repository_id,
+                    coverage_report_id,
+                    pr_diff_id,
+                    component_id,
+                    commit_sha,
+                    pull_request_number,
+                    file_path,
+                    target_type,
+                    line_start,
+                    line_end,
+                    symbol_name,
+                    reason_code,
+                    explanation,
+                    confidence,
+                    risk_score,
+                    risk_level,
+                    owners,
+                    next_action,
+                    status,
+                    evidence_json,
+                    created_at,
+                    updated_at
+                )
+                values (
+                    ?,
+                    ?,
+                    (select org_id from vericov.repositories where id = ?),
+                    ?,
+                    ?,
+                    (select id from vericov.pull_request_coverage_diffs where coverage_report_id = ?),
+                    ?,
+                    ?,
+                    ?,
+                    ?,
+                    ?,
+                    ?,
+                    ?,
+                    ?,
+                    ?,
+                    ?,
+                    ?,
+                    ?,
+                    ?,
+                    ?,
+                    ?,
+                    ?,
+                    ?::jsonb,
+                    ?,
+                    ?
+                )
+                """)) {
+            for (CoverageGapFinding finding : report.gapFindings()) {
+                int index = 1;
+                statement.setObject(index++, finding.id());
+                statement.setObject(index++, finding.tenantId());
+                statement.setObject(index++, finding.repositoryId());
+                statement.setObject(index++, finding.repositoryId());
+                statement.setObject(index++, finding.coverageReportId());
+                statement.setObject(index++, finding.coverageReportId());
+                statement.setObject(index++, finding.componentId());
+                statement.setString(index++, finding.commitSha());
+                if (finding.pullRequestNumber() == null) {
+                    statement.setNull(index++, Types.INTEGER);
+                } else {
+                    statement.setInt(index++, finding.pullRequestNumber());
+                }
+                statement.setString(index++, finding.filePath());
+                statement.setString(index++, finding.targetType());
+                setNullableInteger(statement, index++, finding.lineStart());
+                setNullableInteger(statement, index++, finding.lineEnd());
+                setNullableString(statement, index++, finding.symbolName());
+                statement.setString(index++, finding.reasonCode());
+                statement.setString(index++, finding.explanation());
+                statement.setString(index++, finding.confidence());
+                statement.setBigDecimal(index++, finding.riskScore());
+                statement.setString(index++, finding.riskLevel());
+                statement.setArray(index++, connection.createArrayOf("text", finding.owners().toArray(String[]::new)));
+                statement.setString(index++, finding.nextAction());
+                statement.setString(index++, finding.status());
+                statement.setString(index++, codec.toJsonObject(finding.evidence()));
+                statement.setObject(index++, utc(finding.createdAt()));
+                statement.setObject(index, utc(finding.updatedAt()));
                 statement.addBatch();
             }
             statement.executeBatch();
@@ -452,6 +556,82 @@ public class JdbcCoverageReportRepository implements CoverageReportRepository {
         }
     }
 
+    private static void insertGapsExtractedEvent(java.sql.Connection connection, CoverageReport report) throws SQLException {
+        if (report.gapFindings().isEmpty()) {
+            return;
+        }
+        long debtSuppressed = report.gapFindings().stream()
+                .filter(finding -> "debt_suppressed".equals(finding.status()))
+                .count();
+        try (var statement = connection.prepareStatement("""
+                insert into vericov.upload_events (
+                    tenant_id,
+                    upload_id,
+                    event_type,
+                    payload,
+                    created_at
+                )
+                values (
+                    ?,
+                    ?,
+                    'coverage.gaps.extracted',
+                    jsonb_build_object(
+                        'coverage_report_id', ?,
+                        'finding_count', ?,
+                        'debt_suppressed_count', ?
+                    ),
+                    ?
+                )
+                """)) {
+            int index = 1;
+            statement.setObject(index++, report.tenantId());
+            statement.setObject(index++, report.uploadId());
+            statement.setString(index++, report.reportId().toString());
+            statement.setInt(index++, report.gapFindings().size());
+            statement.setLong(index++, debtSuppressed);
+            statement.setObject(index, utc(report.generatedAt()));
+            statement.executeUpdate();
+        }
+    }
+
+    private static void insertRiskScoredEvent(java.sql.Connection connection, CoverageReport report) throws SQLException {
+        if (report.gapFindings().isEmpty()) {
+            return;
+        }
+        long highOrCritical = report.gapFindings().stream()
+                .filter(finding -> "high".equals(finding.riskLevel()) || "critical".equals(finding.riskLevel()))
+                .count();
+        try (var statement = connection.prepareStatement("""
+                insert into vericov.upload_events (
+                    tenant_id,
+                    upload_id,
+                    event_type,
+                    payload,
+                    created_at
+                )
+                values (
+                    ?,
+                    ?,
+                    'coverage.risk.scored',
+                    jsonb_build_object(
+                        'coverage_report_id', ?,
+                        'finding_count', ?,
+                        'high_or_critical_count', ?
+                    ),
+                    ?
+                )
+                """)) {
+            int index = 1;
+            statement.setObject(index++, report.tenantId());
+            statement.setObject(index++, report.uploadId());
+            statement.setString(index++, report.reportId().toString());
+            statement.setInt(index++, report.gapFindings().size());
+            statement.setLong(index++, highOrCritical);
+            statement.setObject(index, utc(report.generatedAt()));
+            statement.executeUpdate();
+        }
+    }
+
     private static void insertGatesEvaluatedEvent(
             java.sql.Connection connection,
             CoverageReport report,
@@ -498,6 +678,24 @@ public class JdbcCoverageReportRepository implements CoverageReportRepository {
             throws SQLException {
         statement.setInt(startIndex, metric.covered());
         statement.setInt(startIndex + 1, metric.total());
+    }
+
+    private static void setNullableInteger(java.sql.PreparedStatement statement, int index, Integer value)
+            throws SQLException {
+        if (value == null) {
+            statement.setNull(index, Types.INTEGER);
+        } else {
+            statement.setInt(index, value);
+        }
+    }
+
+    private static void setNullableString(java.sql.PreparedStatement statement, int index, String value)
+            throws SQLException {
+        if (value == null) {
+            statement.setNull(index, Types.VARCHAR);
+        } else {
+            statement.setString(index, value);
+        }
     }
 
     private static OffsetDateTime utc(java.time.Instant instant) {

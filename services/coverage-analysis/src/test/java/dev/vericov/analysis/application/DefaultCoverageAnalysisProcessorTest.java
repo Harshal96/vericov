@@ -255,6 +255,12 @@ class DefaultCoverageAnalysisProcessorTest {
         assertEquals("@acme/payments", report.componentRollups().getFirst().owner());
         assertEquals(1, report.componentRollups().getFirst().line().covered());
         assertEquals(2, report.componentRollups().getFirst().line().total());
+        assertEquals(1, report.gapFindings().size());
+        assertEquals("uncovered_executable_line", report.gapFindings().getFirst().reasonCode());
+        assertEquals("medium", report.gapFindings().getFirst().riskLevel());
+        assertEquals(1, report.componentRollups().getFirst().gapCount());
+        assertEquals(new BigDecimal("40.0"), report.componentRollups().getFirst().riskScoreTotal());
+        assertEquals("medium", report.componentRollups().getFirst().highestActiveRiskLevel());
         assertEquals("failed", reports.savedEvaluations.getFirst().status());
         assertEquals(new BigDecimal("50.0000"), reports.savedEvaluations.getFirst().actual());
     }

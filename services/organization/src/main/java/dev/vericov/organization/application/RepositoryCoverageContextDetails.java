@@ -15,6 +15,7 @@ public record RepositoryCoverageContextDetails(
         List<RepositoryOwnerRuleDetails> ownerRules,
         List<RepositoryPackageNodeDetails> packageNodes,
         Map<String, Object> policyDefaults,
+        Map<String, Object> riskConfig,
         Instant generatedAt) {
 
     public RepositoryCoverageContextDetails {
@@ -22,5 +23,6 @@ public record RepositoryCoverageContextDetails(
         ownerRules = List.copyOf(ownerRules == null ? List.of() : ownerRules);
         packageNodes = List.copyOf(packageNodes == null ? List.of() : packageNodes);
         policyDefaults = ConfigurationValues.deepCopyMap(policyDefaults);
+        riskConfig = ConfigurationValues.deepCopyMap(riskConfig);
     }
 }

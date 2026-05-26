@@ -85,7 +85,8 @@ public class InternalControlPlaneRepositoryContextClient implements RepositoryCo
                     Map.of(),
                     readComponents(data.getJsonArray("components")),
                     readOwnerRules(data.getJsonArray("owner_rules")),
-                    readPackageNodes(data.getJsonArray("package_nodes")));
+                    readPackageNodes(data.getJsonArray("package_nodes")),
+                    jsonMap(data.getJsonObject("risk_config")));
         }
     }
 

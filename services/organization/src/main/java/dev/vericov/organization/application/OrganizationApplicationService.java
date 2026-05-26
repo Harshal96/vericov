@@ -12,6 +12,7 @@ import java.util.ArrayList;
 import java.util.Base64;
 import java.util.Comparator;
 import java.util.HexFormat;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -63,6 +64,7 @@ public class OrganizationApplicationService {
     private static final Set<String> DEBT_TARGET_TYPES = Set.of("line", "range", "file", "function", "branch", "component");
     private static final Set<String> DEBT_RISK_LEVELS = Set.of("critical", "high", "medium", "low");
     private static final Set<String> DEBT_STATUSES = Set.of("active", "resolved", "expired", "revoked");
+    private static final Set<String> GAP_STATUSES = Set.of("active", "debt_suppressed", "resolved", "obsolete");
     private static final Set<String> COMPONENT_CRITICALITIES = Set.of("critical", "high", "medium", "low");
     private static final Set<String> COMPONENT_STATUSES = Set.of("active", "disabled");
     private static final Set<String> OWNER_RULE_SOURCES = Set.of("manual", "codeowners", "component");
@@ -707,7 +709,7 @@ public class OrganizationApplicationService {
         String policyType = validateAllowed("policy_type", command.policyType(), POLICY_TYPES);
         String targetType = validateAllowed("target_type", command.targetType(), POLICY_TARGET_TYPES);
         String targetSelector = validateTargetSelector(targetType, command.targetSelector());
-        Map<String, Object> config = validateConfig(command.config());
+        Map<String, Object> config = validatePolicyConfig(registeredRepository, policyType, command.config());
         String status = validateAllowed("status", defaultIfBlank(command.status(), "active"), POLICY_STATUSES);
         int priority = validatePriority(command.priority());
         Instant now = clock.instant();
@@ -748,7 +750,12 @@ public class OrganizationApplicationService {
         String nextTargetSelector = command.targetSelector() == null
                 ? current.targetSelector()
                 : validateTargetSelector(nextTargetType, command.targetSelector());
-        Map<String, Object> nextConfig = command.config() == null ? current.config() : validateConfig(command.config());
+        Map<String, Object> nextConfig = command.config() == null
+                ? current.config()
+                : validatePolicyConfig(
+                        repository.findRepository(command.organizationId(), command.repositoryId()).orElseThrow(),
+                        nextPolicyType,
+                        command.config());
         String nextStatus = command.status() == null
                 ? current.status()
                 : validateAllowed("status", command.status(), POLICY_STATUSES);
@@ -996,6 +1003,72 @@ public class OrganizationApplicationService {
                 branch,
                 status,
                 validateReadLimit(query.limit(), 100));
+    }
+
+    public List<CoverageGapFindingDetails> listCoverageGaps(ListCoverageGapsQuery query) {
+        requireRepositoryForRead(query.requesterUserId(), query.organizationId(), query.repositoryId());
+        String commitSha = query.commitSha() == null ? null : validateCommitSha(query.commitSha());
+        if (query.pullRequestNumber() != null && query.pullRequestNumber() <= 0) {
+            throw new OrganizationException("validation_error", "pull_request_number must be positive");
+        }
+        String owner = trim(query.owner());
+        String minRisk = query.minRisk() == null ? null : validateAllowed("min_risk", query.minRisk(), DEBT_RISK_LEVELS);
+        String riskLevel = query.riskLevel() == null ? null : validateAllowed("risk_level", query.riskLevel(), DEBT_RISK_LEVELS);
+        String status = query.status() == null ? null : validateAllowed("status", query.status(), GAP_STATUSES);
+        return repository.listCoverageGaps(
+                query.organizationId(),
+                query.repositoryId(),
+                commitSha,
+                query.pullRequestNumber(),
+                query.componentId(),
+                owner,
+                minRisk,
+                riskLevel,
+                status,
+                query.includeDebt(),
+                validateReadLimit(query.limit(), 500));
+    }
+
+    public List<CoverageGapFindingDetails> listFixFirstCoverageGaps(ListFixFirstCoverageGapsQuery query) {
+        List<CoverageGapFindingDetails> ranked = listCoverageGaps(new ListCoverageGapsQuery(
+                query.requesterUserId(),
+                query.organizationId(),
+                query.repositoryId(),
+                query.commitSha(),
+                query.pullRequestNumber(),
+                null,
+                null,
+                "high",
+                null,
+                "active",
+                false,
+                500));
+        List<CoverageGapFindingDetails> selected = new ArrayList<>();
+        int limit = validateReadLimit(query.limit(), 50);
+        for (CoverageGapFindingDetails gap : ranked) {
+            if (!query.includeSourceRequired() && "run_source_explain".equals(gap.nextAction())) {
+                continue;
+            }
+            if (selected.stream().anyMatch(existing -> overlaps(existing, gap))) {
+                continue;
+            }
+            selected.add(gap);
+            if (selected.size() == limit) {
+                break;
+            }
+        }
+        return List.copyOf(selected);
+    }
+
+    public CoverageGapFindingDetails getCoverageGap(
+            UUID requesterUserId,
+            UUID organizationId,
+            UUID repositoryId,
+            UUID gapId) {
+        requireRepositoryForRead(requesterUserId, organizationId, repositoryId);
+        requireId(gapId, "gap_id is required");
+        return repository.findCoverageGap(repositoryId, gapId)
+                .orElseThrow(() -> new OrganizationException("not_found", "Coverage gap not found"));
     }
 
     public RepositoryDashboardDetails getRepositoryDashboard(GetRepositoryDashboardQuery query) {
@@ -1469,6 +1542,17 @@ public class OrganizationApplicationService {
         return debt.normalized(clock.instant());
     }
 
+    private static boolean overlaps(CoverageGapFindingDetails left, CoverageGapFindingDetails right) {
+        if (!left.filePath().equals(right.filePath())) {
+            return false;
+        }
+        int leftStart = left.lineStart() == null ? Integer.MIN_VALUE : left.lineStart();
+        int leftEnd = left.lineEnd() == null ? leftStart : left.lineEnd();
+        int rightStart = right.lineStart() == null ? Integer.MIN_VALUE : right.lineStart();
+        int rightEnd = right.lineEnd() == null ? rightStart : right.lineEnd();
+        return leftStart <= rightEnd && rightStart <= leftEnd;
+    }
+
     private void requireDeveloper(UUID requesterUserId, UUID organizationId) {
         requireActiveMembership(requesterUserId, organizationId);
         MembershipDetails membership = repository.findMembership(organizationId, requesterUserId).orElseThrow();
@@ -1526,8 +1610,24 @@ public class OrganizationApplicationService {
         Map<String, Object> policyDefaults = repository.findPolicyDefaults(registeredRepository.organizationId())
                 .map(PolicyDefaultsDetails::defaults)
                 .orElse(Map.of());
+        List<RepositoryPolicyDetails> activeCoveragePolicies = repository.listRepositoryPolicies(
+                        registeredRepository.organizationId(),
+                        registeredRepository.id())
+                .stream()
+                .filter(policy -> "active".equals(policy.status()))
+                .filter(policy -> "coverage".equals(policy.policyType()))
+                .sorted(Comparator.comparingInt(RepositoryPolicyDetails::priority)
+                        .thenComparing(RepositoryPolicyDetails::id))
+                .toList();
+        Map<String, Object> riskConfig = mergedRiskConfig(policyDefaults, activeCoveragePolicies);
         return new RepositoryCoverageContextDetails(
-                contextVersion(registeredRepository.id(), commitSha, activeComponents, activeOwnerRules, activePackageNodes),
+                contextVersion(
+                        registeredRepository.id(),
+                        commitSha,
+                        activeComponents,
+                        activeOwnerRules,
+                        activePackageNodes,
+                        activeCoveragePolicies),
                 registeredRepository.tenantId(),
                 registeredRepository.organizationId(),
                 registeredRepository.id(),
@@ -1536,6 +1636,7 @@ public class OrganizationApplicationService {
                 activeOwnerRules,
                 activePackageNodes,
                 policyDefaults,
+                riskConfig,
                 generatedAt);
     }
 
@@ -1544,7 +1645,8 @@ public class OrganizationApplicationService {
             String commitSha,
             List<RepositoryComponentDetails> components,
             List<RepositoryOwnerRuleDetails> ownerRules,
-            List<RepositoryPackageNodeDetails> packageNodes) {
+            List<RepositoryPackageNodeDetails> packageNodes,
+            List<RepositoryPolicyDetails> policies) {
         long updatedAt = 0;
         for (RepositoryComponentDetails component : components) {
             updatedAt = Math.max(updatedAt, component.updatedAt().toEpochMilli());
@@ -1555,7 +1657,59 @@ public class OrganizationApplicationService {
         for (RepositoryPackageNodeDetails packageNode : packageNodes) {
             updatedAt = Math.max(updatedAt, packageNode.updatedAt().toEpochMilli());
         }
+        for (RepositoryPolicyDetails policy : policies) {
+            updatedAt = Math.max(updatedAt, policy.updatedAt().toEpochMilli());
+        }
         return "repository-context:" + repositoryId + ":" + defaultIfBlank(commitSha, "latest") + ":" + updatedAt;
+    }
+
+    private static Map<String, Object> mergedRiskConfig(
+            Map<String, Object> policyDefaults,
+            List<RepositoryPolicyDetails> policies) {
+        Map<String, Object> merged = new LinkedHashMap<>();
+        mergeRiskConfig(merged, policyDefaults == null ? null : policyDefaults.get("risk"));
+        for (RepositoryPolicyDetails policy : policies) {
+            mergeRiskConfig(merged, policy.config().get("risk"));
+        }
+        return Map.copyOf(merged);
+    }
+
+    private static void mergeRiskConfig(Map<String, Object> merged, Object value) {
+        if (!(value instanceof Map<?, ?> risk)) {
+            return;
+        }
+        appendList(merged, "path_overrides", risk.get("path_overrides"));
+        appendList(merged, "component_overrides", risk.get("component_overrides"));
+        if (risk.get("rank_comments") instanceof Map<?, ?> rankComments) {
+            Map<String, Object> next = new LinkedHashMap<>();
+            Object existing = merged.get("rank_comments");
+            if (existing instanceof Map<?, ?> existingMap) {
+                existingMap.forEach((key, entryValue) -> {
+                    if (key instanceof String stringKey) {
+                        next.put(stringKey, entryValue);
+                    }
+                });
+            }
+            rankComments.forEach((key, entryValue) -> {
+                if (key instanceof String stringKey) {
+                    next.put(stringKey, entryValue);
+                }
+            });
+            merged.put("rank_comments", Map.copyOf(next));
+        }
+    }
+
+    private static void appendList(Map<String, Object> merged, String key, Object value) {
+        if (!(value instanceof List<?> list) || list.isEmpty()) {
+            return;
+        }
+        List<Object> values = new ArrayList<>();
+        Object existing = merged.get(key);
+        if (existing instanceof List<?> existingList) {
+            values.addAll(existingList);
+        }
+        values.addAll(list);
+        merged.put(key, List.copyOf(values));
     }
 
     private RepositoryPathResolutionDetails resolvePath(RepositoryCoverageContextDetails context, String filePath) {
@@ -1773,6 +1927,136 @@ public class OrganizationApplicationService {
         Map<String, Object> copy = ConfigurationValues.deepCopyMap(config);
         validateConfigKeys(copy);
         return copy;
+    }
+
+    private Map<String, Object> validatePolicyConfig(
+            RepositoryDetails registeredRepository,
+            String policyType,
+            Map<String, Object> config) {
+        Map<String, Object> copy = validateConfig(config);
+        if (!"coverage".equals(policyType)) {
+            return copy;
+        }
+        Object risk = copy.get("risk");
+        if (risk instanceof Map<?, ?> riskConfig) {
+            validateRiskPathOverrides(riskConfig.get("path_overrides"));
+            validateRiskComponentOverrides(registeredRepository, riskConfig.get("component_overrides"));
+            validateRankComments(riskConfig.get("rank_comments"));
+        }
+        return copy;
+    }
+
+    private static void validateRiskPathOverrides(Object value) {
+        if (value == null) {
+            return;
+        }
+        if (!(value instanceof List<?> overrides)) {
+            throw new OrganizationException("validation_error", "risk.path_overrides must be a list");
+        }
+        for (Object overrideValue : overrides) {
+            if (!(overrideValue instanceof Map<?, ?> override)) {
+                throw new OrganizationException("validation_error", "risk.path_overrides item is invalid");
+            }
+            Object pattern = override.get("pattern");
+            if (!(pattern instanceof String patternValue)) {
+                throw new OrganizationException("validation_error", "risk.path_overrides.pattern is required");
+            }
+            validatePathPattern(patternValue);
+            validateRiskAdjustment(override.get("score_boost"), "score_boost");
+            validateRiskAdjustment(override.get("score_dampening"), "score_dampening");
+            if (override.get("criticality") != null) {
+                validateAllowed("criticality", String.valueOf(override.get("criticality")), COMPONENT_CRITICALITIES);
+            }
+        }
+    }
+
+    private void validateRiskComponentOverrides(RepositoryDetails registeredRepository, Object value) {
+        if (value == null) {
+            return;
+        }
+        if (!(value instanceof List<?> overrides)) {
+            throw new OrganizationException("validation_error", "risk.component_overrides must be a list");
+        }
+        List<RepositoryComponentDetails> activeComponents = repository.listRepositoryComponents(
+                        registeredRepository.organizationId(),
+                        registeredRepository.id())
+                .stream()
+                .filter(component -> "active".equals(component.status()))
+                .toList();
+        for (Object overrideValue : overrides) {
+            if (!(overrideValue instanceof Map<?, ?> override)) {
+                throw new OrganizationException("validation_error", "risk.component_overrides item is invalid");
+            }
+            Object component = override.get("component");
+            if (!(component instanceof String componentValue) || componentValue.isBlank()) {
+                throw new OrganizationException("validation_error", "risk.component_overrides.component is required");
+            }
+            boolean exists = activeComponents.stream()
+                    .anyMatch(candidate -> candidate.name().equals(componentValue)
+                            || candidate.id().toString().equals(componentValue));
+            if (!exists) {
+                throw new OrganizationException("validation_error", "risk.component_overrides.component is invalid");
+            }
+            if (override.get("criticality") != null) {
+                validateAllowed("criticality", String.valueOf(override.get("criticality")), COMPONENT_CRITICALITIES);
+            }
+            validateRiskAdjustment(override.get("score_boost"), "score_boost");
+            validateRiskAdjustment(override.get("score_dampening"), "score_dampening");
+        }
+    }
+
+    private static void validateRankComments(Object value) {
+        if (value == null) {
+            return;
+        }
+        if (!(value instanceof Map<?, ?> config)) {
+            throw new OrganizationException("validation_error", "risk.rank_comments must be an object");
+        }
+        Object maxItems = config.get("max_items");
+        if (maxItems != null) {
+            int parsed = integerValue(maxItems, "risk.rank_comments.max_items");
+            if (parsed < 1 || parsed > 50) {
+                throw new OrganizationException("validation_error", "risk.rank_comments.max_items must be between 1 and 50");
+            }
+        }
+        if (config.get("min_level") != null) {
+            validateAllowed("min_level", String.valueOf(config.get("min_level")), DEBT_RISK_LEVELS);
+        }
+    }
+
+    private static void validateRiskAdjustment(Object value, String fieldName) {
+        if (value == null) {
+            return;
+        }
+        BigDecimal parsed = decimalValue(value, "risk." + fieldName);
+        if (parsed.compareTo(BigDecimal.ZERO) < 0 || parsed.compareTo(BigDecimal.valueOf(50)) > 0) {
+            throw new OrganizationException("validation_error", "risk." + fieldName + " must be between 0 and 50");
+        }
+    }
+
+    private static int integerValue(Object value, String fieldName) {
+        try {
+            return decimalValue(value, fieldName).intValueExact();
+        } catch (ArithmeticException exception) {
+            throw new OrganizationException("validation_error", fieldName + " must be an integer");
+        }
+    }
+
+    private static BigDecimal decimalValue(Object value, String fieldName) {
+        try {
+            if (value instanceof BigDecimal decimal) {
+                return decimal;
+            }
+            if (value instanceof Number number) {
+                return new BigDecimal(number.toString());
+            }
+            if (value instanceof String string && !string.isBlank()) {
+                return new BigDecimal(string);
+            }
+        } catch (ArithmeticException | NumberFormatException exception) {
+            throw new OrganizationException("validation_error", fieldName + " must be numeric");
+        }
+        throw new OrganizationException("validation_error", fieldName + " must be numeric");
     }
 
     private static void validateConfigKeys(Map<?, ?> config) {

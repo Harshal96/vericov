@@ -1410,6 +1410,129 @@ class OrganizationApplicationServiceTest {
         assertEquals("active", updated.status());
     }
 
+    @Test
+    void listsCoverageGapsRankedWithFilters() {
+        TestFixture fixture = new TestFixture();
+        var org = fixture.service.createOrganization(new CreateOrganizationCommand(USER_ID, "Acme", "acme", "team"));
+        var repo = fixture.service.registerRepository(new CreateRepositoryCommand(USER_ID, org.id(), "github", "1", "a/b", "main", "private"));
+        var low = fixture.repository.saveCoverageGap(gap(org, repo, "src/Low.java", 5, "low", new BigDecimal("20.0"), "active", List.of("@acme/app"), "create_debt"));
+        var highDebt = fixture.repository.saveCoverageGap(gap(org, repo, "src/Debt.java", 6, "high", new BigDecimal("70.0"), "debt_suppressed", List.of("@acme/app"), "create_debt"));
+        var critical = fixture.repository.saveCoverageGap(gap(org, repo, "src/Critical.java", 7, "critical", new BigDecimal("91.0"), "active", List.of("@acme/core"), "add_test"));
+        var high = fixture.repository.saveCoverageGap(gap(org, repo, "src/High.java", 8, "high", new BigDecimal("72.0"), "active", List.of("@acme/app"), "add_test"));
+
+        var gaps = fixture.service.listCoverageGaps(new ListCoverageGapsQuery(
+                USER_ID,
+                org.id(),
+                repo.id(),
+                "sha",
+                1,
+                null,
+                null,
+                "high",
+                null,
+                null,
+                false,
+                100));
+
+        assertEquals(List.of(critical.id(), high.id()), gaps.stream().map(CoverageGapFindingDetails::id).toList());
+        assertFalse(gaps.stream().map(CoverageGapFindingDetails::id).toList().contains(low.id()));
+        assertFalse(gaps.stream().map(CoverageGapFindingDetails::id).toList().contains(highDebt.id()));
+
+        var owned = fixture.service.listCoverageGaps(new ListCoverageGapsQuery(
+                USER_ID,
+                org.id(),
+                repo.id(),
+                null,
+                null,
+                null,
+                "@acme/app",
+                null,
+                "high",
+                "active",
+                true,
+                100));
+
+        assertEquals(List.of(high.id()), owned.stream().map(CoverageGapFindingDetails::id).toList());
+    }
+
+    @Test
+    void fixFirstCoverageGapsExcludesDebtSourceRequiredAndOverlappingTargets() {
+        TestFixture fixture = new TestFixture();
+        var org = fixture.service.createOrganization(new CreateOrganizationCommand(USER_ID, "Acme", "acme", "team"));
+        var repo = fixture.service.registerRepository(new CreateRepositoryCommand(USER_ID, org.id(), "github", "1", "a/b", "main", "private"));
+        var first = fixture.repository.saveCoverageGap(gap(org, repo, "src/App.java", 10, "high", new BigDecimal("80.0"), "active", List.of("@acme/app"), "add_test"));
+        fixture.repository.saveCoverageGap(gap(org, repo, "src/App.java", 10, "high", new BigDecimal("75.0"), "active", List.of("@acme/app"), "add_test"));
+        fixture.repository.saveCoverageGap(gap(org, repo, "src/Source.java", 20, "critical", new BigDecimal("95.0"), "active", List.of("@acme/app"), "run_source_explain"));
+        var second = fixture.repository.saveCoverageGap(gap(org, repo, "src/Other.java", 30, "high", new BigDecimal("78.0"), "active", List.of("@acme/app"), "add_test"));
+
+        var gaps = fixture.service.listFixFirstCoverageGaps(new ListFixFirstCoverageGapsQuery(
+                USER_ID,
+                org.id(),
+                repo.id(),
+                "sha",
+                1,
+                false,
+                5));
+
+        assertEquals(List.of(first.id(), second.id()), gaps.stream().map(CoverageGapFindingDetails::id).toList());
+    }
+
+    @Test
+    void validatesCoverageRiskPolicyOverrides() {
+        TestFixture fixture = new TestFixture();
+        var org = fixture.service.createOrganization(new CreateOrganizationCommand(USER_ID, "Acme", "acme", "team"));
+        var repo = fixture.service.registerRepository(new CreateRepositoryCommand(USER_ID, org.id(), "github", "1", "a/b", "main", "private"));
+        fixture.service.createRepositoryComponent(new CreateRepositoryComponentCommand(
+                USER_ID,
+                org.id(),
+                repo.id(),
+                "auth",
+                null,
+                List.of("src/auth/**"),
+                List.of("@acme/auth"),
+                "high",
+                Map.of(),
+                "active"));
+
+        var valid = fixture.service.createRepositoryPolicy(new CreateRepositoryPolicyCommand(
+                USER_ID,
+                org.id(),
+                repo.id(),
+                "Risk policy",
+                null,
+                "coverage",
+                "repository",
+                null,
+                Map.of("risk", Map.of(
+                        "path_overrides", List.of(Map.of("pattern", "src/auth/**", "score_boost", 15)),
+                        "component_overrides", List.of(Map.of("component", "auth", "criticality", "critical")),
+                        "rank_comments", Map.of("max_items", 5, "min_level", "high"))),
+                "active",
+                100));
+        assertEquals("Risk policy", valid.name());
+
+        OrganizationException badBoost = assertThrows(OrganizationException.class, () ->
+                fixture.service.createRepositoryPolicy(new CreateRepositoryPolicyCommand(
+                        USER_ID, org.id(), repo.id(), "Bad boost", null, "coverage", "repository", null,
+                        Map.of("risk", Map.of("path_overrides", List.of(Map.of("pattern", "src/**", "score_boost", 51)))),
+                        "active", 100)));
+        assertEquals("validation_error", badBoost.code());
+
+        OrganizationException badPath = assertThrows(OrganizationException.class, () ->
+                fixture.service.createRepositoryPolicy(new CreateRepositoryPolicyCommand(
+                        USER_ID, org.id(), repo.id(), "Bad path", null, "coverage", "repository", null,
+                        Map.of("risk", Map.of("path_overrides", List.of(Map.of("pattern", "/src/**", "score_boost", 1)))),
+                        "active", 100)));
+        assertEquals("validation_error", badPath.code());
+
+        OrganizationException badComponent = assertThrows(OrganizationException.class, () ->
+                fixture.service.createRepositoryPolicy(new CreateRepositoryPolicyCommand(
+                        USER_ID, org.id(), repo.id(), "Bad component", null, "coverage", "repository", null,
+                        Map.of("risk", Map.of("component_overrides", List.of(Map.of("component", "payments", "criticality", "critical")))),
+                        "active", 100)));
+        assertEquals("validation_error", badComponent.code());
+    }
+
     private static final class TestFixture {
         private final MutableClock clock = new MutableClock();
         private final InMemoryOrganizationRepository repository = new InMemoryOrganizationRepository();
@@ -1439,5 +1562,43 @@ class OrganizationApplicationServiceTest {
         private void advanceSeconds(long seconds) {
             instant = instant.plusSeconds(seconds);
         }
+    }
+
+    private static CoverageGapFindingDetails gap(
+            OrganizationDetails organization,
+            RepositoryDetails repository,
+            String filePath,
+            int line,
+            String riskLevel,
+            BigDecimal riskScore,
+            String status,
+            List<String> owners,
+            String nextAction) {
+        return new CoverageGapFindingDetails(
+                UUID.randomUUID(),
+                repository.tenantId(),
+                organization.id(),
+                repository.id(),
+                UUID.randomUUID(),
+                null,
+                null,
+                "sha",
+                1,
+                filePath,
+                "line",
+                line,
+                line,
+                null,
+                "new_uncovered_changed_line",
+                "Added executable line " + line + " is uncovered in the head report.",
+                "high",
+                riskScore,
+                riskLevel,
+                owners,
+                nextAction,
+                status,
+                Map.of("score", Map.of("total", riskScore, "level", riskLevel)),
+                NOW,
+                NOW);
     }
 }

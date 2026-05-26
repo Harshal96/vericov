@@ -4,6 +4,8 @@ import dev.vericov.analysis.coverage.CoverageFileSummary;
 import dev.vericov.analysis.coverage.CoverageLineHit;
 import dev.vericov.analysis.coverage.CoverageMetric;
 import dev.vericov.analysis.coverage.CoverageReport;
+import dev.vericov.analysis.gaps.CoverageGapFinding;
+import java.math.BigDecimal;
 import java.io.PrintWriter;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
@@ -85,6 +87,64 @@ class JdbcCoverageReportRepositoryTest {
         assertEquals(REPOSITORY_ID, rollup.parameters.get(2));
         assertEquals(componentId, rollup.parameters.get(5));
         assertEquals("@acme/app", rollup.parameters.get(6));
+    }
+
+    @Test
+    void insertsCoverageGapFindingsAndRiskRollupValues() {
+        RecordingDataSource dataSource = new RecordingDataSource();
+        UUID componentId = UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
+        CoverageGapFinding finding = new CoverageGapFinding(
+                UUID.fromString("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"),
+                TENANT_ID,
+                REPOSITORY_ID,
+                REPORT_ID,
+                componentId,
+                "abc123",
+                42,
+                "src/App.java",
+                "line",
+                10,
+                10,
+                null,
+                "new_uncovered_changed_line",
+                "Added executable line 10 is uncovered in the head report.",
+                "high",
+                new BigDecimal("72.5"),
+                "high",
+                List.of("@acme/app"),
+                "add_test",
+                "active",
+                Map.of("score", Map.of("total", new BigDecimal("72.5"), "level", "high")),
+                Instant.parse("2026-05-23T12:00:00Z"),
+                Instant.parse("2026-05-23T12:00:00Z"));
+        CoverageReport report = report()
+                .withComponentRollups(List.of(new dev.vericov.analysis.coverage.CoverageComponentRollup(
+                        componentId,
+                        "@acme/app",
+                        new CoverageMetric(1, 1),
+                        new CoverageMetric(0, 0),
+                        new CoverageMetric(0, 0),
+                        new CoverageMetric(1, 1),
+                        1,
+                        0,
+                        new BigDecimal("72.5"))))
+                .withGapFindings(List.of(finding));
+
+        new JdbcCoverageReportRepository(dataSource).save(report);
+
+        RecordedStatement gap = dataSource.statementContaining("insert into vericov.coverage_gap_findings");
+        assertTrue(gap.sql.contains("risk_score"));
+        assertTrue(gap.sql.contains("evidence_json"));
+        assertEquals(finding.id(), gap.parameters.get(1));
+        assertEquals(componentId, gap.parameters.get(7));
+        assertEquals("new_uncovered_changed_line", gap.parameters.get(15));
+        assertEquals(new BigDecimal("72.5"), gap.parameters.get(18));
+        assertEquals("high", gap.parameters.get(19));
+
+        RecordedStatement rollup = dataSource.statementContaining("insert into vericov.component_coverage_rollups");
+        assertEquals(1, rollup.parameters.get(15));
+        assertEquals(0, rollup.parameters.get(16));
+        assertEquals(new BigDecimal("72.5"), rollup.parameters.get(17));
     }
 
     private static CoverageReport report() {

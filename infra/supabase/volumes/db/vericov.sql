@@ -514,6 +514,7 @@ CREATE TABLE IF NOT EXISTS vericov.component_coverage_rollups (
     gap_count integer NOT NULL DEFAULT 0 CHECK (gap_count >= 0),
     debt_count integer NOT NULL DEFAULT 0 CHECK (debt_count >= 0),
     risk_score_total numeric(12, 4) NOT NULL DEFAULT 0 CHECK (risk_score_total >= 0),
+    highest_active_risk_level text CHECK (highest_active_risk_level IS NULL OR highest_active_risk_level IN ('critical', 'high', 'medium', 'low')),
     created_at timestamptz NOT NULL DEFAULT now(),
     UNIQUE (coverage_report_id, component_id, owner),
     CHECK (line_covered <= line_total),
@@ -609,6 +610,37 @@ CREATE TABLE IF NOT EXISTS vericov.pull_request_coverage_diff_lines (
     newly_missed boolean NOT NULL DEFAULT false,
     lost_coverage boolean NOT NULL DEFAULT false,
     created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS vericov.coverage_gap_findings (
+    id uuid PRIMARY KEY DEFAULT extensions.gen_random_uuid(),
+    tenant_id uuid NOT NULL REFERENCES vericov.tenants (id) ON DELETE CASCADE,
+    org_id uuid NOT NULL REFERENCES vericov.organizations (id) ON DELETE CASCADE,
+    repository_id uuid NOT NULL REFERENCES vericov.repositories (id) ON DELETE CASCADE,
+    coverage_report_id uuid NOT NULL REFERENCES vericov.coverage_reports (id) ON DELETE CASCADE,
+    pr_diff_id uuid REFERENCES vericov.pull_request_coverage_diffs (id) ON DELETE SET NULL,
+    component_id uuid REFERENCES vericov.components (id) ON DELETE SET NULL,
+    commit_sha text NOT NULL,
+    pull_request_number integer CHECK (pull_request_number IS NULL OR pull_request_number > 0),
+    file_path text NOT NULL,
+    target_type text NOT NULL CHECK (target_type IN ('line', 'range', 'file', 'function', 'branch', 'component')),
+    line_start integer CHECK (line_start IS NULL OR line_start > 0),
+    line_end integer CHECK (line_end IS NULL OR line_end > 0),
+    symbol_name text,
+    reason_code text NOT NULL CHECK (length(trim(reason_code)) BETWEEN 1 AND 120),
+    explanation text NOT NULL CHECK (length(trim(explanation)) BETWEEN 1 AND 1000),
+    confidence text NOT NULL CHECK (confidence IN ('high', 'medium', 'low')),
+    risk_score numeric(5, 1) NOT NULL CHECK (risk_score >= 0 AND risk_score <= 100),
+    risk_level text NOT NULL CHECK (risk_level IN ('critical', 'high', 'medium', 'low')),
+    owners text[] NOT NULL DEFAULT ARRAY[]::text[],
+    next_action text NOT NULL CHECK (next_action IN ('add_test', 'create_debt', 'mark_generated', 'inspect_instrumentation', 'run_source_explain')),
+    status text NOT NULL CHECK (status IN ('active', 'debt_suppressed', 'resolved', 'obsolete')),
+    evidence_json jsonb NOT NULL DEFAULT '{}'::jsonb,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (repository_id, coverage_report_id, file_path, target_type, line_start, line_end, reason_code),
+    CHECK (line_end IS NULL OR line_start IS NULL OR line_end >= line_start),
+    CHECK (jsonb_typeof(evidence_json) = 'object')
 );
 
 CREATE TABLE IF NOT EXISTS vericov.gate_evaluations (
@@ -1211,6 +1243,18 @@ CREATE INDEX IF NOT EXISTS component_coverage_rollups_report_idx
 CREATE INDEX IF NOT EXISTS component_coverage_rollups_component_idx
     ON vericov.component_coverage_rollups (component_id, owner);
 
+CREATE INDEX IF NOT EXISTS coverage_gap_findings_rank_idx
+    ON vericov.coverage_gap_findings (repository_id, status, risk_score DESC, file_path, line_start);
+
+CREATE INDEX IF NOT EXISTS coverage_gap_findings_report_idx
+    ON vericov.coverage_gap_findings (coverage_report_id);
+
+CREATE INDEX IF NOT EXISTS coverage_gap_findings_component_idx
+    ON vericov.coverage_gap_findings (component_id, status, risk_score DESC);
+
+CREATE INDEX IF NOT EXISTS coverage_gap_findings_owners_idx
+    ON vericov.coverage_gap_findings USING gin (owners);
+
 CREATE INDEX IF NOT EXISTS coverage_line_hits_report_file_idx
     ON vericov.coverage_line_hits (coverage_report_id, file_path, line_number);
 
@@ -1432,6 +1476,7 @@ ALTER TABLE vericov.badge_cache ENABLE ROW LEVEL SECURITY;
 ALTER TABLE vericov.coverage_file_summaries ENABLE ROW LEVEL SECURITY;
 ALTER TABLE vericov.component_coverage_rollups ENABLE ROW LEVEL SECURITY;
 ALTER TABLE vericov.coverage_line_hits ENABLE ROW LEVEL SECURITY;
+ALTER TABLE vericov.coverage_gap_findings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE vericov.test_runs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE vericov.pull_request_coverage_diffs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE vericov.pull_request_coverage_diff_files ENABLE ROW LEVEL SECURITY;
