@@ -774,6 +774,18 @@ public class OrganizationApplicationService {
         return coverageReportDetails(query.organizationId(), summary, query.includeFiles(), query.fileLimit());
     }
 
+    public List<TestRunDetails> listCommitTestRuns(ListTestRunsQuery query) {
+        RepositoryDetails registeredRepository = requireRepositoryForRead(
+                query.requesterUserId(),
+                query.organizationId(),
+                query.repositoryId());
+        String commitSha = validateCommitSha(query.commitSha());
+        return repository.listTestRuns(
+                registeredRepository.id(),
+                commitSha,
+                validateReadLimit(query.limit(), 100));
+    }
+
     public CoverageLineHitMapDetails getCoverageLineHits(GetCoverageLineHitsQuery query) {
         RepositoryDetails registeredRepository = requireRepositoryForRead(
                 query.requesterUserId(),
@@ -902,7 +914,7 @@ public class OrganizationApplicationService {
         requireId(command.organizationId(), "organization_id is required");
         requireId(command.repositoryId(), "repository_id is required");
         requireDeveloper(command.requesterUserId(), command.organizationId());
-        
+
         RepositoryDetails repoDetails = requireRepositoryForRead(command.requesterUserId(), command.organizationId(), command.repositoryId());
 
         // Validate reason

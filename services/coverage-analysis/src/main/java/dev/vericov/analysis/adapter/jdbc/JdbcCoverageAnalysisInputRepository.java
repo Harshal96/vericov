@@ -65,7 +65,7 @@ public class JdbcCoverageAnalysisInputRepository implements CoverageAnalysisInpu
 
     private static List<CoverageInputArtifact> findArtifacts(java.sql.Connection connection, UUID uploadId) throws SQLException {
         try (var statement = connection.prepareStatement("""
-                select name, kind, format, storage_bucket, storage_path, sha256_hex
+                select id, name, kind, format, storage_bucket, storage_path, sha256_hex
                 from vericov.upload_artifacts
                 where upload_id = ?
                 order by name
@@ -75,6 +75,7 @@ public class JdbcCoverageAnalysisInputRepository implements CoverageAnalysisInpu
                 List<CoverageInputArtifact> artifacts = new ArrayList<>();
                 while (resultSet.next()) {
                     artifacts.add(new CoverageInputArtifact(
+                            resultSet.getObject("id", UUID.class),
                             resultSet.getString("name"),
                             resultSet.getString("kind"),
                             resultSet.getString("format"),

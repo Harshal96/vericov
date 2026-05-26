@@ -22,6 +22,7 @@ import dev.vericov.organization.application.RepositoryGateDetails;
 import dev.vericov.organization.application.RepositoryPolicyDetails;
 import dev.vericov.organization.application.CoverageDebtDetails;
 import dev.vericov.organization.application.CoverageDebtEventDetails;
+import dev.vericov.organization.application.TestRunDetails;
 import dev.vericov.organization.application.port.OrganizationRepository;
 import jakarta.json.Json;
 import jakarta.json.JsonArrayBuilder;
@@ -1724,6 +1725,35 @@ public class JdbcOrganizationRepository implements OrganizationRepository {
     }
 
 
+    @Override
+    public List<TestRunDetails> listTestRuns(UUID repositoryId, String commitSha, int limit) {
+        try (var connection = dataSource.getConnection();
+                var statement = connection.prepareStatement("""
+                        select id, tenant_id, repository_id, upload_id, upload_artifact_id,
+                               commit_sha, branch, pull_request_number, suite_name, suite_index,
+                               status, total_count, passed_count, failed_count, error_count,
+                               skipped_count, duration_ms, created_at
+                        from vericov.test_runs
+                        where repository_id = ?
+                          and commit_sha = ?
+                        order by created_at desc, suite_index, id
+                        limit ?
+                        """)) {
+            statement.setObject(1, repositoryId);
+            statement.setString(2, commitSha);
+            statement.setInt(3, limit);
+            try (var resultSet = statement.executeQuery()) {
+                List<TestRunDetails> runs = new ArrayList<>();
+                while (resultSet.next()) {
+                    runs.add(readTestRun(resultSet));
+                }
+                return List.copyOf(runs);
+            }
+        } catch (SQLException exception) {
+            throw databaseFailure("Failed to list test runs", exception);
+        }
+    }
+
     private static List<DiffCoverageFileDetails> readDiffCoverageFiles(
             Connection connection,
             UUID diffId,
@@ -2371,6 +2401,28 @@ public class JdbcOrganizationRepository implements OrganizationRepository {
                 resultSet.getInt("function_total"),
                 resultSet.getInt("statement_covered"),
                 resultSet.getInt("statement_total"),
+                instant(resultSet, "created_at"));
+    }
+
+    private static TestRunDetails readTestRun(ResultSet resultSet) throws SQLException {
+        return new TestRunDetails(
+                resultSet.getObject("id", UUID.class),
+                resultSet.getObject("tenant_id", UUID.class),
+                resultSet.getObject("repository_id", UUID.class),
+                resultSet.getObject("upload_id", UUID.class),
+                resultSet.getObject("upload_artifact_id", UUID.class),
+                resultSet.getString("commit_sha"),
+                resultSet.getString("branch"),
+                (Integer) resultSet.getObject("pull_request_number"),
+                resultSet.getString("suite_name"),
+                resultSet.getInt("suite_index"),
+                resultSet.getString("status"),
+                resultSet.getInt("total_count"),
+                resultSet.getInt("passed_count"),
+                resultSet.getInt("failed_count"),
+                resultSet.getInt("error_count"),
+                resultSet.getInt("skipped_count"),
+                resultSet.getLong("duration_ms"),
                 instant(resultSet, "created_at"));
     }
 

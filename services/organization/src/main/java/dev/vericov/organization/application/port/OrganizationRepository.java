@@ -18,6 +18,7 @@ import dev.vericov.organization.application.RepositoryGateDetails;
 import dev.vericov.organization.application.RepositoryPolicyDetails;
 import dev.vericov.organization.application.CoverageDebtDetails;
 import dev.vericov.organization.application.CoverageDebtEventDetails;
+import dev.vericov.organization.application.TestRunDetails;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
@@ -133,6 +134,8 @@ public interface OrganizationRepository {
     Optional<PullRequestDiffCoverageDetails> findPullRequestDiffCoverage(UUID coverageReportId, boolean includeLines);
 
     CoverageLineHitMapDetails findCoverageLineHits(UUID repositoryId, String commitSha, String filePath);
+
+    List<TestRunDetails> listTestRuns(UUID repositoryId, String commitSha, int limit);
 
     List<GateEvaluationDetails> listGateEvaluations(UUID organizationId, UUID repositoryId, String branch, String status, int limit);
 

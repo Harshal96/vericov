@@ -9,6 +9,7 @@ import dev.vericov.analysis.adapter.jdbc.JdbcCoverageAnalysisInputRepository;
 import dev.vericov.analysis.adapter.jdbc.JdbcCoverageReportRepository;
 import dev.vericov.analysis.adapter.jdbc.JdbcGateConfigurationRepository;
 import dev.vericov.analysis.adapter.jdbc.JdbcPrDiffCoverageRepository;
+import dev.vericov.analysis.adapter.jdbc.JdbcTestRunRepository;
 import dev.vericov.analysis.adapter.storage.HttpSupabaseArtifactContentStore;
 import dev.vericov.analysis.adapter.storage.SupabaseNormalizedCoverageStore;
 import dev.vericov.analysis.application.AnalysisMessageHandler;
@@ -34,6 +35,9 @@ import dev.vericov.analysis.domain.AnalysisFailureDecision;
 import dev.vericov.analysis.domain.AnalysisJobStartResult;
 import dev.vericov.analysis.domain.QueuedAnalysisMessage;
 import dev.vericov.analysis.domain.UploadReceivedEvent;
+import dev.vericov.analysis.testresults.JUnitTestResultParser;
+import dev.vericov.analysis.testresults.SecureXmlTestResultDocumentReader;
+import dev.vericov.analysis.testresults.TestResultParserRegistry;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.inject.Produces;
 import java.net.URI;
@@ -114,6 +118,9 @@ public class AnalysisComponents {
                         new CloverCoverageParser(xmlReader),
                         new GoCoverProfileParser(),
                         new GcovCoverageParser())),
+                new TestResultParserRegistry(List.of(
+                        new JUnitTestResultParser(new SecureXmlTestResultDocumentReader()))),
+                new JdbcTestRunRepository(dataSource),
                 prDiffCoverageProcessor(dataSource, reportRepository),
                 Clock.systemUTC());
     }

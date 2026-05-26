@@ -12,6 +12,7 @@ import dev.vericov.analysis.application.port.CoverageReportRepository;
 import dev.vericov.analysis.application.port.GateConfigurationRepository;
 import dev.vericov.analysis.application.port.NormalizedCoverageLocation;
 import dev.vericov.analysis.application.port.NormalizedCoverageStore;
+import dev.vericov.analysis.application.port.TestRunRepository;
 import dev.vericov.analysis.coverage.CloverCoverageParser;
 import dev.vericov.analysis.coverage.CoberturaCoverageParser;
 import dev.vericov.analysis.coverage.CoverageAnalysisInput;
@@ -31,6 +32,10 @@ import dev.vericov.analysis.domain.QueuedAnalysisMessage;
 import dev.vericov.analysis.domain.UploadReceivedEvent;
 import dev.vericov.analysis.gates.GateConfiguration;
 import dev.vericov.analysis.gates.GateEvaluation;
+import dev.vericov.analysis.testresults.JUnitTestResultParser;
+import dev.vericov.analysis.testresults.SecureXmlTestResultDocumentReader;
+import dev.vericov.analysis.testresults.TestResultParserRegistry;
+import dev.vericov.analysis.testresults.TestRun;
 import io.cucumber.java.en.Given;
 import io.cucumber.java.en.Then;
 import io.cucumber.java.en.When;
@@ -59,6 +64,7 @@ public class AnalysisSteps {
     private static final UUID REPOSITORY_ID = UUID.fromString("4d607f16-1af7-4d3b-ac38-06454cba463c");
     private static final UUID UPLOAD_ID = UUID.fromString("03ce97f7-af1c-4d65-a9a6-9f95cb4ccfc6");
     private static final UUID JOB_ID = UUID.fromString("fb0e1e5d-55d7-4f74-9303-7a93400d53a1");
+    private static final UUID TEST_ARTIFACT_ID = UUID.fromString("52d0e554-4ce9-418c-96af-2c1c4cf17e3c");
     private static final long MESSAGE_ID = 101L;
 
     private CoverageAnalysisInput input;
@@ -69,6 +75,7 @@ public class AnalysisSteps {
     private final FakeNormalizedCoverageStore normalizedCoverageStore = new FakeNormalizedCoverageStore();
     private final FakeReportRepository reports = new FakeReportRepository();
     private final FakeGateConfigurationRepository gates = new FakeGateConfigurationRepository();
+    private final FakeTestRunRepository testRuns = new FakeTestRunRepository();
 
     @Given("an upload received message with LCOV coverage artifacts")
     public void uploadReceivedMessageWithLcovCoverageArtifacts() {
@@ -197,8 +204,8 @@ public class AnalysisSteps {
                 """.getBytes(StandardCharsets.UTF_8));
     }
 
-    @Given("an upload received message without coverage artifacts")
-    public void uploadReceivedMessageWithoutCoverageArtifacts() {
+    @Given("an upload received message with JUnit test-result artifacts")
+    public void uploadReceivedMessageWithJunitTestResultArtifacts() {
         input = new CoverageAnalysisInput(
                 UPLOAD_ID,
                 TENANT_ID,
@@ -207,11 +214,41 @@ public class AnalysisSteps {
                 "main",
                 42,
                 List.of(new CoverageInputArtifact(
+                        TEST_ARTIFACT_ID,
                         "junit.xml",
                         "test_results",
                         "junit",
                         "test-results-raw",
                         "tenant/upload/test-results/junit.xml",
+                        "sha-1")));
+        message = new QueuedAnalysisMessage(MESSAGE_ID, 1, supportedEvent());
+        queue.messages = List.of(message);
+    }
+
+    @Given("object storage contains the JUnit test results")
+    public void objectStorageContainsTheJunitTestResults() {
+        contentStore.contentByLocation.put(
+                "test-results-raw/tenant/upload/test-results/junit.xml",
+                """
+                <testsuite name="unit" tests="3" failures="1" errors="0" skipped="0" time="0.42" />
+                """.getBytes(StandardCharsets.UTF_8));
+    }
+
+    @Given("an upload received message without analyzable artifacts")
+    public void uploadReceivedMessageWithoutAnalyzableArtifacts() {
+        input = new CoverageAnalysisInput(
+                UPLOAD_ID,
+                TENANT_ID,
+                REPOSITORY_ID,
+                "abc123",
+                "main",
+                42,
+                List.of(new CoverageInputArtifact(
+                        "metadata.json",
+                        "metadata",
+                        "json",
+                        "metadata-raw",
+                        "tenant/upload/metadata/metadata.json",
                         "sha-1")));
         message = new QueuedAnalysisMessage(MESSAGE_ID, 1, supportedEvent());
         queue.messages = List.of(message);
@@ -296,6 +333,18 @@ public class AnalysisSteps {
         assertNull(reports.savedReport);
     }
 
+    @Then("the test run is persisted with {int} passed tests out of {int}")
+    public void testRunIsPersistedWithPassedTestsOutOfTotal(int passed, int total) {
+        assertEquals(1, testRuns.savedRuns.size());
+        TestRun run = testRuns.savedRuns.getFirst();
+        assertEquals(UPLOAD_ID, run.uploadId());
+        assertEquals(TEST_ARTIFACT_ID, run.uploadArtifactId());
+        assertEquals("unit", run.suiteName());
+        assertEquals(total, run.totalCount());
+        assertEquals(passed, run.passedCount());
+        assertEquals("failed", run.status());
+    }
+
     @Then("the coverage artifacts are not downloaded")
     public void coverageArtifactsAreNotDownloaded() {
         assertTrue(contentStore.readLocations.isEmpty());
@@ -351,6 +400,8 @@ public class AnalysisSteps {
                 gates,
                 normalizedCoverageStore,
                 parserRegistry(),
+                testResultParserRegistry(),
+                testRuns,
                 Clock.fixed(NOW, ZoneOffset.UTC));
     }
 
@@ -363,6 +414,10 @@ public class AnalysisSteps {
                 new CloverCoverageParser(xmlReader),
                 new GoCoverProfileParser(),
                 new GcovCoverageParser()));
+    }
+
+    private static TestResultParserRegistry testResultParserRegistry() {
+        return new TestResultParserRegistry(List.of(new JUnitTestResultParser(new SecureXmlTestResultDocumentReader())));
     }
 
     private static UploadReceivedEvent supportedEvent() {
@@ -447,6 +502,17 @@ public class AnalysisSteps {
             return new NormalizedCoverageLocation(
                     "coverage-normalized",
                     report.tenantId() + "/" + report.uploadId() + "/coverage-normalized/coverage-map.json.gz");
+        }
+    }
+
+    private static final class FakeTestRunRepository implements TestRunRepository {
+        private List<TestRun> savedRuns = List.of();
+
+        @Override
+        public void save(CoverageAnalysisInput input, List<TestRun> runs, Instant completedAt) {
+            assertEquals(UPLOAD_ID, input.uploadId());
+            assertEquals(NOW, completedAt);
+            savedRuns = List.copyOf(runs);
         }
     }
 

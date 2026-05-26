@@ -110,7 +110,7 @@ For compatibility with the local Supabase naming above, `SUPABASE_DB_URL`, `SUPA
 
 ## Coverage Analysis Worker Env Shape
 
-The coverage analysis service consumes `upload.received` messages from PGMQ. It is safe to start with only the HTTP shell, but the queue worker turns on automatically when `VERICOV_ANALYSIS_DB_URL` is present. The current processor supports LCOV, Cobertura, JaCoCo, Clover, Go cover profile, gcov, and llvm-cov gcov coverage artifacts.
+The coverage analysis service consumes `upload.received` messages from PGMQ. It is safe to start with only the HTTP shell, but the queue worker turns on automatically when `VERICOV_ANALYSIS_DB_URL` is present. The current processor supports LCOV, Cobertura, JaCoCo, Clover, Go cover profile, gcov, and llvm-cov gcov coverage artifacts, plus JUnit XML test-result artifacts.
 
 ```bash
 VERICOV_ANALYSIS_DB_URL=jdbc:postgresql://localhost:54322/postgres
@@ -127,7 +127,7 @@ VERICOV_ANALYSIS_WORKER_IDLE_DELAY_MS=1000
 VERICOV_NORMALIZED_COVERAGE_BUCKET=coverage-normalized
 ```
 
-The worker downloads raw coverage files from private Supabase Storage buckets using the service-role key, merges shards by repository file path, writes a gzip-compressed normalized coverage map to `coverage-normalized`, evaluates active project coverage gates, writes `coverage_reports`, `coverage_file_summaries`, `coverage_line_hits`, and `gate_evaluations`, marks the upload processed, and emits `coverage.report.completed` plus `coverage.gates.evaluated` upload events when gates run.
+The worker downloads raw coverage and test-result files from private Supabase Storage buckets using the service-role key, merges shards by repository file path, writes a gzip-compressed normalized coverage map to `coverage-normalized`, evaluates active project coverage gates, writes `coverage_reports`, `coverage_file_summaries`, `coverage_line_hits`, `test_runs`, and `gate_evaluations`, marks the upload processed, and emits `coverage.report.completed`, `test.runs.completed`, plus `coverage.gates.evaluated` upload events when applicable.
 
 ## Reset
 

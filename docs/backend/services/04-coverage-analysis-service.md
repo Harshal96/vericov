@@ -7,11 +7,11 @@ OpenAPI: `/openapi`
 
 ## Purpose
 
-The Coverage Analysis Service is an internal worker-facing service. It parses uploaded reports, normalizes coverage, merges shards, computes commit and PR diffs, evaluates gates, stores summary metrics, and publishes report-ready events.
+The Coverage Analysis Service is an internal worker-facing service. It parses uploaded reports, normalizes coverage, merges shards, parses JUnit test-result summaries, computes commit and PR diffs, evaluates gates, stores summary metrics, and publishes report-ready events.
 
 This service has no public business API in v1. Public report reads are served by the API / Control Plane Service.
 
-The first implementation milestone is queue-driven: the service consumes `upload.received` events from Supabase Postgres via PGMQ, claims the matching `analysis_jobs` row, downloads coverage artifacts from Supabase Storage, merges shard coverage, stores a gzip-compressed normalized coverage map, persists project/file summaries and per-line hit maps, evaluates active project coverage gates, computes PR diff coverage when the upload belongs to a pull request, and archives or reschedules the queue message. The HTTP surface below remains the intended internal control API, but worker execution does not require another service to call an HTTP `complete` endpoint.
+The first implementation milestone is queue-driven: the service consumes `upload.received` events from Supabase Postgres via PGMQ, claims the matching `analysis_jobs` row, downloads coverage and test-result artifacts from Supabase Storage, merges shard coverage, stores a gzip-compressed normalized coverage map, persists project/file summaries, per-line hit maps, and aggregate JUnit test runs, evaluates active project coverage gates, computes PR diff coverage when the upload belongs to a pull request, and archives or reschedules the queue message. The HTTP surface below remains the intended internal control API, but worker execution does not require another service to call an HTTP `complete` endpoint.
 
 Initial parser support:
 
@@ -29,6 +29,7 @@ Initial parser support:
 - Clover XML function coverage from `type="method"` lines
 - Go cover profile line and statement coverage from block records
 - gcov and llvm-cov gcov text line, branch, and function coverage
+- JUnit XML aggregate test runs from `testsuite` and `testsuites` roots
 
 Statement coverage is represented independently when the source format exposes statement counts. LCOV, Cobertura, Clover, and gcov mirror statement coverage from executable line records; Go profiles use block statement counts.
 
@@ -412,11 +413,16 @@ If the matching base coverage report is not available, the PR diff record is sto
 | `repository_id` | uuid | FK to repositories |
 | `commit_sha` | text | Git commit |
 | `upload_id` | uuid | Source upload |
+| `upload_artifact_id` | uuid | Source test-result artifact |
+| `branch` | text | Branch name |
+| `pull_request_number` | integer | Nullable PR number |
 | `suite_name` | text | Test suite |
+| `suite_index` | integer | Suite order within the source artifact |
 | `status` | text | `passed`, `failed`, `skipped`, `error` |
 | `total_count` | integer | Total tests |
 | `passed_count` | integer | Passed tests |
 | `failed_count` | integer | Failed tests |
+| `error_count` | integer | Errored tests |
 | `skipped_count` | integer | Skipped tests |
 | `duration_ms` | bigint | Runtime |
 | `created_at` | timestamptz | Created time |
@@ -443,6 +449,7 @@ If the matching base coverage report is not available, the PR diff record is sto
 | `coverage.report.completed` | Report computed |
 | `coverage.gates.evaluated` | Gates evaluated |
 | `coverage.pr_report.ready` | PR diff report ready |
+| `test.runs.completed` | JUnit test runs parsed |
 | `test.flaky.detected` | Flaky test finding created |
 | `analysis.job.failed` | Analysis failure |
 

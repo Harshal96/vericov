@@ -36,4 +36,10 @@ public record CoverageAnalysisInput(
                 .filter(CoverageInputArtifact::isCoverageArtifact)
                 .toList();
     }
+
+    public List<CoverageInputArtifact> testResultArtifacts() {
+        return artifacts.stream()
+                .filter(CoverageInputArtifact::isTestResultArtifact)
+                .toList();
+    }
 }
