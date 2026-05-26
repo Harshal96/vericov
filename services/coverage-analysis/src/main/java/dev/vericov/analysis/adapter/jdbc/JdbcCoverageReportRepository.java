@@ -1,6 +1,7 @@
 package dev.vericov.analysis.adapter.jdbc;
 
 import dev.vericov.analysis.application.port.CoverageReportRepository;
+import dev.vericov.analysis.coverage.CoverageComponentRollup;
 import dev.vericov.analysis.coverage.CoverageFileSummary;
 import dev.vericov.analysis.coverage.CoverageLineHit;
 import dev.vericov.analysis.coverage.CoverageMetric;
@@ -42,6 +43,7 @@ public class JdbcCoverageReportRepository implements CoverageReportRepository {
                 deleteExistingReport(connection, report);
                 insertCoverageReport(connection, report);
                 insertFileSummaries(connection, report);
+                insertComponentRollups(connection, report);
                 insertLineHits(connection, report);
                 insertGateEvaluations(connection, evaluations);
                 markUploadProcessed(connection, report);
@@ -201,6 +203,9 @@ public class JdbcCoverageReportRepository implements CoverageReportRepository {
                     repository_id,
                     commit_sha,
                     file_path,
+                    component_id,
+                    package_name,
+                    owners,
                     line_covered,
                     line_total,
                     branch_covered,
@@ -210,7 +215,7 @@ public class JdbcCoverageReportRepository implements CoverageReportRepository {
                     statement_covered,
                     statement_total
                 )
-                values (extensions.gen_random_uuid(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                values (extensions.gen_random_uuid(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """)) {
             for (CoverageFileSummary file : report.files()) {
                 int index = 1;
@@ -219,6 +224,9 @@ public class JdbcCoverageReportRepository implements CoverageReportRepository {
                 statement.setObject(index++, report.repositoryId());
                 statement.setString(index++, report.commitSha());
                 statement.setString(index++, file.filePath());
+                statement.setObject(index++, file.componentId());
+                statement.setString(index++, file.packageName());
+                statement.setArray(index++, connection.createArrayOf("text", file.owners().toArray(String[]::new)));
                 setMetric(statement, index, file.line());
                 index += 2;
                 setMetric(statement, index, file.branch());
@@ -226,6 +234,79 @@ public class JdbcCoverageReportRepository implements CoverageReportRepository {
                 setMetric(statement, index, file.function());
                 index += 2;
                 setMetric(statement, index, file.statement());
+                statement.addBatch();
+            }
+            statement.executeBatch();
+        }
+    }
+
+    private static void insertComponentRollups(java.sql.Connection connection, CoverageReport report) throws SQLException {
+        if (report.componentRollups().isEmpty()) {
+            return;
+        }
+        try (var statement = connection.prepareStatement("""
+                insert into vericov.component_coverage_rollups (
+                    id,
+                    tenant_id,
+                    org_id,
+                    repository_id,
+                    coverage_report_id,
+                    component_id,
+                    owner,
+                    line_covered,
+                    line_total,
+                    branch_covered,
+                    branch_total,
+                    function_covered,
+                    function_total,
+                    statement_covered,
+                    statement_total,
+                    gap_count,
+                    debt_count,
+                    risk_score_total,
+                    created_at
+                )
+                values (
+                    extensions.gen_random_uuid(),
+                    ?,
+                    (select org_id from vericov.repositories where id = ?),
+                    ?,
+                    ?,
+                    ?,
+                    ?,
+                    ?,
+                    ?,
+                    ?,
+                    ?,
+                    ?,
+                    ?,
+                    ?,
+                    ?,
+                    ?,
+                    ?,
+                    ?
+                )
+                """)) {
+            for (CoverageComponentRollup rollup : report.componentRollups()) {
+                int index = 1;
+                statement.setObject(index++, report.tenantId());
+                statement.setObject(index++, report.repositoryId());
+                statement.setObject(index++, report.repositoryId());
+                statement.setObject(index++, report.reportId());
+                statement.setObject(index++, rollup.componentId());
+                statement.setString(index++, rollup.owner());
+                setMetric(statement, index, rollup.line());
+                index += 2;
+                setMetric(statement, index, rollup.branch());
+                index += 2;
+                setMetric(statement, index, rollup.function());
+                index += 2;
+                setMetric(statement, index, rollup.statement());
+                index += 2;
+                statement.setInt(index++, rollup.gapCount());
+                statement.setInt(index++, rollup.debtCount());
+                statement.setBigDecimal(index++, rollup.riskScoreTotal());
+                statement.setObject(index, utc(report.generatedAt()));
                 statement.addBatch();
             }
             statement.executeBatch();

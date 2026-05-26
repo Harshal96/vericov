@@ -8,7 +8,9 @@ import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.time.Clock;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Base64;
+import java.util.Comparator;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Locale;
@@ -61,6 +63,10 @@ public class OrganizationApplicationService {
     private static final Set<String> DEBT_TARGET_TYPES = Set.of("line", "range", "file", "function", "branch", "component");
     private static final Set<String> DEBT_RISK_LEVELS = Set.of("critical", "high", "medium", "low");
     private static final Set<String> DEBT_STATUSES = Set.of("active", "resolved", "expired", "revoked");
+    private static final Set<String> COMPONENT_CRITICALITIES = Set.of("critical", "high", "medium", "low");
+    private static final Set<String> COMPONENT_STATUSES = Set.of("active", "disabled");
+    private static final Set<String> OWNER_RULE_SOURCES = Set.of("manual", "codeowners", "component");
+    private static final Set<String> PACKAGE_ECOSYSTEMS = Set.of("npm", "maven", "gradle", "python", "go", "rust", "unknown");
     private static final Set<String> ADMIN_ROLES = Set.of("owner", "admin");
     private static final Set<String> MEMBER_READ_ACTIONS = Set.of(
             "org.read",
@@ -383,6 +389,146 @@ public class OrganizationApplicationService {
                 nextVisibility,
                 nextStatus,
                 clock.instant()));
+    }
+
+    public List<RepositoryComponentDetails> listRepositoryComponents(
+            UUID requesterUserId,
+            UUID organizationId,
+            UUID repositoryId) {
+        requireRepositoryForRead(requesterUserId, organizationId, repositoryId);
+        return repository.listRepositoryComponents(organizationId, repositoryId);
+    }
+
+    public RepositoryComponentDetails createRepositoryComponent(CreateRepositoryComponentCommand command) {
+        RepositoryDetails registeredRepository = requireRepositoryForAdmin(
+                command.requesterUserId(),
+                command.organizationId(),
+                command.repositoryId());
+        String name = validateComponentName(command.name());
+        String description = trim(command.description());
+        List<String> pathPatterns = validatePathPatterns(command.pathPatterns());
+        List<String> owners = validateOwners(command.owners());
+        String criticality = validateAllowed(
+                "criticality",
+                defaultIfBlank(command.criticality(), "medium"),
+                COMPONENT_CRITICALITIES);
+        Map<String, Object> metadata = validateConfig(command.metadata());
+        String status = validateAllowed(
+                "status",
+                defaultIfBlank(command.status(), "active"),
+                COMPONENT_STATUSES);
+        Instant now = clock.instant();
+        return repository.saveRepositoryComponent(new RepositoryComponentDetails(
+                UUID.randomUUID(),
+                registeredRepository.tenantId(),
+                registeredRepository.organizationId(),
+                registeredRepository.id(),
+                name,
+                description,
+                pathPatterns,
+                owners,
+                criticality,
+                metadata,
+                status,
+                command.requesterUserId(),
+                now,
+                now));
+    }
+
+    public RepositoryComponentDetails updateRepositoryComponent(UpdateRepositoryComponentCommand command) {
+        requireRepositoryForAdmin(command.requesterUserId(), command.organizationId(), command.repositoryId());
+        requireId(command.componentId(), "component_id is required");
+        RepositoryComponentDetails current = repository.findRepositoryComponent(
+                        command.organizationId(),
+                        command.repositoryId(),
+                        command.componentId())
+                .orElseThrow(() -> new OrganizationException("not_found", "Repository component not found"));
+        String nextName = command.name() == null ? current.name() : validateComponentName(command.name());
+        String nextDescription = command.description() == null ? current.description() : trim(command.description());
+        List<String> nextPathPatterns = command.pathPatterns() == null
+                ? current.pathPatterns()
+                : validatePathPatterns(command.pathPatterns());
+        List<String> nextOwners = command.owners() == null ? current.owners() : validateOwners(command.owners());
+        String nextCriticality = command.criticality() == null
+                ? current.criticality()
+                : validateAllowed("criticality", command.criticality(), COMPONENT_CRITICALITIES);
+        Map<String, Object> nextMetadata = command.metadata() == null
+                ? current.metadata()
+                : validateConfig(command.metadata());
+        String nextStatus = command.status() == null
+                ? current.status()
+                : validateAllowed("status", command.status(), COMPONENT_STATUSES);
+        return repository.updateRepositoryComponent(current.withValues(
+                nextName,
+                nextDescription,
+                nextPathPatterns,
+                nextOwners,
+                nextCriticality,
+                nextMetadata,
+                nextStatus,
+                clock.instant()));
+    }
+
+    public List<RepositoryPathResolutionDetails> resolveRepositoryPaths(ResolveRepositoryPathsCommand command) {
+        RepositoryDetails registeredRepository = requireRepositoryForRead(
+                command.requesterUserId(),
+                command.organizationId(),
+                command.repositoryId());
+        if (command.filePaths().isEmpty()) {
+            throw new OrganizationException("validation_error", "file_paths is required");
+        }
+        RepositoryCoverageContextDetails context = coverageContextForRepository(
+                registeredRepository,
+                null,
+                clock.instant());
+        return command.filePaths().stream()
+                .map(filePath -> resolvePath(context, validateRepositoryRelativePath(filePath, "file_path")))
+                .toList();
+    }
+
+    public RepositoryContextSyncDetails syncRepositoryContext(SyncRepositoryContextCommand command) {
+        RepositoryDetails registeredRepository = requireRepositoryForAdmin(
+                command.requesterUserId(),
+                command.organizationId(),
+                command.repositoryId());
+        String sourceRef = trim(command.sourceRef());
+        Instant now = clock.instant();
+        List<ParsedCodeownersRule> parsedRules = CodeownersParser.parse(command.codeownersText());
+        List<RepositoryOwnerRuleDetails> ownerRules = new ArrayList<>();
+        for (ParsedCodeownersRule parsedRule : parsedRules) {
+            ownerRules.add(new RepositoryOwnerRuleDetails(
+                    UUID.randomUUID(),
+                    registeredRepository.tenantId(),
+                    registeredRepository.organizationId(),
+                    registeredRepository.id(),
+                    validateAllowed("source", "codeowners", OWNER_RULE_SOURCES),
+                    validatePathPattern(parsedRule.pattern()),
+                    validateOwners(parsedRule.owners()),
+                    1000 + parsedRule.providerOrder(),
+                    sourceRef,
+                    "active",
+                    now,
+                    now));
+        }
+        List<RepositoryPackageNodeDetails> packageNodes = command.packageNodes().stream()
+                .map(input -> toPackageNode(registeredRepository, input, now))
+                .toList();
+        repository.replaceRepositoryOwnerRules(
+                registeredRepository.organizationId(),
+                registeredRepository.id(),
+                ownerRules);
+        repository.replaceRepositoryPackageNodes(
+                registeredRepository.organizationId(),
+                registeredRepository.id(),
+                packageNodes);
+        return new RepositoryContextSyncDetails(ownerRules, packageNodes);
+    }
+
+    public RepositoryCoverageContextDetails getInternalCoverageContext(UUID repositoryId, String commitSha) {
+        requireId(repositoryId, "repository_id is required");
+        RepositoryDetails registeredRepository = repository.findRepositoryById(repositoryId)
+                .orElseThrow(() -> new OrganizationException("not_found", "Repository not found"));
+        return coverageContextForRepository(registeredRepository, trim(commitSha), clock.instant());
     }
 
     public RepositoryApiKeyDetails createRepositoryApiKey(CreateRepositoryApiKeyCommand command) {
@@ -1355,6 +1501,156 @@ public class OrganizationApplicationService {
         return false;
     }
 
+    private RepositoryCoverageContextDetails coverageContextForRepository(
+            RepositoryDetails registeredRepository,
+            String commitSha,
+            Instant generatedAt) {
+        List<RepositoryComponentDetails> activeComponents = repository.listRepositoryComponents(
+                        registeredRepository.organizationId(),
+                        registeredRepository.id())
+                .stream()
+                .filter(component -> "active".equals(component.status()))
+                .toList();
+        List<RepositoryOwnerRuleDetails> activeOwnerRules = repository.listRepositoryOwnerRules(
+                        registeredRepository.organizationId(),
+                        registeredRepository.id())
+                .stream()
+                .filter(rule -> "active".equals(rule.status()))
+                .toList();
+        List<RepositoryPackageNodeDetails> activePackageNodes = repository.listRepositoryPackageNodes(
+                        registeredRepository.organizationId(),
+                        registeredRepository.id())
+                .stream()
+                .filter(node -> "active".equals(node.status()))
+                .toList();
+        Map<String, Object> policyDefaults = repository.findPolicyDefaults(registeredRepository.organizationId())
+                .map(PolicyDefaultsDetails::defaults)
+                .orElse(Map.of());
+        return new RepositoryCoverageContextDetails(
+                contextVersion(registeredRepository.id(), commitSha, activeComponents, activeOwnerRules, activePackageNodes),
+                registeredRepository.tenantId(),
+                registeredRepository.organizationId(),
+                registeredRepository.id(),
+                commitSha,
+                activeComponents,
+                activeOwnerRules,
+                activePackageNodes,
+                policyDefaults,
+                generatedAt);
+    }
+
+    private static String contextVersion(
+            UUID repositoryId,
+            String commitSha,
+            List<RepositoryComponentDetails> components,
+            List<RepositoryOwnerRuleDetails> ownerRules,
+            List<RepositoryPackageNodeDetails> packageNodes) {
+        long updatedAt = 0;
+        for (RepositoryComponentDetails component : components) {
+            updatedAt = Math.max(updatedAt, component.updatedAt().toEpochMilli());
+        }
+        for (RepositoryOwnerRuleDetails ownerRule : ownerRules) {
+            updatedAt = Math.max(updatedAt, ownerRule.updatedAt().toEpochMilli());
+        }
+        for (RepositoryPackageNodeDetails packageNode : packageNodes) {
+            updatedAt = Math.max(updatedAt, packageNode.updatedAt().toEpochMilli());
+        }
+        return "repository-context:" + repositoryId + ":" + defaultIfBlank(commitSha, "latest") + ":" + updatedAt;
+    }
+
+    private RepositoryPathResolutionDetails resolvePath(RepositoryCoverageContextDetails context, String filePath) {
+        RepositoryComponentDetails component = context.components().stream()
+                .filter(candidate -> candidate.pathPatterns().stream().anyMatch(pattern -> globMatches(pattern, filePath)))
+                .min(Comparator.comparingInt((RepositoryComponentDetails candidate) -> longestLiteralPrefix(
+                                candidate.pathPatterns(),
+                                filePath))
+                        .reversed()
+                        .thenComparing(RepositoryComponentDetails::name)
+                        .thenComparing(RepositoryComponentDetails::id))
+                .orElse(null);
+        RepositoryOwnerRuleDetails ownerRule = component == null ? matchingOwnerRule(context.ownerRules(), filePath) : null;
+        RepositoryPackageNodeDetails packageNode = matchingPackageNode(context.packageNodes(), filePath);
+        List<String> owners = component != null
+                ? component.owners()
+                : ownerRule != null ? ownerRule.owners() : List.of("unowned");
+        if (owners.isEmpty()) {
+            owners = List.of("unowned");
+        }
+        return new RepositoryPathResolutionDetails(
+                filePath,
+                component == null ? null : component.id(),
+                component == null ? null : component.name(),
+                packageNode == null ? null : packageNode.packageName(),
+                owners,
+                owners.getFirst(),
+                component == null ? "medium" : component.criticality(),
+                component != null ? "component" : ownerRule != null ? ownerRule.source() : "fallback");
+    }
+
+    private static RepositoryOwnerRuleDetails matchingOwnerRule(
+            List<RepositoryOwnerRuleDetails> ownerRules,
+            String filePath) {
+        return ownerRules.stream()
+                .filter(rule -> globMatches(rule.pattern(), filePath))
+                .min(Comparator.comparingInt(OrganizationApplicationService::ownerRuleSourceRank)
+                        .thenComparingInt(OrganizationApplicationService::ownerRulePriorityRank)
+                        .thenComparing(RepositoryOwnerRuleDetails::id))
+                .orElse(null);
+    }
+
+    private static int ownerRuleSourceRank(RepositoryOwnerRuleDetails ownerRule) {
+        return switch (ownerRule.source()) {
+            case "manual" -> 0;
+            case "component" -> 1;
+            case "codeowners" -> 2;
+            default -> 3;
+        };
+    }
+
+    private static int ownerRulePriorityRank(RepositoryOwnerRuleDetails ownerRule) {
+        return "codeowners".equals(ownerRule.source()) ? -ownerRule.priority() : ownerRule.priority();
+    }
+
+    private static RepositoryPackageNodeDetails matchingPackageNode(
+            List<RepositoryPackageNodeDetails> packageNodes,
+            String filePath) {
+        return packageNodes.stream()
+                .filter(node -> pathStartsWith(filePath, node.packagePath()))
+                .max(Comparator.comparingInt((RepositoryPackageNodeDetails node) -> node.packagePath().length())
+                        .thenComparing(RepositoryPackageNodeDetails::packageName)
+                        .thenComparing(RepositoryPackageNodeDetails::id))
+                .orElse(null);
+    }
+
+    private RepositoryPackageNodeDetails toPackageNode(
+            RepositoryDetails registeredRepository,
+            RepositoryPackageNodeInput input,
+            Instant now) {
+        UUID componentId = input.componentId();
+        if (componentId != null) {
+            repository.findRepositoryComponent(
+                            registeredRepository.organizationId(),
+                            registeredRepository.id(),
+                            componentId)
+                    .filter(component -> "active".equals(component.status()))
+                    .orElseThrow(() -> new OrganizationException("validation_error", "component_id is invalid"));
+        }
+        return new RepositoryPackageNodeDetails(
+                UUID.randomUUID(),
+                registeredRepository.tenantId(),
+                registeredRepository.organizationId(),
+                registeredRepository.id(),
+                componentId,
+                validatePackageName(input.packageName()),
+                validateRepositoryRelativePath(input.packagePath(), "package_path"),
+                validateRepositoryRelativePath(input.manifestPath(), "manifest_path"),
+                validateAllowed("ecosystem", defaultIfBlank(input.ecosystem(), "unknown"), PACKAGE_ECOSYSTEMS),
+                validateConfig(input.metadata()),
+                "active",
+                now,
+                now);
+    }
+
     private void requireActiveMembership(UUID requesterUserId, UUID organizationId) {
         requireId(organizationId, "organization_id is required");
         MembershipDetails membership = repository.findMembership(organizationId, requesterUserId)
@@ -1505,6 +1801,56 @@ public class OrganizationApplicationService {
             throw new OrganizationException("validation_error", "policy name must be 1 to 120 characters");
         }
         return normalized;
+    }
+
+    private static String validateComponentName(String name) {
+        String normalized = trim(name);
+        if (normalized == null || normalized.length() > 120) {
+            throw new OrganizationException("validation_error", "component name must be 1 to 120 characters");
+        }
+        return normalized;
+    }
+
+    private static String validatePackageName(String packageName) {
+        String normalized = trim(packageName);
+        if (normalized == null || normalized.length() > 160) {
+            throw new OrganizationException("validation_error", "package_name must be 1 to 160 characters");
+        }
+        return normalized;
+    }
+
+    private static List<String> validatePathPatterns(List<String> pathPatterns) {
+        if (pathPatterns == null || pathPatterns.isEmpty()) {
+            throw new OrganizationException("validation_error", "path_patterns is required");
+        }
+        return pathPatterns.stream()
+                .map(OrganizationApplicationService::validatePathPattern)
+                .distinct()
+                .toList();
+    }
+
+    private static String validatePathPattern(String pattern) {
+        String normalized = validateRepositoryRelativePath(pattern, "path_pattern");
+        if (normalized.contains("\\")) {
+            throw new OrganizationException("validation_error", "path_pattern must use forward slashes");
+        }
+        return normalized;
+    }
+
+    private static List<String> validateOwners(List<String> owners) {
+        if (owners == null || owners.isEmpty()) {
+            return List.of();
+        }
+        return owners.stream()
+                .map(owner -> {
+                    String normalized = trim(owner);
+                    if (normalized == null || normalized.length() > 160 || normalized.contains("\n")) {
+                        throw new OrganizationException("validation_error", "owner is invalid");
+                    }
+                    return normalized;
+                })
+                .distinct()
+                .toList();
     }
 
     private static String validateTargetSelector(String targetType, String targetSelector) {
@@ -1916,6 +2262,80 @@ public class OrganizationApplicationService {
             throw new OrganizationException("validation_error", "file_path is invalid");
         }
         return normalized;
+    }
+
+    private static String validateRepositoryRelativePath(String path, String fieldName) {
+        String normalized = trim(path);
+        if (normalized == null
+                || normalized.length() > 1024
+                || normalized.startsWith("/")
+                || normalized.indexOf('\0') >= 0
+                || normalized.equals("..")
+                || normalized.startsWith("../")
+                || normalized.endsWith("/..")
+                || normalized.contains("/../")) {
+            throw new OrganizationException("validation_error", fieldName + " is invalid");
+        }
+        while (normalized.startsWith("./")) {
+            normalized = normalized.substring(2);
+        }
+        return normalized;
+    }
+
+    private static boolean globMatches(String pattern, String filePath) {
+        String normalizedPattern = validateRepositoryRelativePath(pattern, "path_pattern");
+        String regex = globRegex(normalizedPattern);
+        return Pattern.compile(regex).matcher(filePath).matches();
+    }
+
+    private static String globRegex(String pattern) {
+        StringBuilder regex = new StringBuilder("^");
+        if (!pattern.contains("/")) {
+            regex.append("(?:.*/)?");
+        }
+        for (int i = 0; i < pattern.length(); i++) {
+            char current = pattern.charAt(i);
+            if (current == '*') {
+                boolean doublestar = i + 1 < pattern.length() && pattern.charAt(i + 1) == '*';
+                if (doublestar) {
+                    regex.append(".*");
+                    i++;
+                } else {
+                    regex.append("[^/]*");
+                }
+            } else if (current == '?') {
+                regex.append("[^/]");
+            } else {
+                if (".[]{}()+-^$|".indexOf(current) >= 0) {
+                    regex.append('\\');
+                }
+                regex.append(current);
+            }
+        }
+        return regex.append('$').toString();
+    }
+
+    private static int longestLiteralPrefix(List<String> patterns, String filePath) {
+        return patterns.stream()
+                .filter(pattern -> globMatches(pattern, filePath))
+                .mapToInt(OrganizationApplicationService::literalPrefixLength)
+                .max()
+                .orElse(0);
+    }
+
+    private static int literalPrefixLength(String pattern) {
+        int wildcard = pattern.length();
+        for (char marker : new char[] {'*', '?'}) {
+            int index = pattern.indexOf(marker);
+            if (index >= 0) {
+                wildcard = Math.min(wildcard, index);
+            }
+        }
+        return pattern.substring(0, wildcard).length();
+    }
+
+    private static boolean pathStartsWith(String filePath, String packagePath) {
+        return filePath.equals(packagePath) || filePath.startsWith(packagePath + "/");
     }
 
     private static String validateGateEvaluationStatus(String status) {

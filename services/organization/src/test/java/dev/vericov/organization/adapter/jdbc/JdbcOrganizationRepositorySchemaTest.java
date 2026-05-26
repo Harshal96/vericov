@@ -26,4 +26,19 @@ class JdbcOrganizationRepositorySchemaTest {
         assertTrue(sql.contains("CREATE INDEX IF NOT EXISTS test_runs_repository_commit_idx"));
         assertTrue(sql.contains("ALTER TABLE vericov.test_runs ENABLE ROW LEVEL SECURITY"));
     }
+
+    @Test
+    void schemaDefinesRepositoryComponentsAndCoverageContextTables() throws Exception {
+        String sql = Files.readString(Path.of("../../infra/supabase/volumes/db/vericov.sql"));
+
+        assertTrue(sql.contains("CREATE TABLE IF NOT EXISTS vericov.components"));
+        assertTrue(sql.contains("CREATE TABLE IF NOT EXISTS vericov.repository_owner_rules"));
+        assertTrue(sql.contains("CREATE TABLE IF NOT EXISTS vericov.repository_package_nodes"));
+        assertTrue(sql.contains("CREATE TABLE IF NOT EXISTS vericov.component_coverage_rollups"));
+        assertTrue(sql.contains("org_id uuid NOT NULL REFERENCES vericov.organizations"));
+        assertTrue(sql.contains("component_id uuid NOT NULL REFERENCES vericov.components"));
+        assertTrue(sql.contains("owners text[] NOT NULL DEFAULT ARRAY[]::text[]"));
+        assertTrue(sql.contains("ALTER TABLE vericov.components ENABLE ROW LEVEL SECURITY"));
+        assertTrue(sql.contains("ALTER TABLE vericov.component_coverage_rollups ENABLE ROW LEVEL SECURITY"));
+    }
 }

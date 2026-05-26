@@ -13,8 +13,11 @@ import dev.vericov.organization.application.PullRequestDiffCoverageDetails;
 import dev.vericov.organization.application.RepositoryBadgeSettingsDetails;
 import dev.vericov.organization.application.RepositoryApiKeyDetails;
 import dev.vericov.organization.application.RepositoryConfigDetails;
+import dev.vericov.organization.application.RepositoryComponentDetails;
 import dev.vericov.organization.application.RepositoryDetails;
 import dev.vericov.organization.application.RepositoryGateDetails;
+import dev.vericov.organization.application.RepositoryOwnerRuleDetails;
+import dev.vericov.organization.application.RepositoryPackageNodeDetails;
 import dev.vericov.organization.application.RepositoryPolicyDetails;
 import dev.vericov.organization.application.CoverageDebtDetails;
 import dev.vericov.organization.application.CoverageDebtEventDetails;
@@ -61,6 +64,8 @@ public interface OrganizationRepository {
 
     Optional<RepositoryDetails> findRepository(UUID organizationId, UUID repositoryId);
 
+    Optional<RepositoryDetails> findRepositoryById(UUID repositoryId);
+
     Optional<RepositoryDetails> findRepositoryByProviderIdentity(
             UUID organizationId,
             String provider,
@@ -69,6 +74,22 @@ public interface OrganizationRepository {
     RepositoryDetails saveRepository(RepositoryDetails repository);
 
     RepositoryDetails updateRepository(RepositoryDetails repository);
+
+    List<RepositoryComponentDetails> listRepositoryComponents(UUID organizationId, UUID repositoryId);
+
+    Optional<RepositoryComponentDetails> findRepositoryComponent(UUID organizationId, UUID repositoryId, UUID componentId);
+
+    RepositoryComponentDetails saveRepositoryComponent(RepositoryComponentDetails component);
+
+    RepositoryComponentDetails updateRepositoryComponent(RepositoryComponentDetails component);
+
+    List<RepositoryOwnerRuleDetails> listRepositoryOwnerRules(UUID organizationId, UUID repositoryId);
+
+    void replaceRepositoryOwnerRules(UUID organizationId, UUID repositoryId, List<RepositoryOwnerRuleDetails> ownerRules);
+
+    List<RepositoryPackageNodeDetails> listRepositoryPackageNodes(UUID organizationId, UUID repositoryId);
+
+    void replaceRepositoryPackageNodes(UUID organizationId, UUID repositoryId, List<RepositoryPackageNodeDetails> packageNodes);
 
     List<RepositoryApiKeyDetails> listRepositoryApiKeys(UUID repositoryId);
 

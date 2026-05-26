@@ -15,6 +15,9 @@ public class InMemoryOrganizationRepository implements OrganizationRepository {
     private final Map<UUID, MembershipDetails> membershipsById = new ConcurrentHashMap<>();
     private final Map<UUID, OrganizationInvitation> invitationsById = new ConcurrentHashMap<>();
     private final Map<UUID, RepositoryDetails> repositoriesById = new ConcurrentHashMap<>();
+    private final Map<UUID, RepositoryComponentDetails> repositoryComponentsById = new ConcurrentHashMap<>();
+    private final Map<UUID, RepositoryOwnerRuleDetails> repositoryOwnerRulesById = new ConcurrentHashMap<>();
+    private final Map<UUID, RepositoryPackageNodeDetails> repositoryPackageNodesById = new ConcurrentHashMap<>();
     private final Map<UUID, RepositoryApiKeyDetails> repositoryApiKeysById = new ConcurrentHashMap<>();
     private final Map<UUID, PolicyDefaultsDetails> policyDefaultsByOrgId = new ConcurrentHashMap<>();
     private final Map<String, RepositoryConfigDetails> repositoryConfigsByOrgAndRepo = new ConcurrentHashMap<>();
@@ -192,6 +195,11 @@ public class InMemoryOrganizationRepository implements OrganizationRepository {
     }
 
     @Override
+    public Optional<RepositoryDetails> findRepositoryById(UUID repositoryId) {
+        return Optional.ofNullable(repositoriesById.get(repositoryId));
+    }
+
+    @Override
     public Optional<RepositoryDetails> findRepositoryByProviderIdentity(
             UUID organizationId,
             String provider,
@@ -222,6 +230,94 @@ public class InMemoryOrganizationRepository implements OrganizationRepository {
         }
         repositoriesById.put(repository.id(), repository);
         return repository;
+    }
+
+    @Override
+    public List<RepositoryComponentDetails> listRepositoryComponents(UUID organizationId, UUID repositoryId) {
+        return repositoryComponentsById.values().stream()
+                .filter(component -> component.organizationId().equals(organizationId))
+                .filter(component -> component.repositoryId().equals(repositoryId))
+                .sorted(Comparator.comparing(RepositoryComponentDetails::name)
+                        .thenComparing(RepositoryComponentDetails::id))
+                .toList();
+    }
+
+    @Override
+    public Optional<RepositoryComponentDetails> findRepositoryComponent(
+            UUID organizationId,
+            UUID repositoryId,
+            UUID componentId) {
+        return Optional.ofNullable(repositoryComponentsById.get(componentId))
+                .filter(component -> component.organizationId().equals(organizationId))
+                .filter(component -> component.repositoryId().equals(repositoryId));
+    }
+
+    @Override
+    public synchronized RepositoryComponentDetails saveRepositoryComponent(RepositoryComponentDetails component) {
+        boolean duplicate = repositoryComponentsById.values().stream()
+                .anyMatch(existing -> existing.repositoryId().equals(component.repositoryId())
+                        && existing.name().equals(component.name()));
+        if (duplicate) {
+            throw new OrganizationException("conflict", "Repository component already exists");
+        }
+        repositoryComponentsById.put(component.id(), component);
+        return component;
+    }
+
+    @Override
+    public synchronized RepositoryComponentDetails updateRepositoryComponent(RepositoryComponentDetails component) {
+        if (!repositoryComponentsById.containsKey(component.id())) {
+            throw new OrganizationException("not_found", "Repository component not found");
+        }
+        boolean duplicate = repositoryComponentsById.values().stream()
+                .anyMatch(existing -> !existing.id().equals(component.id())
+                        && existing.repositoryId().equals(component.repositoryId())
+                        && existing.name().equals(component.name()));
+        if (duplicate) {
+            throw new OrganizationException("conflict", "Repository component already exists");
+        }
+        repositoryComponentsById.put(component.id(), component);
+        return component;
+    }
+
+    @Override
+    public List<RepositoryOwnerRuleDetails> listRepositoryOwnerRules(UUID organizationId, UUID repositoryId) {
+        return repositoryOwnerRulesById.values().stream()
+                .filter(rule -> rule.organizationId().equals(organizationId))
+                .filter(rule -> rule.repositoryId().equals(repositoryId))
+                .sorted(Comparator.comparingInt(RepositoryOwnerRuleDetails::priority)
+                        .thenComparing(RepositoryOwnerRuleDetails::id))
+                .toList();
+    }
+
+    @Override
+    public synchronized void replaceRepositoryOwnerRules(
+            UUID organizationId,
+            UUID repositoryId,
+            List<RepositoryOwnerRuleDetails> ownerRules) {
+        repositoryOwnerRulesById.entrySet().removeIf(entry -> entry.getValue().organizationId().equals(organizationId)
+                && entry.getValue().repositoryId().equals(repositoryId));
+        ownerRules.forEach(rule -> repositoryOwnerRulesById.put(rule.id(), rule));
+    }
+
+    @Override
+    public List<RepositoryPackageNodeDetails> listRepositoryPackageNodes(UUID organizationId, UUID repositoryId) {
+        return repositoryPackageNodesById.values().stream()
+                .filter(node -> node.organizationId().equals(organizationId))
+                .filter(node -> node.repositoryId().equals(repositoryId))
+                .sorted(Comparator.comparing(RepositoryPackageNodeDetails::packagePath)
+                        .thenComparing(RepositoryPackageNodeDetails::id))
+                .toList();
+    }
+
+    @Override
+    public synchronized void replaceRepositoryPackageNodes(
+            UUID organizationId,
+            UUID repositoryId,
+            List<RepositoryPackageNodeDetails> packageNodes) {
+        repositoryPackageNodesById.entrySet().removeIf(entry -> entry.getValue().organizationId().equals(organizationId)
+                && entry.getValue().repositoryId().equals(repositoryId));
+        packageNodes.forEach(node -> repositoryPackageNodesById.put(node.id(), node));
     }
 
     @Override

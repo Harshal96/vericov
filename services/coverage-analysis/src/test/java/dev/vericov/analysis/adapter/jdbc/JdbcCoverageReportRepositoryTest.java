@@ -49,6 +49,44 @@ class JdbcCoverageReportRepositoryTest {
                 statement.parameters.get(17));
     }
 
+    @Test
+    void insertsResolvedFileContextAndComponentRollups() {
+        RecordingDataSource dataSource = new RecordingDataSource();
+        UUID componentId = UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
+        CoverageReport report = report()
+                .withResolvedFiles(List.of(new CoverageFileSummary(
+                        "src/App.java",
+                        new CoverageMetric(1, 1),
+                        new CoverageMetric(0, 0),
+                        new CoverageMetric(0, 0),
+                        new CoverageMetric(1, 1),
+                        componentId,
+                        "app",
+                        List.of("@acme/app"))))
+                .withComponentRollups(List.of(new dev.vericov.analysis.coverage.CoverageComponentRollup(
+                        componentId,
+                        "@acme/app",
+                        new CoverageMetric(1, 1),
+                        new CoverageMetric(0, 0),
+                        new CoverageMetric(0, 0),
+                        new CoverageMetric(1, 1))));
+
+        new JdbcCoverageReportRepository(dataSource).save(report);
+
+        RecordedStatement fileSummary = dataSource.statementContaining("insert into vericov.coverage_file_summaries");
+        assertTrue(fileSummary.sql.contains("component_id"));
+        assertTrue(fileSummary.sql.contains("package_name"));
+        assertTrue(fileSummary.sql.contains("owners"));
+        assertEquals(componentId, fileSummary.parameters.get(6));
+        assertEquals("app", fileSummary.parameters.get(7));
+
+        RecordedStatement rollup = dataSource.statementContaining("insert into vericov.component_coverage_rollups");
+        assertTrue(rollup.sql.contains("select org_id from vericov.repositories"));
+        assertEquals(REPOSITORY_ID, rollup.parameters.get(2));
+        assertEquals(componentId, rollup.parameters.get(5));
+        assertEquals("@acme/app", rollup.parameters.get(6));
+    }
+
     private static CoverageReport report() {
         return new CoverageReport(
                 REPORT_ID,

@@ -23,7 +23,7 @@ public class JdbcIntegrationScopeValidator implements IntegrationScopeValidator 
         switch (scopeType) {
             case "organization" -> requireOrganizationScope(tenantId, orgId, scopeId);
             case "repository" -> requireRepositoryScope(tenantId, orgId, scopeId);
-            case "component" -> throw scopeNotFound();
+            case "component" -> requireComponentScope(tenantId, orgId, scopeId);
             default -> throw new IntegrationException("validation_error", "scope_type is invalid");
         }
     }
@@ -73,6 +73,30 @@ public class JdbcIntegrationScopeValidator implements IntegrationScopeValidator 
             }
         } catch (SQLException exception) {
             throw new IllegalStateException("Failed to validate integration repository scope", exception);
+        }
+    }
+
+    private void requireComponentScope(UUID tenantId, UUID orgId, UUID componentId) {
+        try (var connection = dataSource.getConnection();
+                var statement = connection.prepareStatement("""
+                        select 1
+                        from vericov.components
+                        where tenant_id = ?
+                          and org_id = ?
+                          and id = ?
+                          and status = 'active'
+                        limit 1
+                        """)) {
+            statement.setObject(1, tenantId);
+            statement.setObject(2, orgId);
+            statement.setObject(3, componentId);
+            try (var resultSet = statement.executeQuery()) {
+                if (!resultSet.next()) {
+                    throw scopeNotFound();
+                }
+            }
+        } catch (SQLException exception) {
+            throw new IllegalStateException("Failed to validate integration component scope", exception);
         }
     }
 

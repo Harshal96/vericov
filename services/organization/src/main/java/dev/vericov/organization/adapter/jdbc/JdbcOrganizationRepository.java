@@ -17,8 +17,11 @@ import dev.vericov.organization.application.PullRequestDiffCoverageDetails;
 import dev.vericov.organization.application.RepositoryBadgeSettingsDetails;
 import dev.vericov.organization.application.RepositoryApiKeyDetails;
 import dev.vericov.organization.application.RepositoryConfigDetails;
+import dev.vericov.organization.application.RepositoryComponentDetails;
 import dev.vericov.organization.application.RepositoryDetails;
 import dev.vericov.organization.application.RepositoryGateDetails;
+import dev.vericov.organization.application.RepositoryOwnerRuleDetails;
+import dev.vericov.organization.application.RepositoryPackageNodeDetails;
 import dev.vericov.organization.application.RepositoryPolicyDetails;
 import dev.vericov.organization.application.CoverageDebtDetails;
 import dev.vericov.organization.application.CoverageDebtEventDetails;
@@ -499,6 +502,35 @@ public class JdbcOrganizationRepository implements OrganizationRepository {
     }
 
     @Override
+    public Optional<RepositoryDetails> findRepositoryById(UUID repositoryId) {
+        try (var connection = dataSource.getConnection();
+                var statement = connection.prepareStatement("""
+                        select
+                            id,
+                            tenant_id,
+                            org_id,
+                            provider,
+                            provider_repository_id,
+                            full_name,
+                            default_branch,
+                            visibility,
+                            privacy_mode,
+                            status,
+                            created_at,
+                            updated_at
+                        from vericov.repositories
+                        where id = ?
+                        """)) {
+            statement.setObject(1, repositoryId);
+            try (var resultSet = statement.executeQuery()) {
+                return resultSet.next() ? Optional.of(readRepository(resultSet)) : Optional.empty();
+            }
+        } catch (SQLException exception) {
+            throw databaseFailure("Failed to find repository", exception);
+        }
+    }
+
+    @Override
     public Optional<RepositoryDetails> findRepositoryByProviderIdentity(
             UUID organizationId,
             String provider,
@@ -572,6 +604,258 @@ public class JdbcOrganizationRepository implements OrganizationRepository {
             return repository;
         } catch (SQLException exception) {
             throw databaseFailure("Failed to update repository", exception);
+        }
+    }
+
+    @Override
+    public List<RepositoryComponentDetails> listRepositoryComponents(UUID organizationId, UUID repositoryId) {
+        try (var connection = dataSource.getConnection();
+                var statement = connection.prepareStatement("""
+                        select id, tenant_id, org_id, repository_id, name, description, path_patterns,
+                               owners, criticality, metadata_json, status, created_by_user_id, created_at, updated_at
+                        from vericov.components
+                        where org_id = ?
+                          and repository_id = ?
+                        order by name, id
+                        """)) {
+            statement.setObject(1, organizationId);
+            statement.setObject(2, repositoryId);
+            try (var resultSet = statement.executeQuery()) {
+                List<RepositoryComponentDetails> components = new ArrayList<>();
+                while (resultSet.next()) {
+                    components.add(readRepositoryComponent(resultSet));
+                }
+                return List.copyOf(components);
+            }
+        } catch (SQLException exception) {
+            throw databaseFailure("Failed to list repository components", exception);
+        }
+    }
+
+    @Override
+    public Optional<RepositoryComponentDetails> findRepositoryComponent(
+            UUID organizationId,
+            UUID repositoryId,
+            UUID componentId) {
+        try (var connection = dataSource.getConnection();
+                var statement = connection.prepareStatement("""
+                        select id, tenant_id, org_id, repository_id, name, description, path_patterns,
+                               owners, criticality, metadata_json, status, created_by_user_id, created_at, updated_at
+                        from vericov.components
+                        where org_id = ?
+                          and repository_id = ?
+                          and id = ?
+                        """)) {
+            statement.setObject(1, organizationId);
+            statement.setObject(2, repositoryId);
+            statement.setObject(3, componentId);
+            try (var resultSet = statement.executeQuery()) {
+                return resultSet.next() ? Optional.of(readRepositoryComponent(resultSet)) : Optional.empty();
+            }
+        } catch (SQLException exception) {
+            throw databaseFailure("Failed to find repository component", exception);
+        }
+    }
+
+    @Override
+    public RepositoryComponentDetails saveRepositoryComponent(RepositoryComponentDetails component) {
+        try (var connection = dataSource.getConnection();
+                var statement = connection.prepareStatement("""
+                        insert into vericov.components (
+                            id, tenant_id, org_id, repository_id, name, description, path_patterns, owners,
+                            criticality, metadata_json, status, created_by_user_id, created_at, updated_at
+                        )
+                        values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?, ?, ?, ?)
+                        """)) {
+            setRepositoryComponent(statement, connection, component);
+            statement.executeUpdate();
+            return component;
+        } catch (SQLException exception) {
+            throw mapIntegrityFailure("Failed to save repository component", exception);
+        }
+    }
+
+    @Override
+    public RepositoryComponentDetails updateRepositoryComponent(RepositoryComponentDetails component) {
+        try (var connection = dataSource.getConnection();
+                var statement = connection.prepareStatement("""
+                        update vericov.components
+                        set name = ?,
+                            description = ?,
+                            path_patterns = ?,
+                            owners = ?,
+                            criticality = ?,
+                            metadata_json = ?::jsonb,
+                            status = ?,
+                            updated_at = ?
+                        where org_id = ?
+                          and repository_id = ?
+                          and id = ?
+                        """)) {
+            int index = 1;
+            statement.setString(index++, component.name());
+            statement.setString(index++, component.description());
+            statement.setArray(index++, connection.createArrayOf("text", component.pathPatterns().toArray(String[]::new)));
+            statement.setArray(index++, connection.createArrayOf("text", component.owners().toArray(String[]::new)));
+            statement.setString(index++, component.criticality());
+            statement.setString(index++, jsonObject(component.metadata()));
+            statement.setString(index++, component.status());
+            statement.setObject(index++, utc(component.updatedAt()));
+            statement.setObject(index++, component.organizationId());
+            statement.setObject(index++, component.repositoryId());
+            statement.setObject(index, component.id());
+            int updated = statement.executeUpdate();
+            if (updated == 0) {
+                throw new OrganizationException("not_found", "Repository component not found");
+            }
+            return component;
+        } catch (SQLException exception) {
+            throw mapIntegrityFailure("Failed to update repository component", exception);
+        }
+    }
+
+    @Override
+    public List<RepositoryOwnerRuleDetails> listRepositoryOwnerRules(UUID organizationId, UUID repositoryId) {
+        try (var connection = dataSource.getConnection();
+                var statement = connection.prepareStatement("""
+                        select id, tenant_id, org_id, repository_id, source, pattern, owners, priority,
+                               source_ref, status, created_at, updated_at
+                        from vericov.repository_owner_rules
+                        where org_id = ?
+                          and repository_id = ?
+                        order by priority, id
+                        """)) {
+            statement.setObject(1, organizationId);
+            statement.setObject(2, repositoryId);
+            try (var resultSet = statement.executeQuery()) {
+                List<RepositoryOwnerRuleDetails> rules = new ArrayList<>();
+                while (resultSet.next()) {
+                    rules.add(readRepositoryOwnerRule(resultSet));
+                }
+                return List.copyOf(rules);
+            }
+        } catch (SQLException exception) {
+            throw databaseFailure("Failed to list repository owner rules", exception);
+        }
+    }
+
+    @Override
+    public void replaceRepositoryOwnerRules(
+            UUID organizationId,
+            UUID repositoryId,
+            List<RepositoryOwnerRuleDetails> ownerRules) {
+        try (var connection = dataSource.getConnection()) {
+            connection.setAutoCommit(false);
+            try (var delete = connection.prepareStatement("""
+                    delete from vericov.repository_owner_rules
+                    where org_id = ?
+                      and repository_id = ?
+                    """)) {
+                delete.setObject(1, organizationId);
+                delete.setObject(2, repositoryId);
+                delete.executeUpdate();
+            }
+            try (var insert = connection.prepareStatement("""
+                    insert into vericov.repository_owner_rules (
+                        id, tenant_id, org_id, repository_id, source, pattern, owners, priority,
+                        source_ref, status, created_at, updated_at
+                    )
+                    values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """)) {
+                for (RepositoryOwnerRuleDetails rule : ownerRules) {
+                    int index = 1;
+                    insert.setObject(index++, rule.id());
+                    insert.setObject(index++, rule.tenantId());
+                    insert.setObject(index++, rule.organizationId());
+                    insert.setObject(index++, rule.repositoryId());
+                    insert.setString(index++, rule.source());
+                    insert.setString(index++, rule.pattern());
+                    insert.setArray(index++, connection.createArrayOf("text", rule.owners().toArray(String[]::new)));
+                    insert.setInt(index++, rule.priority());
+                    insert.setString(index++, rule.sourceRef());
+                    insert.setString(index++, rule.status());
+                    insert.setObject(index++, utc(rule.createdAt()));
+                    insert.setObject(index, utc(rule.updatedAt()));
+                    insert.addBatch();
+                }
+                insert.executeBatch();
+            }
+            connection.commit();
+        } catch (SQLException exception) {
+            throw databaseFailure("Failed to replace repository owner rules", exception);
+        }
+    }
+
+    @Override
+    public List<RepositoryPackageNodeDetails> listRepositoryPackageNodes(UUID organizationId, UUID repositoryId) {
+        try (var connection = dataSource.getConnection();
+                var statement = connection.prepareStatement("""
+                        select id, tenant_id, org_id, repository_id, component_id, package_name, package_path,
+                               manifest_path, ecosystem, metadata_json, status, created_at, updated_at
+                        from vericov.repository_package_nodes
+                        where org_id = ?
+                          and repository_id = ?
+                        order by package_path, id
+                        """)) {
+            statement.setObject(1, organizationId);
+            statement.setObject(2, repositoryId);
+            try (var resultSet = statement.executeQuery()) {
+                List<RepositoryPackageNodeDetails> nodes = new ArrayList<>();
+                while (resultSet.next()) {
+                    nodes.add(readRepositoryPackageNode(resultSet));
+                }
+                return List.copyOf(nodes);
+            }
+        } catch (SQLException exception) {
+            throw databaseFailure("Failed to list repository package nodes", exception);
+        }
+    }
+
+    @Override
+    public void replaceRepositoryPackageNodes(
+            UUID organizationId,
+            UUID repositoryId,
+            List<RepositoryPackageNodeDetails> packageNodes) {
+        try (var connection = dataSource.getConnection()) {
+            connection.setAutoCommit(false);
+            try (var delete = connection.prepareStatement("""
+                    delete from vericov.repository_package_nodes
+                    where org_id = ?
+                      and repository_id = ?
+                    """)) {
+                delete.setObject(1, organizationId);
+                delete.setObject(2, repositoryId);
+                delete.executeUpdate();
+            }
+            try (var insert = connection.prepareStatement("""
+                    insert into vericov.repository_package_nodes (
+                        id, tenant_id, org_id, repository_id, component_id, package_name, package_path,
+                        manifest_path, ecosystem, metadata_json, status, created_at, updated_at
+                    )
+                    values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?, ?, ?)
+                    """)) {
+                for (RepositoryPackageNodeDetails node : packageNodes) {
+                    int index = 1;
+                    insert.setObject(index++, node.id());
+                    insert.setObject(index++, node.tenantId());
+                    insert.setObject(index++, node.organizationId());
+                    insert.setObject(index++, node.repositoryId());
+                    insert.setObject(index++, node.componentId());
+                    insert.setString(index++, node.packageName());
+                    insert.setString(index++, node.packagePath());
+                    insert.setString(index++, node.manifestPath());
+                    insert.setString(index++, node.ecosystem());
+                    insert.setString(index++, jsonObject(node.metadata()));
+                    insert.setString(index++, node.status());
+                    insert.setObject(index++, utc(node.createdAt()));
+                    insert.setObject(index, utc(node.updatedAt()));
+                    insert.addBatch();
+                }
+                insert.executeBatch();
+            }
+            connection.commit();
+        } catch (SQLException exception) {
+            throw databaseFailure("Failed to replace repository package nodes", exception);
         }
     }
 
@@ -2093,6 +2377,78 @@ public class JdbcOrganizationRepository implements OrganizationRepository {
                 resultSet.getString("default_branch"),
                 resultSet.getString("visibility"),
                 resultSet.getString("privacy_mode"),
+                resultSet.getString("status"),
+                instant(resultSet, "created_at"),
+                instant(resultSet, "updated_at"));
+    }
+
+    private static void setRepositoryComponent(
+            PreparedStatement statement,
+            Connection connection,
+            RepositoryComponentDetails component) throws SQLException {
+        int index = 1;
+        statement.setObject(index++, component.id());
+        statement.setObject(index++, component.tenantId());
+        statement.setObject(index++, component.organizationId());
+        statement.setObject(index++, component.repositoryId());
+        statement.setString(index++, component.name());
+        statement.setString(index++, component.description());
+        statement.setArray(index++, connection.createArrayOf("text", component.pathPatterns().toArray(String[]::new)));
+        statement.setArray(index++, connection.createArrayOf("text", component.owners().toArray(String[]::new)));
+        statement.setString(index++, component.criticality());
+        statement.setString(index++, jsonObject(component.metadata()));
+        statement.setString(index++, component.status());
+        statement.setObject(index++, component.createdByUserId());
+        statement.setObject(index++, utc(component.createdAt()));
+        statement.setObject(index, utc(component.updatedAt()));
+    }
+
+    private static RepositoryComponentDetails readRepositoryComponent(ResultSet resultSet) throws SQLException {
+        return new RepositoryComponentDetails(
+                resultSet.getObject("id", UUID.class),
+                resultSet.getObject("tenant_id", UUID.class),
+                resultSet.getObject("org_id", UUID.class),
+                resultSet.getObject("repository_id", UUID.class),
+                resultSet.getString("name"),
+                resultSet.getString("description"),
+                stringArray(resultSet, "path_patterns"),
+                stringArray(resultSet, "owners"),
+                resultSet.getString("criticality"),
+                jsonMap(resultSet, "metadata_json"),
+                resultSet.getString("status"),
+                resultSet.getObject("created_by_user_id", UUID.class),
+                instant(resultSet, "created_at"),
+                instant(resultSet, "updated_at"));
+    }
+
+    private static RepositoryOwnerRuleDetails readRepositoryOwnerRule(ResultSet resultSet) throws SQLException {
+        return new RepositoryOwnerRuleDetails(
+                resultSet.getObject("id", UUID.class),
+                resultSet.getObject("tenant_id", UUID.class),
+                resultSet.getObject("org_id", UUID.class),
+                resultSet.getObject("repository_id", UUID.class),
+                resultSet.getString("source"),
+                resultSet.getString("pattern"),
+                stringArray(resultSet, "owners"),
+                resultSet.getInt("priority"),
+                resultSet.getString("source_ref"),
+                resultSet.getString("status"),
+                instant(resultSet, "created_at"),
+                instant(resultSet, "updated_at"));
+    }
+
+    private static RepositoryPackageNodeDetails readRepositoryPackageNode(ResultSet resultSet) throws SQLException {
+        return new RepositoryPackageNodeDetails(
+                resultSet.getObject("id", UUID.class),
+                resultSet.getObject("tenant_id", UUID.class),
+                resultSet.getObject("org_id", UUID.class),
+                resultSet.getObject("repository_id", UUID.class),
+                resultSet.getObject("component_id", UUID.class),
+                resultSet.getString("package_name"),
+                resultSet.getString("package_path"),
+                resultSet.getString("manifest_path"),
+                resultSet.getString("ecosystem"),
+                jsonMap(resultSet, "metadata_json"),
                 resultSet.getString("status"),
                 instant(resultSet, "created_at"),
                 instant(resultSet, "updated_at"));

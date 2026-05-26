@@ -211,6 +211,87 @@ public class RepositoryControlPlaneResource {
     }
 
     @GET
+    @Path("/{org_id}/repositories/{repository_id}/components")
+    public Response listRepositoryComponents(
+            @HeaderParam("Authorization") String authorizationHeader,
+            @HeaderParam("X-Vericov-User-Id") String userIdHeader,
+            @PathParam("org_id") UUID organizationId,
+            @PathParam("repository_id") UUID repositoryId) {
+        try {
+            AuthenticatedUser user = resolveUser(authorizationHeader, userIdHeader);
+            var components = organizationService.listRepositoryComponents(user.userId(), organizationId, repositoryId)
+                    .stream()
+                    .map(RepositoryComponentHttpResponse::from)
+                    .toList();
+            return Response.ok(new ApiResponse<>(components)).build();
+        } catch (OrganizationException exception) {
+            return OrganizationResource.errorResponse(exception);
+        }
+    }
+
+    @POST
+    @Path("/{org_id}/repositories/{repository_id}/components")
+    public Response createRepositoryComponent(
+            @HeaderParam("Authorization") String authorizationHeader,
+            @HeaderParam("X-Vericov-User-Id") String userIdHeader,
+            @PathParam("org_id") UUID organizationId,
+            @PathParam("repository_id") UUID repositoryId,
+            RepositoryComponentHttpRequest request) {
+        try {
+            AuthenticatedUser user = resolveUser(authorizationHeader, userIdHeader);
+            var component = organizationService.createRepositoryComponent(
+                    request.toCreateCommand(user.userId(), organizationId, repositoryId));
+            return Response.created(URI.create("/api/v1/orgs/" + organizationId
+                            + "/repositories/" + repositoryId
+                            + "/components/" + component.id()))
+                    .entity(new ApiResponse<>(RepositoryComponentHttpResponse.from(component)))
+                    .build();
+        } catch (OrganizationException exception) {
+            return OrganizationResource.errorResponse(exception);
+        }
+    }
+
+    @PATCH
+    @Path("/{org_id}/repositories/{repository_id}/components/{component_id}")
+    public Response updateRepositoryComponent(
+            @HeaderParam("Authorization") String authorizationHeader,
+            @HeaderParam("X-Vericov-User-Id") String userIdHeader,
+            @PathParam("org_id") UUID organizationId,
+            @PathParam("repository_id") UUID repositoryId,
+            @PathParam("component_id") UUID componentId,
+            RepositoryComponentHttpRequest request) {
+        try {
+            AuthenticatedUser user = resolveUser(authorizationHeader, userIdHeader);
+            var component = organizationService.updateRepositoryComponent(
+                    request.toUpdateCommand(user.userId(), organizationId, repositoryId, componentId));
+            return Response.ok(new ApiResponse<>(RepositoryComponentHttpResponse.from(component))).build();
+        } catch (OrganizationException exception) {
+            return OrganizationResource.errorResponse(exception);
+        }
+    }
+
+    @POST
+    @Path("/{org_id}/repositories/{repository_id}/components/resolve-preview")
+    public Response resolveRepositoryComponents(
+            @HeaderParam("Authorization") String authorizationHeader,
+            @HeaderParam("X-Vericov-User-Id") String userIdHeader,
+            @PathParam("org_id") UUID organizationId,
+            @PathParam("repository_id") UUID repositoryId,
+            ResolveRepositoryPathsHttpRequest request) {
+        try {
+            AuthenticatedUser user = resolveUser(authorizationHeader, userIdHeader);
+            var resolutions = organizationService.resolveRepositoryPaths(
+                            request.toCommand(user.userId(), organizationId, repositoryId))
+                    .stream()
+                    .map(RepositoryPathResolutionHttpResponse::from)
+                    .toList();
+            return Response.ok(new ApiResponse<>(resolutions)).build();
+        } catch (OrganizationException exception) {
+            return OrganizationResource.errorResponse(exception);
+        }
+    }
+
+    @GET
     @Path("/{org_id}/repositories/{repository_id}/policies")
     public Response listRepositoryPolicies(
             @HeaderParam("Authorization") String authorizationHeader,

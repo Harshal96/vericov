@@ -10,7 +10,10 @@ import dev.vericov.analysis.application.port.NormalizedCoverageStore;
 import dev.vericov.analysis.application.port.RepositoryContextRepository;
 import dev.vericov.analysis.application.port.TestRunRepository;
 import dev.vericov.analysis.coverage.CoverageAnalysisInput;
+import dev.vericov.analysis.coverage.CoverageComponentRollup;
+import dev.vericov.analysis.coverage.CoverageFileSummary;
 import dev.vericov.analysis.coverage.CoverageInputArtifact;
+import dev.vericov.analysis.coverage.CoverageMetric;
 import dev.vericov.analysis.coverage.CoverageParserRegistry;
 import dev.vericov.analysis.coverage.CoverageReport;
 import dev.vericov.analysis.coverage.CoverageReportMerger;
@@ -19,16 +22,26 @@ import dev.vericov.analysis.diff.DiffCoverageReport;
 import dev.vericov.analysis.domain.UploadReceivedEvent;
 import dev.vericov.analysis.gates.GateEvaluation;
 import dev.vericov.analysis.gates.GateEvaluator;
+import dev.vericov.analysis.gates.ComponentRollup;
 import dev.vericov.analysis.gates.RepositoryContext;
+import dev.vericov.analysis.gates.RepositoryComponentContext;
+import dev.vericov.analysis.gates.RepositoryOwnerRuleContext;
+import dev.vericov.analysis.gates.RepositoryPackageNodeContext;
 import dev.vericov.analysis.testresults.ParsedTestRun;
 import dev.vericov.analysis.testresults.TestResultParserRegistry;
 import dev.vericov.analysis.testresults.TestRun;
+import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
+import java.util.UUID;
+import java.util.regex.Pattern;
 
 public class DefaultCoverageAnalysisProcessor implements CoverageAnalysisProcessor {
     private final CoverageAnalysisInputRepository inputs;
@@ -233,30 +246,198 @@ public class DefaultCoverageAnalysisProcessor implements CoverageAnalysisProcess
 
     private void processCoverage(CoverageAnalysisInput input, List<ParsedCoverage> parsedCoverages, Instant processedAt) {
         CoverageReport report = merger.merge(input, parsedCoverages, processedAt);
-        NormalizedCoverageLocation location = normalizedCoverageStore.store(report);
-        CoverageReport reportWithStorage = report.withNormalizedStorage(location.bucket(), location.path());
+        RepositoryContext repositoryContext = contextRepository.loadContext(
+                report.tenantId(),
+                report.repositoryId(),
+                report.commitSha(),
+                report.branchName(),
+                report.pullRequestNumber());
+        CoverageReport contextualReport = applyRepositoryContext(report, repositoryContext);
+        RepositoryContext gateContext = repositoryContext.withComponentRollups(gateComponentRollups(contextualReport));
+
+        NormalizedCoverageLocation location = normalizedCoverageStore.store(contextualReport);
+        CoverageReport reportWithStorage = contextualReport.withNormalizedStorage(location.bucket(), location.path());
 
         // 1. Process diff coverage first so we have the DiffCoverageReport
         DiffCoverageReport diffCoverage = prDiffCoverageProcessor.process(input, reportWithStorage);
-
-        // 2. Load RepositoryContext
-        RepositoryContext repositoryContext = contextRepository.loadContext(
-                reportWithStorage.tenantId(),
-                reportWithStorage.repositoryId(),
-                reportWithStorage.commitSha(),
-                reportWithStorage.branchName(),
-                reportWithStorage.pullRequestNumber());
 
         // 3. Evaluate gates with report, context, and diff coverage
         List<GateEvaluation> evaluations = gateEvaluator.evaluate(
                 reportWithStorage,
                 gates.listActiveForRepository(reportWithStorage.tenantId(), reportWithStorage.repositoryId()),
-                repositoryContext,
+                gateContext,
                 diffCoverage,
                 reportWithStorage.generatedAt());
 
         // 4. Save report and evaluations
         reports.save(reportWithStorage, evaluations);
+    }
+
+    private CoverageReport applyRepositoryContext(CoverageReport report, RepositoryContext context) {
+        if (context.components().isEmpty() && context.ownerRules().isEmpty() && context.packageNodes().isEmpty()) {
+            return report;
+        }
+        List<CoverageFileSummary> resolvedFiles = report.files().stream()
+                .map(file -> resolveFile(file, context))
+                .toList();
+        return report.withResolvedFiles(resolvedFiles)
+                .withComponentRollups(coverageComponentRollups(resolvedFiles));
+    }
+
+    private static CoverageFileSummary resolveFile(CoverageFileSummary file, RepositoryContext context) {
+        RepositoryComponentContext component = matchingComponent(context.components(), file.filePath()).orElse(null);
+        RepositoryOwnerRuleContext ownerRule = component == null ? matchingOwnerRule(context.ownerRules(), file.filePath()).orElse(null) : null;
+        RepositoryPackageNodeContext packageNode = matchingPackageNode(context.packageNodes(), file.filePath()).orElse(null);
+        List<String> owners = component != null
+                ? component.owners()
+                : ownerRule != null ? ownerRule.owners() : List.of("unowned");
+        if (owners.isEmpty()) {
+            owners = List.of("unowned");
+        }
+        return new CoverageFileSummary(
+                file.filePath(),
+                file.line(),
+                file.branch(),
+                file.function(),
+                file.statement(),
+                component == null ? null : component.componentId(),
+                packageNode == null ? null : packageNode.packageName(),
+                owners);
+    }
+
+    private static Optional<RepositoryComponentContext> matchingComponent(
+            List<RepositoryComponentContext> components,
+            String filePath) {
+        return components.stream()
+                .filter(component -> component.pathPatterns().stream().anyMatch(pattern -> globMatches(pattern, filePath)))
+                .min(Comparator.comparingInt((RepositoryComponentContext component) -> longestLiteralPrefix(
+                                component.pathPatterns(),
+                                filePath))
+                        .reversed()
+                        .thenComparing(RepositoryComponentContext::name)
+                        .thenComparing(RepositoryComponentContext::componentId));
+    }
+
+    private static Optional<RepositoryOwnerRuleContext> matchingOwnerRule(
+            List<RepositoryOwnerRuleContext> ownerRules,
+            String filePath) {
+        return ownerRules.stream()
+                .filter(rule -> globMatches(rule.pattern(), filePath))
+                .min(Comparator.comparingInt(DefaultCoverageAnalysisProcessor::ownerRuleSourceRank)
+                        .thenComparingInt(DefaultCoverageAnalysisProcessor::ownerRulePriorityRank));
+    }
+
+    private static int ownerRuleSourceRank(RepositoryOwnerRuleContext ownerRule) {
+        return switch (ownerRule.source()) {
+            case "manual" -> 0;
+            case "component" -> 1;
+            case "codeowners" -> 2;
+            default -> 3;
+        };
+    }
+
+    private static int ownerRulePriorityRank(RepositoryOwnerRuleContext ownerRule) {
+        return "codeowners".equals(ownerRule.source()) ? -ownerRule.priority() : ownerRule.priority();
+    }
+
+    private static Optional<RepositoryPackageNodeContext> matchingPackageNode(
+            List<RepositoryPackageNodeContext> packageNodes,
+            String filePath) {
+        return packageNodes.stream()
+                .filter(node -> pathStartsWith(filePath, node.packagePath()))
+                .max(Comparator.comparingInt((RepositoryPackageNodeContext node) -> node.packagePath().length())
+                        .thenComparing(RepositoryPackageNodeContext::packageName));
+    }
+
+    private static List<CoverageComponentRollup> coverageComponentRollups(List<CoverageFileSummary> files) {
+        Map<String, RollupAccumulator> accumulators = new LinkedHashMap<>();
+        for (CoverageFileSummary file : files) {
+            if (file.componentId() == null) {
+                continue;
+            }
+            String owner = file.owners().isEmpty() ? "unowned" : file.owners().getFirst();
+            String key = file.componentId() + ":" + owner;
+            accumulators.computeIfAbsent(key, ignored -> new RollupAccumulator(file.componentId(), owner))
+                    .add(file);
+        }
+        return accumulators.values().stream()
+                .map(RollupAccumulator::toCoverageRollup)
+                .toList();
+    }
+
+    private static Map<String, ComponentRollup> gateComponentRollups(CoverageReport report) {
+        Map<String, RollupAccumulator> accumulators = new LinkedHashMap<>();
+        for (CoverageComponentRollup rollup : report.componentRollups()) {
+            accumulators.computeIfAbsent(
+                            rollup.componentId().toString(),
+                            ignored -> new RollupAccumulator(rollup.componentId(), rollup.owner()))
+                    .add(rollup);
+        }
+        Map<String, ComponentRollup> rollups = new LinkedHashMap<>();
+        accumulators.forEach((componentId, accumulator) -> {
+            CoverageComponentRollup rollup = accumulator.toCoverageRollup();
+            rollups.put(componentId, new ComponentRollup(
+                    rollup.componentId().toString(),
+                    rollup.line(),
+                    rollup.branch(),
+                    rollup.function(),
+                    rollup.statement()));
+        });
+        return Map.copyOf(rollups);
+    }
+
+    private static boolean globMatches(String pattern, String filePath) {
+        return Pattern.compile(globRegex(pattern)).matcher(filePath).matches();
+    }
+
+    private static String globRegex(String pattern) {
+        StringBuilder regex = new StringBuilder("^");
+        if (!pattern.contains("/")) {
+            regex.append("(?:.*/)?");
+        }
+        for (int i = 0; i < pattern.length(); i++) {
+            char current = pattern.charAt(i);
+            if (current == '*') {
+                boolean doublestar = i + 1 < pattern.length() && pattern.charAt(i + 1) == '*';
+                if (doublestar) {
+                    regex.append(".*");
+                    i++;
+                } else {
+                    regex.append("[^/]*");
+                }
+            } else if (current == '?') {
+                regex.append("[^/]");
+            } else {
+                if (".[]{}()+-^$|".indexOf(current) >= 0) {
+                    regex.append('\\');
+                }
+                regex.append(current);
+            }
+        }
+        return regex.append('$').toString();
+    }
+
+    private static int longestLiteralPrefix(List<String> patterns, String filePath) {
+        return patterns.stream()
+                .filter(pattern -> globMatches(pattern, filePath))
+                .mapToInt(DefaultCoverageAnalysisProcessor::literalPrefixLength)
+                .max()
+                .orElse(0);
+    }
+
+    private static int literalPrefixLength(String pattern) {
+        int wildcard = pattern.length();
+        for (char marker : new char[] {'*', '?'}) {
+            int index = pattern.indexOf(marker);
+            if (index >= 0) {
+                wildcard = Math.min(wildcard, index);
+            }
+        }
+        return pattern.substring(0, wildcard).length();
+    }
+
+    private static boolean pathStartsWith(String filePath, String packagePath) {
+        return filePath.equals(packagePath) || filePath.startsWith(packagePath + "/");
     }
 
     private List<TestRun> parseTestRuns(
@@ -294,6 +475,59 @@ public class DefaultCoverageAnalysisProcessor implements CoverageAnalysisProcess
 
     private static GateConfigurationRepository emptyGateConfigurationRepository() {
         return (tenantId, repositoryId) -> List.of();
+    }
+
+    private static final class RollupAccumulator {
+        private final UUID componentId;
+        private final String owner;
+        private int lineCovered;
+        private int lineTotal;
+        private int branchCovered;
+        private int branchTotal;
+        private int functionCovered;
+        private int functionTotal;
+        private int statementCovered;
+        private int statementTotal;
+
+        private RollupAccumulator(UUID componentId, String owner) {
+            this.componentId = componentId;
+            this.owner = owner;
+        }
+
+        private void add(CoverageFileSummary file) {
+            lineCovered += file.line().covered();
+            lineTotal += file.line().total();
+            branchCovered += file.branch().covered();
+            branchTotal += file.branch().total();
+            functionCovered += file.function().covered();
+            functionTotal += file.function().total();
+            statementCovered += file.statement().covered();
+            statementTotal += file.statement().total();
+        }
+
+        private void add(CoverageComponentRollup rollup) {
+            lineCovered += rollup.line().covered();
+            lineTotal += rollup.line().total();
+            branchCovered += rollup.branch().covered();
+            branchTotal += rollup.branch().total();
+            functionCovered += rollup.function().covered();
+            functionTotal += rollup.function().total();
+            statementCovered += rollup.statement().covered();
+            statementTotal += rollup.statement().total();
+        }
+
+        private CoverageComponentRollup toCoverageRollup() {
+            return new CoverageComponentRollup(
+                    componentId,
+                    owner,
+                    new CoverageMetric(lineCovered, lineTotal),
+                    new CoverageMetric(branchCovered, branchTotal),
+                    new CoverageMetric(functionCovered, functionTotal),
+                    new CoverageMetric(statementCovered, statementTotal),
+                    0,
+                    0,
+                    BigDecimal.ZERO);
+        }
     }
 
     private static RepositoryContextRepository emptyRepositoryContextRepository() {

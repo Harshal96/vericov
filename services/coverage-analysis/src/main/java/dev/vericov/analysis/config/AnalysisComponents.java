@@ -1,6 +1,7 @@
 package dev.vericov.analysis.config;
 
 import dev.vericov.analysis.adapter.git.InternalGitDiffHttpClient;
+import dev.vericov.analysis.adapter.controlplane.InternalControlPlaneRepositoryContextClient;
 import dev.vericov.analysis.adapter.jdbc.AnalysisMessageJsonCodec;
 import dev.vericov.analysis.adapter.jdbc.DriverManagerDataSource;
 import dev.vericov.analysis.adapter.jdbc.JdbcAnalysisJobQueue;
@@ -81,6 +82,12 @@ public class AnalysisComponents {
     @Produces
     @ApplicationScoped
     public RepositoryContextRepository repositoryContextRepository() {
+        String token = System.getenv("VERICOV_INTERNAL_SERVICE_TOKEN");
+        if (token != null && !token.isBlank()) {
+            return new InternalControlPlaneRepositoryContextClient(
+                    URI.create(env("VERICOV_CONTROL_PLANE_BASE_URL", "http://127.0.0.1:8081")),
+                    token);
+        }
         return (tenantId, repositoryId, commitSha, branch, pr) -> new dev.vericov.analysis.gates.RepositoryContext(
                 "ctx-" + Instant.now().toString(),
                 List.of(),
