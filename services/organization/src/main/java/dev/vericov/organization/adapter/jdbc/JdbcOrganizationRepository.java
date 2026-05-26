@@ -1730,6 +1730,7 @@ public class JdbcOrganizationRepository implements OrganizationRepository {
             String minRisk,
             String riskLevel,
             String status,
+            String reasonCode,
             boolean includeDebt,
             int limit) {
         try (var connection = dataSource.getConnection();
@@ -1748,6 +1749,7 @@ public class JdbcOrganizationRepository implements OrganizationRepository {
                           and (? is null or ? = any(owners))
                           and (? is null or risk_level = ?)
                           and (? is null or status = ?)
+                          and (? is null or reason_code = ?)
                           and (? or status <> 'debt_suppressed')
                           and (? is null or
                               case risk_level
@@ -1792,6 +1794,8 @@ public class JdbcOrganizationRepository implements OrganizationRepository {
             statement.setString(index++, riskLevel);
             statement.setString(index++, status);
             statement.setString(index++, status);
+            statement.setString(index++, reasonCode);
+            statement.setString(index++, reasonCode);
             statement.setBoolean(index++, includeDebt);
             statement.setString(index++, minRisk);
             statement.setString(index++, minRisk);

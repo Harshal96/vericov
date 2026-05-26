@@ -8,6 +8,7 @@ import java.util.Objects;
 public record DiffCoverageReport(
         String baseSha,
         String headSha,
+        String status,
         int patchLineCovered,
         int patchLineTotal,
         int newlyMissedLineCount,
@@ -17,7 +18,39 @@ public record DiffCoverageReport(
     public DiffCoverageReport {
         Objects.requireNonNull(baseSha, "baseSha");
         Objects.requireNonNull(headSha, "headSha");
+        status = status == null || status.isBlank() ? "complete" : status;
         files = List.copyOf(files == null ? List.of() : files);
+    }
+
+    public DiffCoverageReport(
+            String baseSha,
+            String headSha,
+            int patchLineCovered,
+            int patchLineTotal,
+            int newlyMissedLineCount,
+            int lostCoverageLineCount,
+            List<DiffCoverageFile> files) {
+        this(
+                baseSha,
+                headSha,
+                "complete",
+                patchLineCovered,
+                patchLineTotal,
+                newlyMissedLineCount,
+                lostCoverageLineCount,
+                files);
+    }
+
+    public DiffCoverageReport withStatus(String nextStatus) {
+        return new DiffCoverageReport(
+                baseSha,
+                headSha,
+                nextStatus,
+                patchLineCovered,
+                patchLineTotal,
+                newlyMissedLineCount,
+                lostCoverageLineCount,
+                files);
     }
 
     public BigDecimal patchLinePercentage() {

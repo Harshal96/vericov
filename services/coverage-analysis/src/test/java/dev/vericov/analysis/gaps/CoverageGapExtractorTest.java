@@ -142,6 +142,142 @@ class CoverageGapExtractorTest {
         }));
     }
 
+    @Test
+    void groupsAdjacentUncoveredReportLinesIntoRangeFindings() {
+        CoverageReport report = report(
+                "src/App.java",
+                new CoverageMetric(1, 4),
+                List.of(
+                        new CoverageLineHit("src/App.java", 10, 0),
+                        new CoverageLineHit("src/App.java", 11, 0),
+                        new CoverageLineHit("src/App.java", 13, 0),
+                        new CoverageLineHit("src/App.java", 20, 1)),
+                List.of("@acme/app"));
+        RepositoryContext context = new RepositoryContext("ctx-ranges", List.of(), List.of(), Map.of());
+
+        List<CoverageGapFinding> findings = new CoverageGapExtractor().extract(report, context, null, NOW);
+
+        List<CoverageGapFinding> uncovered = findings.stream()
+                .filter(finding -> "uncovered_executable_line".equals(finding.reasonCode()))
+                .toList();
+        assertEquals(2, uncovered.size());
+        CoverageGapFinding range = uncovered.getFirst();
+        assertEquals("range", range.targetType());
+        assertEquals(10, range.lineStart());
+        assertEquals(11, range.lineEnd());
+        assertEquals("Lines 10-11 are uncovered in the coverage report.", range.explanation());
+
+        CoverageGapFinding single = uncovered.get(1);
+        assertEquals("line", single.targetType());
+        assertEquals(13, single.lineStart());
+        assertEquals(13, single.lineEnd());
+    }
+
+    @Test
+    void classifiesBaseMissingPathMismatchesMissingPathsAndGeneratedCandidates() {
+        CoverageReport report = report(
+                "src/main/java/com/acme/App.java",
+                new CoverageMetric(1, 1),
+                List.of(new CoverageLineHit("src/main/java/com/acme/App.java", 42, 1)),
+                List.of("@acme/app"));
+        RepositoryContext context = new RepositoryContext(
+                "ctx-paths",
+                List.of(),
+                List.of(),
+                Map.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                Map.of("generated_path_patterns", List.of("build/generated/**")));
+        DiffCoverageReport diff = new DiffCoverageReport(
+                "base123",
+                "head456",
+                "base_coverage_missing",
+                0,
+                0,
+                0,
+                0,
+                List.of(
+                        new DiffCoverageFile(
+                                "App.java",
+                                null,
+                                "modified",
+                                0,
+                                0,
+                                0,
+                                0,
+                                List.of(new DiffCoverageLine(
+                                        "App.java",
+                                        null,
+                                        null,
+                                        42,
+                                        DiffLineType.ADDED,
+                                        false,
+                                        null,
+                                        null,
+                                        false,
+                                        false))),
+                        new DiffCoverageFile(
+                                "lib/Missing.java",
+                                null,
+                                "modified",
+                                0,
+                                0,
+                                0,
+                                0,
+                                List.of(new DiffCoverageLine(
+                                        "lib/Missing.java",
+                                        null,
+                                        null,
+                                        7,
+                                        DiffLineType.ADDED,
+                                        false,
+                                        null,
+                                        null,
+                                        false,
+                                        false))),
+                        new DiffCoverageFile(
+                                "build/generated/Generated.java",
+                                null,
+                                "added",
+                                0,
+                                0,
+                                0,
+                                0,
+                                List.of(new DiffCoverageLine(
+                                        "build/generated/Generated.java",
+                                        null,
+                                        null,
+                                        3,
+                                        DiffLineType.ADDED,
+                                        false,
+                                        null,
+                                        null,
+                                        false,
+                                        false)))));
+
+        List<CoverageGapFinding> findings = new CoverageGapExtractor().extract(report, context, diff, NOW);
+
+        assertTrue(findings.stream().anyMatch(finding ->
+                "base_coverage_missing".equals(finding.reasonCode())
+                        && "run_source_explain".equals(finding.nextAction())
+                        && finding.explanation().contains("Base coverage is unavailable")));
+        assertTrue(findings.stream().anyMatch(finding ->
+                "possible_path_mismatch".equals(finding.reasonCode())
+                        && "App.java".equals(finding.filePath())
+                        && "inspect_instrumentation".equals(finding.nextAction())
+                        && "medium".equals(finding.confidence())));
+        assertTrue(findings.stream().anyMatch(finding ->
+                "path_not_in_report".equals(finding.reasonCode())
+                        && "lib/Missing.java".equals(finding.filePath())
+                        && "inspect_instrumentation".equals(finding.nextAction())));
+        assertTrue(findings.stream().anyMatch(finding ->
+                "generated_or_ignored_candidate".equals(finding.reasonCode())
+                        && "build/generated/Generated.java".equals(finding.filePath())
+                        && "mark_generated".equals(finding.nextAction())
+                        && "low".equals(finding.confidence())));
+    }
+
     private static CoverageReport report(
             String filePath,
             CoverageMetric lineMetric,

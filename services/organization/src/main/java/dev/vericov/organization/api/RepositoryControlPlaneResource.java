@@ -564,6 +564,7 @@ public class RepositoryControlPlaneResource {
             @QueryParam("min_risk") String minRisk,
             @QueryParam("risk_level") String riskLevel,
             @QueryParam("status") String status,
+            @QueryParam("reason_code") String reasonCode,
             @QueryParam("include_debt") Boolean includeDebt,
             @QueryParam("limit") Integer limit) {
         try {
@@ -579,6 +580,7 @@ public class RepositoryControlPlaneResource {
                     minRisk,
                     riskLevel,
                     status,
+                    reasonCode,
                     includeDebt != null && includeDebt,
                     limit == null ? 100 : limit);
             var gaps = organizationService.listCoverageGaps(query).stream()

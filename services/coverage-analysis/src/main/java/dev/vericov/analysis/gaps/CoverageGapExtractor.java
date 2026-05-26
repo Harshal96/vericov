@@ -37,9 +37,37 @@ public class CoverageGapExtractor {
         Objects.requireNonNull(now, "now");
         List<CoverageGapFinding> findings = new ArrayList<>();
         Set<String> diffSpecificLines = collectDiffSpecificLines(diffCoverage);
+        Set<String> reportPaths = reportPaths(report);
 
         if (diffCoverage != null) {
             for (DiffCoverageFile file : diffCoverage.files()) {
+                if ("base_coverage_missing".equals(diffCoverage.status())) {
+                    findings.add(finding(
+                            report,
+                            context,
+                            "base_coverage_missing",
+                            file.filePath(),
+                            "file",
+                            null,
+                            null,
+                            null,
+                            diffEvidence(diffCoverage),
+                            now));
+                }
+                if (!reportPaths.contains(file.filePath())) {
+                    String reasonCode = pathReasonCode(context, file.filePath(), reportPaths);
+                    findings.add(finding(
+                            report,
+                            context,
+                            reasonCode,
+                            file.filePath(),
+                            "file",
+                            null,
+                            null,
+                            null,
+                            pathEvidence(diffCoverage, file.filePath(), reportPaths),
+                            now));
+                }
                 for (DiffCoverageLine line : file.lines()) {
                     if (line.headLineNumber() == null) {
                         continue;
@@ -115,7 +143,7 @@ public class CoverageGapExtractor {
             }
         }
 
-        return List.copyOf(findings);
+        return groupAdjacentLineFindings(findings);
     }
 
     private CoverageGapFinding finding(
@@ -132,7 +160,10 @@ public class CoverageGapExtractor {
         FileContext fileContext = resolveFileContext(report, context, filePath);
         List<DebtItem> activeDebt = matchingDebt(context, filePath, lineStart, now, true);
         List<DebtItem> expiredDebt = matchingDebt(context, filePath, lineStart, now, false);
-        String reasonCode = expiredDebt.isEmpty() ? initialReasonCode : "expired_debt_reappeared";
+        String policyReasonCode = matchesGeneratedOrIgnoredPath(context, filePath)
+                ? "generated_or_ignored_candidate"
+                : initialReasonCode;
+        String reasonCode = expiredDebt.isEmpty() ? policyReasonCode : "expired_debt_reappeared";
         String status = activeDebt.isEmpty() ? "active" : "debt_suppressed";
         CoverageGapCandidate candidate = new CoverageGapCandidate(
                 filePath,
@@ -267,8 +298,204 @@ public class CoverageGapExtractor {
                 .collect(Collectors.toUnmodifiableSet());
     }
 
+    private static Set<String> reportPaths(CoverageReport report) {
+        Set<String> filePaths = report.files().stream()
+                .map(CoverageFileSummary::filePath)
+                .collect(Collectors.toSet());
+        report.lineHits().stream()
+                .map(CoverageLineHit::filePath)
+                .forEach(filePaths::add);
+        return Set.copyOf(filePaths);
+    }
+
+    private static String pathReasonCode(
+            RepositoryContext context,
+            String filePath,
+            Set<String> reportPaths) {
+        if (matchesAnyConfiguredPath(context.riskConfig(), filePath, "generated_path_patterns")
+                || matchesAnyConfiguredPath(context.riskConfig(), filePath, "ignored_path_patterns")) {
+            return "generated_or_ignored_candidate";
+        }
+        return hasPathMismatchHint(filePath, reportPaths) ? "possible_path_mismatch" : "path_not_in_report";
+    }
+
+    private static boolean matchesAnyConfiguredPath(
+            Map<String, Object> config,
+            String filePath,
+            String key) {
+        Object patterns = config.get(key);
+        if (!(patterns instanceof List<?> list)) {
+            return false;
+        }
+        for (Object pattern : list) {
+            if (pattern instanceof String stringPattern && pathMatches(stringPattern, filePath)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean matchesGeneratedOrIgnoredPath(RepositoryContext context, String filePath) {
+        return matchesAnyConfiguredPath(context.riskConfig(), filePath, "generated_path_patterns")
+                || matchesAnyConfiguredPath(context.riskConfig(), filePath, "ignored_path_patterns");
+    }
+
+    private static boolean hasPathMismatchHint(String diffPath, Set<String> reportPaths) {
+        String normalizedDiff = normalizePath(diffPath);
+        String basename = basename(normalizedDiff);
+        for (String reportPath : reportPaths) {
+            String normalizedReport = normalizePath(reportPath);
+            if (basename.equals(basename(normalizedReport))
+                    || normalizedReport.endsWith("/" + normalizedDiff)
+                    || normalizedDiff.endsWith("/" + normalizedReport)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static String normalizePath(String path) {
+        String normalized = path == null ? "" : path.replace('\\', '/');
+        while (normalized.startsWith("./")) {
+            normalized = normalized.substring(2);
+        }
+        return normalized;
+    }
+
+    private static String basename(String path) {
+        int slash = path.lastIndexOf('/');
+        return slash < 0 ? path : path.substring(slash + 1);
+    }
+
+    private static Map<String, Object> diffEvidence(DiffCoverageReport diffCoverage) {
+        Map<String, Object> evidence = new LinkedHashMap<>();
+        evidence.put("base_sha", diffCoverage.baseSha());
+        evidence.put("head_sha", diffCoverage.headSha());
+        evidence.put("diff_status", diffCoverage.status());
+        return Map.copyOf(evidence);
+    }
+
+    private static Map<String, Object> pathEvidence(
+            DiffCoverageReport diffCoverage,
+            String filePath,
+            Set<String> reportPaths) {
+        Map<String, Object> evidence = new LinkedHashMap<>(diffEvidence(diffCoverage));
+        evidence.put("diff_file_path", filePath);
+        List<String> hints = reportPaths.stream()
+                .filter(reportPath -> hasPathMismatchHint(filePath, Set.of(reportPath)))
+                .sorted()
+                .limit(5)
+                .toList();
+        if (!hints.isEmpty()) {
+            evidence.put("path_match_hints", hints);
+        }
+        return Map.copyOf(evidence);
+    }
+
     private static String lineKey(String filePath, int lineNumber) {
         return filePath + ":" + lineNumber;
+    }
+
+    private static List<CoverageGapFinding> groupAdjacentLineFindings(List<CoverageGapFinding> findings) {
+        List<CoverageGapFinding> grouped = new ArrayList<>();
+        List<CoverageGapFinding> uncoveredLines = findings.stream()
+                .filter(CoverageGapExtractor::groupableUncoveredLine)
+                .sorted(java.util.Comparator
+                        .comparing(CoverageGapFinding::filePath)
+                        .thenComparing(CoverageGapFinding::lineStart))
+                .toList();
+        Set<UUID> groupedIds = uncoveredLines.stream()
+                .map(CoverageGapFinding::id)
+                .collect(Collectors.toSet());
+
+        int index = 0;
+        while (index < uncoveredLines.size()) {
+            List<CoverageGapFinding> run = new ArrayList<>();
+            CoverageGapFinding first = uncoveredLines.get(index);
+            run.add(first);
+            int next = index + 1;
+            while (next < uncoveredLines.size() && canGroup(run.getLast(), uncoveredLines.get(next))) {
+                run.add(uncoveredLines.get(next));
+                next++;
+            }
+            grouped.add(run.size() == 1 ? first : rangeFinding(run));
+            index = next;
+        }
+
+        for (CoverageGapFinding finding : findings) {
+            if (!groupedIds.contains(finding.id())) {
+                grouped.add(finding);
+            }
+        }
+
+        return grouped.stream()
+                .sorted(java.util.Comparator
+                        .comparing(CoverageGapFinding::filePath)
+                        .thenComparing(finding -> finding.lineStart() == null ? Integer.MAX_VALUE : finding.lineStart())
+                        .thenComparing(CoverageGapFinding::reasonCode))
+                .toList();
+    }
+
+    private static boolean groupableUncoveredLine(CoverageGapFinding finding) {
+        return "uncovered_executable_line".equals(finding.reasonCode())
+                && "line".equals(finding.targetType())
+                && finding.lineStart() != null
+                && finding.lineEnd() != null
+                && finding.lineStart().equals(finding.lineEnd());
+    }
+
+    private static boolean canGroup(CoverageGapFinding previous, CoverageGapFinding next) {
+        return Objects.equals(previous.filePath(), next.filePath())
+                && Objects.equals(previous.reasonCode(), next.reasonCode())
+                && Objects.equals(previous.componentId(), next.componentId())
+                && Objects.equals(previous.owners(), next.owners())
+                && Objects.equals(previous.nextAction(), next.nextAction())
+                && Objects.equals(previous.status(), next.status())
+                && previous.lineEnd() != null
+                && next.lineStart() != null
+                && next.lineStart() == previous.lineEnd() + 1;
+    }
+
+    private static CoverageGapFinding rangeFinding(List<CoverageGapFinding> run) {
+        CoverageGapFinding first = run.getFirst();
+        CoverageGapFinding last = run.getLast();
+        Map<String, Object> evidence = new LinkedHashMap<>(first.evidence());
+        evidence.put("line_start", first.lineStart());
+        evidence.put("line_end", last.lineEnd());
+        evidence.put("line_count", run.size());
+        String explanation = "Lines " + first.lineStart() + "-" + last.lineEnd()
+                + " are uncovered in the coverage report.";
+        return new CoverageGapFinding(
+                stableId(
+                        first.repositoryId(),
+                        first.coverageReportId(),
+                        first.filePath(),
+                        "range",
+                        first.lineStart(),
+                        last.lineEnd(),
+                        first.reasonCode()),
+                first.tenantId(),
+                first.repositoryId(),
+                first.coverageReportId(),
+                first.componentId(),
+                first.commitSha(),
+                first.pullRequestNumber(),
+                first.filePath(),
+                "range",
+                first.lineStart(),
+                last.lineEnd(),
+                first.symbolName(),
+                first.reasonCode(),
+                explanation,
+                first.confidence(),
+                first.riskScore(),
+                first.riskLevel(),
+                first.owners(),
+                first.nextAction(),
+                first.status(),
+                evidence,
+                first.createdAt(),
+                last.updatedAt());
     }
 
     private static UUID stableId(
@@ -278,8 +505,19 @@ public class CoverageGapExtractor {
             Integer lineStart,
             Integer lineEnd,
             String reasonCode) {
-        String identity = report.repositoryId()
-                + ":" + report.reportId()
+        return stableId(report.repositoryId(), report.reportId(), filePath, targetType, lineStart, lineEnd, reasonCode);
+    }
+
+    private static UUID stableId(
+            UUID repositoryId,
+            UUID coverageReportId,
+            String filePath,
+            String targetType,
+            Integer lineStart,
+            Integer lineEnd,
+            String reasonCode) {
+        String identity = repositoryId
+                + ":" + coverageReportId
                 + ":" + filePath
                 + ":" + targetType
                 + ":" + lineStart
@@ -324,7 +562,9 @@ public class CoverageGapExtractor {
 
     private static String confidence(String reasonCode) {
         return switch (reasonCode) {
-            case "file_has_no_executable_coverage" -> "medium";
+            case "base_coverage_missing", "file_has_no_executable_coverage", "path_not_in_report",
+                    "possible_path_mismatch" -> "medium";
+            case "generated_or_ignored_candidate" -> "low";
             default -> "high";
         };
     }
@@ -345,6 +585,10 @@ public class CoverageGapExtractor {
             case "new_uncovered_changed_line" -> "Added executable line " + line + " is uncovered in the head report.";
             case "lost_existing_coverage" -> "Line " + line + " was covered in the base report but has zero hits in the head report.";
             case "file_has_no_executable_coverage" -> "File " + filePath + " has executable lines but no covered lines.";
+            case "base_coverage_missing" -> "Base coverage is unavailable for this pull request, so lost coverage cannot be fully classified.";
+            case "path_not_in_report" -> "This changed file has provider diff lines but no matching coverage records.";
+            case "possible_path_mismatch" -> "This changed file may have a coverage path mismatch; inspect path normalization or instrumentation.";
+            case "generated_or_ignored_candidate" -> "This changed path may match generated or ignored coverage policy but is not explicitly suppressed.";
             default -> "Executable line " + line + " is uncovered in the coverage report.";
         };
     }
@@ -352,6 +596,15 @@ public class CoverageGapExtractor {
     private static String nextAction(String level, String reasonCode, String status) {
         if ("debt_suppressed".equals(status)) {
             return "create_debt";
+        }
+        if ("generated_or_ignored_candidate".equals(reasonCode)) {
+            return "mark_generated";
+        }
+        if ("path_not_in_report".equals(reasonCode) || "possible_path_mismatch".equals(reasonCode)) {
+            return "inspect_instrumentation";
+        }
+        if ("base_coverage_missing".equals(reasonCode)) {
+            return "run_source_explain";
         }
         if ("critical".equals(level) || "high".equals(level)) {
             return "add_test";

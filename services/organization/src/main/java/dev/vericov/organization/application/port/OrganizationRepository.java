@@ -173,6 +173,7 @@ public interface OrganizationRepository {
             String minRisk,
             String riskLevel,
             String status,
+            String reasonCode,
             boolean includeDebt,
             int limit);
 
