@@ -930,11 +930,95 @@ CREATE TABLE IF NOT EXISTS vericov.coverage_debt_events (
     CHECK (jsonb_typeof(payload_json) = 'object')
 );
 
+CREATE TABLE IF NOT EXISTS vericov.agent_runs (
+    id uuid PRIMARY KEY DEFAULT extensions.gen_random_uuid(),
+    tenant_id uuid NOT NULL REFERENCES vericov.tenants (id) ON DELETE CASCADE,
+    org_id uuid NOT NULL REFERENCES vericov.organizations (id) ON DELETE CASCADE,
+    repository_id uuid NOT NULL REFERENCES vericov.repositories (id) ON DELETE CASCADE,
+    pull_request_number integer CHECK (pull_request_number IS NULL OR pull_request_number > 0),
+    commit_sha text NOT NULL,
+    task_type text NOT NULL CHECK (task_type IN ('explain_gap', 'generate_tests', 'mutation_testing', 'fix_flake')),
+    mode text NOT NULL CHECK (mode IN ('suggest', 'dry_run', 'open_pr')),
+    status text NOT NULL CHECK (status IN ('queued', 'running', 'completed', 'failed', 'canceled', 'policy_denied')),
+    risk_level text NOT NULL CHECK (risk_level IN ('critical', 'high', 'medium', 'low')),
+    requested_by_type text NOT NULL CHECK (requested_by_type IN ('system', 'user', 'policy', 'slash_command', 'gate')),
+    requested_by_id text NOT NULL,
+    summary text,
+    source_json jsonb NOT NULL DEFAULT '{}'::jsonb,
+    target_json jsonb NOT NULL DEFAULT '{}'::jsonb,
+    evidence_json jsonb NOT NULL DEFAULT '{}'::jsonb,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    CHECK (jsonb_typeof(source_json) = 'object'),
+    CHECK (jsonb_typeof(target_json) = 'object'),
+    CHECK (jsonb_typeof(evidence_json) = 'object')
+);
+
+CREATE TABLE IF NOT EXISTS vericov.agent_tasks (
+    id uuid PRIMARY KEY DEFAULT extensions.gen_random_uuid(),
+    tenant_id uuid NOT NULL REFERENCES vericov.tenants (id) ON DELETE CASCADE,
+    org_id uuid NOT NULL REFERENCES vericov.organizations (id) ON DELETE CASCADE,
+    agent_run_id uuid NOT NULL REFERENCES vericov.agent_runs (id) ON DELETE CASCADE,
+    repository_id uuid NOT NULL REFERENCES vericov.repositories (id) ON DELETE CASCADE,
+    runner_id uuid,
+    task_type text NOT NULL CHECK (task_type IN ('explain_gap', 'generate_tests', 'mutation_testing', 'fix_flake')),
+    mode text NOT NULL CHECK (mode IN ('suggest', 'dry_run', 'open_pr')),
+    status text NOT NULL CHECK (status IN ('queued', 'leased', 'acknowledged', 'running', 'completed', 'failed', 'expired')),
+    lease_id text,
+    lease_expires_at timestamptz,
+    payload jsonb NOT NULL DEFAULT '{}'::jsonb,
+    result jsonb NOT NULL DEFAULT '{}'::jsonb,
+    attempt_count integer NOT NULL DEFAULT 0 CHECK (attempt_count >= 0),
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    CHECK (jsonb_typeof(payload) = 'object'),
+    CHECK (jsonb_typeof(result) = 'object')
+);
+
+CREATE TABLE IF NOT EXISTS vericov.policy_decisions (
+    id uuid PRIMARY KEY DEFAULT extensions.gen_random_uuid(),
+    tenant_id uuid NOT NULL REFERENCES vericov.tenants (id) ON DELETE CASCADE,
+    agent_task_id uuid NOT NULL REFERENCES vericov.agent_tasks (id) ON DELETE CASCADE,
+    repository_id uuid NOT NULL REFERENCES vericov.repositories (id) ON DELETE CASCADE,
+    decision text NOT NULL CHECK (decision IN ('allow', 'deny', 'force_dry_run', 'require_approval')),
+    matched_policy_ids uuid[] NOT NULL DEFAULT ARRAY[]::uuid[],
+    action text NOT NULL,
+    resource jsonb NOT NULL DEFAULT '{}'::jsonb,
+    reason text NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    CHECK (jsonb_typeof(resource) = 'object')
+);
+
+CREATE TABLE IF NOT EXISTS vericov.agent_artifacts (
+    id uuid PRIMARY KEY DEFAULT extensions.gen_random_uuid(),
+    tenant_id uuid NOT NULL REFERENCES vericov.tenants (id) ON DELETE CASCADE,
+    agent_run_id uuid NOT NULL REFERENCES vericov.agent_runs (id) ON DELETE CASCADE,
+    agent_task_id uuid NOT NULL REFERENCES vericov.agent_tasks (id) ON DELETE CASCADE,
+    kind text NOT NULL CHECK (kind IN ('dry_run_summary', 'patch', 'log', 'mutation_report', 'explanation')),
+    storage_bucket text NOT NULL,
+    storage_path text NOT NULL,
+    source_bearing boolean NOT NULL DEFAULT false,
+    visibility text NOT NULL CHECK (visibility IN ('internal', 'customer', 'hidden_metadata_only')),
+    created_at timestamptz NOT NULL DEFAULT now()
+);
+
 CREATE INDEX IF NOT EXISTS coverage_debt_items_repository_status_idx
     ON vericov.coverage_debt_items (repository_id, status);
 
 CREATE INDEX IF NOT EXISTS coverage_debt_events_debt_item_idx
     ON vericov.coverage_debt_events (debt_item_id);
+
+CREATE INDEX IF NOT EXISTS agent_runs_repository_status_idx
+    ON vericov.agent_runs (repository_id, status, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS agent_tasks_run_status_idx
+    ON vericov.agent_tasks (agent_run_id, status);
+
+CREATE INDEX IF NOT EXISTS policy_decisions_agent_task_idx
+    ON vericov.policy_decisions (agent_task_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS agent_artifacts_run_task_idx
+    ON vericov.agent_artifacts (agent_run_id, agent_task_id);
 
 CREATE INDEX IF NOT EXISTS repositories_tenant_idx
     ON vericov.repositories (tenant_id);
@@ -1264,6 +1348,10 @@ ALTER TABLE vericov.git_pr_annotations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE vericov.git_branches ENABLE ROW LEVEL SECURITY;
 ALTER TABLE vericov.coverage_debt_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE vericov.coverage_debt_events ENABLE ROW LEVEL SECURITY;
+ALTER TABLE vericov.agent_runs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE vericov.agent_tasks ENABLE ROW LEVEL SECURITY;
+ALTER TABLE vericov.policy_decisions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE vericov.agent_artifacts ENABLE ROW LEVEL SECURITY;
 
 REVOKE ALL ON ALL TABLES IN SCHEMA vericov FROM anon;
 REVOKE ALL ON ALL TABLES IN SCHEMA vericov FROM authenticated;

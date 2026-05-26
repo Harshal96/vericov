@@ -1,12 +1,12 @@
 # Coverage Agent Runner Handoff L2 Design
 
 Date: 2026-05-25
-Status: Proposed
+Status: Implemented - initial internal handoff
 Owner: Agent / Runner Control Plane service, Coverage Analysis service
 
 ## Current State
 
-The Agent / Runner Control Plane docs define `explain_gap` and `generate_tests` task concepts, but the implemented coverage stack does not produce ranked gap targets or create agent tasks. Coverage reasoning is metadata-only in this design set, and source-bearing analysis must not happen in SaaS unless repository privacy policy explicitly allows it. There is no handoff contract from coverage findings to runner tasks.
+The Agent / Runner Control Plane docs define `explain_gap` and `generate_tests` task concepts. The initial implementation adds the internal metadata-only task handoff contract, policy decision recording, task reads, events, gateway routing, and lifecycle schema. Ranked gap extraction, public gap selection APIs, runner leasing, and source-aware execution remain separate follow-up work. Coverage reasoning is metadata-only in this design set, and source-bearing analysis must not happen in SaaS unless repository privacy policy explicitly allows it.
 
 ## Goals
 

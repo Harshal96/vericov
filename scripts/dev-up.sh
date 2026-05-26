@@ -37,6 +37,7 @@ mkdir -p "$RUNTIME_DIR/logs" "$RUNTIME_DIR/pids"
 ORGANIZATION_SERVICE_URL=http://host.docker.internal:8082 \
 UPLOAD_SERVICE_URL=http://host.docker.internal:8080 \
 COVERAGE_ANALYSIS_SERVICE_URL=http://host.docker.internal:8081 \
+AGENT_RUNNER_SERVICE_URL=http://host.docker.internal:8085 \
 INTEGRATIONS_SERVICE_URL=http://host.docker.internal:8084 \
 GIT_INTEGRATION_SERVICE_URL=http://host.docker.internal:8083 \
 docker compose --env-file "$LOCAL_ENV" -f "$ROOT_DIR/infra/local/docker-compose.yml" up -d product-gateway
@@ -87,6 +88,11 @@ start_service coverage-analysis services/coverage-analysis/target/coverage-analy
   VERICOV_ANALYSIS_DB_USER="$SUPABASE_DB_USER" \
   VERICOV_ANALYSIS_DB_PASSWORD="$SUPABASE_DB_PASSWORD" \
   VERICOV_GIT_BASE_URL=http://127.0.0.1:8083
+
+start_service agent-runner services/agent-runner/target/agent-runner.jar 8085 \
+  VERICOV_DATABASE_URL="$SUPABASE_DB_URL" \
+  VERICOV_DATABASE_USER="$SUPABASE_DB_USER" \
+  VERICOV_DATABASE_PASSWORD="$SUPABASE_DB_PASSWORD"
 
 start_service organization services/organization/target/organization.jar 8082 \
   VERICOV_ORGANIZATION_DB_URL="$SUPABASE_DB_URL" \

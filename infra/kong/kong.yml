@@ -414,6 +414,36 @@ services:
           fault_tolerant: true
           hide_client_headers: false
 
+  - name: agent-runner-internal-service
+    url: ${AGENT_RUNNER_SERVICE_URL}
+    connect_timeout: 5000
+    read_timeout: 300000
+    write_timeout: 300000
+    routes:
+      - name: agent-runner-internal-v1
+        paths:
+          - /internal/v1/agents
+        methods:
+          - GET
+          - POST
+          - OPTIONS
+        strip_path: false
+    plugins:
+      - name: ip-restriction
+        config:
+          allow:
+            - 127.0.0.1
+            - ::1
+            - 10.0.0.0/8
+            - 172.16.0.0/12
+            - 192.168.0.0/16
+      - name: rate-limiting
+        config:
+          minute: ${VERICOV_INTERNAL_RATE_LIMIT_MINUTE}
+          policy: local
+          fault_tolerant: true
+          hide_client_headers: false
+
   - name: organization-authz-service
     url: ${ORGANIZATION_SERVICE_URL}
     connect_timeout: 5000
