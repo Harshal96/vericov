@@ -39,6 +39,24 @@ services:
       - product
       - supabase
 
+  agent-runner:
+    build:
+      context: ../..
+      dockerfile: infra/docker/helidon-service.Dockerfile
+      args:
+        SERVICE_DIR: services/agent-runner
+        SERVICE_JAR: agent-runner.jar
+    env_file:
+      - .env
+    environment:
+      VERICOV_DATABASE_URL: ${SUPABASE_DB_URL}
+      VERICOV_DATABASE_USER: ${SUPABASE_DB_USER}
+      VERICOV_DATABASE_PASSWORD: ${SUPABASE_DB_PASSWORD}
+      VERICOV_SERVICE_HOST: 0.0.0.0
+    networks:
+      - product
+      - supabase
+
   organization:
     build:
       context: ../..
@@ -116,6 +134,7 @@ services:
       ORGANIZATION_SERVICE_URL: ${ORGANIZATION_SERVICE_URL:-http://organization:8082}
       UPLOAD_SERVICE_URL: ${UPLOAD_SERVICE_URL:-http://upload:8080}
       COVERAGE_ANALYSIS_SERVICE_URL: ${COVERAGE_ANALYSIS_SERVICE_URL:-http://coverage-analysis:8081}
+      AGENT_RUNNER_SERVICE_URL: ${AGENT_RUNNER_SERVICE_URL:-http://agent-runner:8085}
       INTEGRATIONS_SERVICE_URL: ${INTEGRATIONS_SERVICE_URL:-http://integrations:8084}
       GIT_INTEGRATION_SERVICE_URL: ${GIT_INTEGRATION_SERVICE_URL:-http://git-integration:8083}
     volumes:

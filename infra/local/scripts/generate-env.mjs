@@ -43,7 +43,7 @@ const values = {
   VERICOV_RUNNER_JWT_ISSUER: "vericov-upload",
   VERICOV_RUNNER_JWT_AUDIENCE: "vericov-runner-upload",
   VERICOV_INTERNAL_SERVICE_TOKEN: serviceToken,
-  VERICOV_INTERNAL_SERVICE_TOKEN_SHA256: `git-integration=${serviceTokenHash},coverage-analysis=${serviceTokenHash}`,
+  VERICOV_INTERNAL_SERVICE_TOKEN_SHA256: `git-integration=${serviceTokenHash},coverage-analysis=${serviceTokenHash},organization=${serviceTokenHash}`,
   VERICOV_GITHUB_WEBHOOK_SECRET: randomBase64Url(36),
   VERICOV_CORS_ORIGIN: "*",
   VERICOV_USER_RATE_LIMIT_MINUTE: "120",

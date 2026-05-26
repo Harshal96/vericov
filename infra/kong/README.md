@@ -40,6 +40,7 @@ Default upstreams assume the Helidon services are running on the host machine:
 | `ORGANIZATION_SERVICE_URL` | `http://host.docker.internal:8082` | Organization API service |
 | `UPLOAD_SERVICE_URL` | `http://host.docker.internal:8080` | Upload API service |
 | `COVERAGE_ANALYSIS_SERVICE_URL` | `http://host.docker.internal:8081` | Internal coverage-analysis service |
+| `AGENT_RUNNER_SERVICE_URL` | `http://host.docker.internal:8085` | Internal Agent / Runner Control Plane service |
 | `GIT_INTEGRATION_SERVICE_URL` | `http://host.docker.internal:8083` | Git API, internal Git action API, and Git provider webhooks |
 | `INTEGRATIONS_SERVICE_URL` | `http://host.docker.internal:8084` | Integrations Config public and internal APIs |
 | `SUPABASE_JWT_SECRET` | required | Shared local Supabase Auth JWT secret for edge JWT verification |
@@ -60,6 +61,7 @@ On Linux, Compose maps `host.docker.internal` to the Docker host through `host-g
 | `/api/v1/uploads/**` | Upload service | Implemented |
 | `/internal/v1/authz/**` | Organization service | Implemented, private-network restricted |
 | `/internal/v1/coverage-analysis/**` | Coverage-analysis service | Implemented, private-network restricted |
+| `/internal/v1/agents/**` | Agent / Runner Control Plane service | Implemented for metadata-only coverage gap task handoff |
 | `/internal/v1/integrations/**` | Integrations Config service | Implemented, private-network restricted |
 | `/api/v1/git/**` | Git Integration service | Implemented for provider status |
 | `/internal/v1/git/**` | Git Integration service | Implemented, private-network restricted |
@@ -101,6 +103,7 @@ env \
   ORGANIZATION_SERVICE_URL=http://organization:8082 \
   UPLOAD_SERVICE_URL=http://upload:8080 \
   COVERAGE_ANALYSIS_SERVICE_URL=http://coverage-analysis:8081 \
+  AGENT_RUNNER_SERVICE_URL=http://agent-runner:8085 \
   GIT_INTEGRATION_SERVICE_URL=http://git-integration:8083 \
   INTEGRATIONS_SERVICE_URL=http://integrations:8084 \
   SUPABASE_JWT_SECRET=local-development-secret \
