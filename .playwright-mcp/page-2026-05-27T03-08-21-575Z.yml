@@ -1,0 +1,6 @@
+- generic [active] [ref=e1]:
+  - alert [ref=e2]
+  - generic [ref=e5]:
+    - link "Logo":
+      - /url: /
+      - img

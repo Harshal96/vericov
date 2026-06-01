@@ -1,0 +1,738 @@
+- generic [ref=e2]:
+  - banner [ref=e3]:
+    - generic [ref=e5]:
+      - link "Logo" [ref=e6] [cursor=pointer]:
+        - /url: /
+        - img [ref=e7]
+      - navigation [ref=e11]:
+        - list [ref=e12]:
+          - listitem [ref=e13]:
+            - link "Home" [ref=e14] [cursor=pointer]:
+              - /url: /
+          - listitem [ref=e15]:
+            - link "Components" [ref=e16] [cursor=pointer]:
+              - /url: /components/
+          - listitem [ref=e17]:
+            - button "Pages" [ref=e18] [cursor=pointer]: Pages
+          - listitem [ref=e20]:
+            - link "Docs" [ref=e21] [cursor=pointer]:
+              - /url: https://docs.minimals.cc
+      - generic [ref=e22]:
+        - button "settings" [ref=e23] [cursor=pointer]:
+          - img [ref=e25]
+        - link "Sign in" [ref=e28] [cursor=pointer]:
+          - /url: /dashboard/
+        - link "Purchase" [ref=e29] [cursor=pointer]:
+          - /url: https://mui.com/store/items/minimal-dashboard/
+  - main [ref=e30]:
+    - button "Back to top"
+    - generic [ref=e32]:
+      - generic [ref=e33]:
+        - generic [ref=e34]:
+          - heading "Boost your building process with Minimal" [level=1] [ref=e37]:
+            - generic [ref=e38]: Boost your building
+            - text: process with
+            - generic [ref=e39]: Minimal
+          - paragraph [ref=e42]: The starting point for your next project is based on MUI. Easy customization helps you build apps faster and better.
+        - generic [ref=e45]:
+          - generic [ref=e46]:
+            - img "Harrison Stein" [ref=e48]
+            - img "Deja Brady" [ref=e50]
+            - img "Lucian Obrien" [ref=e52]
+          - text: 160+ Happy customers
+        - generic [ref=e54]:
+          - generic [ref=e56]:
+            - link "Live preview v6.1.0" [ref=e57] [cursor=pointer]:
+              - /url: /dashboard/
+              - generic [ref=e60]:
+                - text: Live preview
+                - generic [ref=e61]: v6.1.0
+            - link "Get free version" [ref=e62] [cursor=pointer]:
+              - /url: https://mui.com/store/items/minimal-dashboard-free/
+              - text: Get free version
+          - link "Figma preview" [ref=e65] [cursor=pointer]:
+            - /url: https://www.figma.com/design/cAPz4pYPtQEXivqe11EcDE/%5BPreview%5D-Minimal-Web.v6.0.0
+            - text: Figma preview
+        - generic [ref=e69]:
+          - generic [ref=e70]: Available For
+          - generic [ref=e71]:
+            - img "js" [ref=e73]
+            - img "ts" [ref=e75]
+            - img "vite" [ref=e79]
+            - img "figma" [ref=e81]
+      - img [ref=e93]
+    - generic [ref=e100]:
+      - generic [ref=e102]:
+        - img
+        - img
+        - img [ref=e103]
+        - img [ref=e104]
+        - img [ref=e105]
+        - generic [ref=e106]:
+          - generic [ref=e107]:
+            - generic [ref=e108]:
+              - generic [ref=e109]:
+                - generic [ref=e110]: Visualizing Success
+                - heading "What's in Minimal?" [level=2] [ref=e111]:
+                  - text: What's in
+                  - generic [ref=e112]: Minimal?
+              - generic [ref=e113]:
+                - generic [ref=e116]:
+                  - heading "Branding" [level=6] [ref=e117]
+                  - paragraph [ref=e118]: Consistent design makes it easy to brand your own.
+                - generic [ref=e121]:
+                  - heading "UI & UX design" [level=6] [ref=e122]
+                  - paragraph [ref=e123]: The kit is built on the principles of the atomic design system.
+                - generic [ref=e126]:
+                  - heading "Development" [level=6] [ref=e127]
+                  - paragraph [ref=e128]: Easy to customize and extend, saving you time and money.
+            - img "Home Chart" [ref=e132]
+          - img [ref=e133]
+      - generic [ref=e140]:
+        - img
+        - img [ref=e141]
+        - generic [ref=e142]:
+          - generic [ref=e143]:
+            - generic [ref=e144]:
+              - generic [ref=e145]: Interface Starter Kit
+              - heading "Large bundle of elements" [level=2] [ref=e147]:
+                - text: Large bundle of
+                - generic [ref=e148]: elements
+            - paragraph [ref=e151]:
+              - text: Explore a comprehensive range of elements
+              - text: like menus, sliders, buttons, inputs, and others, all conveniently gathered here.
+          - link "Browse components" [ref=e153] [cursor=pointer]:
+            - /url: /components
+            - text: Browse components
+      - generic [ref=e162]:
+        - generic [ref=e166]:
+          - generic [ref=e167]: professional kit
+          - heading "For designer" [level=2] [ref=e168]: For designer
+          - paragraph [ref=e169]: Use variables and variants to save time and energy on designs, design systems.
+        - link "Checkout workspace" [ref=e174] [cursor=pointer]:
+          - /url: /components
+          - text: Checkout workspace
+      - generic [ref=e180]:
+        - generic [ref=e181]:
+          - img
+          - img [ref=e182]
+          - img [ref=e183]
+          - generic [ref=e185]:
+            - generic [ref=e186]:
+              - generic [ref=e187]: App Features
+              - heading "Highlight features" [level=2] [ref=e188]:
+                - text: Highlight
+                - generic [ref=e189]: features
+            - img [ref=e190]
+        - generic [ref=e195]:
+          - generic [ref=e196]:
+            - generic [ref=e199]:
+              - heading "Dark mode" [level=3] [ref=e200]
+              - paragraph [ref=e201]: A dark theme that feels easier on the eyes.
+            - img "/assets/images/home/highlight-darkmode.webp" [ref=e204]
+          - generic [ref=e205]:
+            - generic [ref=e208]:
+              - heading "Color presets" [level=3] [ref=e209]
+              - paragraph [ref=e210]: Express your own style with just one click.
+            - generic [ref=e211]:
+              - img "/assets/images/home/highlight-presets-1.webp" [ref=e213]
+              - img "/assets/images/home/highlight-presets-2.webp" [ref=e215]
+              - img "/assets/images/home/highlight-presets-3.webp" [ref=e217]
+              - img "/assets/images/home/highlight-presets-4.webp" [ref=e219]
+              - img "/assets/images/home/highlight-presets-5.webp" [ref=e221]
+          - generic [ref=e222]:
+            - generic [ref=e225]:
+              - heading "Right-to-left" [level=3] [ref=e226]
+              - paragraph [ref=e227]: Support languages such as Arabic, Persian, and Hebrew.
+            - img "/assets/images/home/highlight-rtl.webp" [ref=e230]
+      - generic [ref=e232]:
+        - img [ref=e234]
+        - generic [ref=e236]:
+          - generic [ref=e238]:
+            - generic [ref=e239]: Integrations
+            - heading "Robust integration framework" [level=2] [ref=e240]:
+              - text: Robust integration
+              - generic [ref=e241]: framework
+            - paragraph [ref=e242]:
+              - generic [ref=e243]: A comprehensive suite of integrations offers diverse functionalities.
+              - generic [ref=e244]:
+                - text: "* Only includes authentication methods."
+                - text: "* Database not included."
+          - img "Integration" [ref=e246]
+      - generic [ref=e248]:
+        - img [ref=e249]
+        - generic [ref=e251]:
+          - generic [ref=e252]: plans
+          - heading "Transparent pricing" [level=2] [ref=e253]:
+            - text: Transparent
+            - generic [ref=e254]: pricing
+          - paragraph [ref=e255]: Choose from flexible pricing options designed to fit your business needs and budget with no hidden fees.
+        - generic [ref=e256]:
+          - generic [ref=e258]:
+            - generic [ref=e259]:
+              - generic [ref=e260]:
+                - heading "Standard" [level=6] [ref=e263]
+                - generic [ref=e265]: $69
+              - generic [ref=e266]:
+                - img "/assets/icons/platforms/ic-js.svg" [ref=e267]
+                - generic [ref=e268]: (only)
+              - generic [ref=e269]:
+                - generic [ref=e270]: One end products
+                - generic [ref=e272]: 12 months updates
+                - generic [ref=e274]: 6 months of support
+                - generic [ref=e276]: One-time payments
+                - generic [ref=e278]: Lifetime perpetual license.
+                - separator [ref=e281]
+                - generic [ref=e282]: JavaScript version
+                - generic [ref=e284]: TypeScript version
+                - generic [ref=e286]: Design resources (Figma)
+                - generic [ref=e288]: Commercial applications
+              - link "Get started" [ref=e291] [cursor=pointer]:
+                - /url: https://mui.com/store/items/minimal-dashboard/
+            - generic [ref=e292]:
+              - img [ref=e293]
+              - img [ref=e294]
+              - img
+              - img
+              - img
+              - img
+              - generic [ref=e295]:
+                - heading "Plus" [level=6] [ref=e298]
+                - generic [ref=e300]: $129
+              - generic [ref=e301]:
+                - img "/assets/icons/platforms/ic-js.svg" [ref=e302]
+                - img "/assets/icons/platforms/ic-ts.svg" [ref=e303]
+                - img "/assets/icons/platforms/ic-figma.svg" [ref=e304]
+              - generic [ref=e305]:
+                - generic [ref=e306]: One end products
+                - generic [ref=e308]: 12 months updates
+                - generic [ref=e310]: 6 months of support
+                - generic [ref=e312]: One-time payments
+                - generic [ref=e314]: Lifetime perpetual license.
+                - separator [ref=e317]
+                - generic [ref=e318]: JavaScript version
+                - generic [ref=e320]: TypeScript version
+                - generic [ref=e322]: Design resources (Figma)
+                - generic [ref=e324]: Commercial applications
+              - link "Get started" [ref=e327] [cursor=pointer]:
+                - /url: https://mui.com/store/items/minimal-dashboard/
+            - generic [ref=e328]:
+              - generic [ref=e329]:
+                - heading "Extended" [level=6] [ref=e332]
+                - generic [ref=e334]: $599
+              - generic [ref=e335]:
+                - img "/assets/icons/platforms/ic-js.svg" [ref=e336]
+                - img "/assets/icons/platforms/ic-ts.svg" [ref=e337]
+                - img "/assets/icons/platforms/ic-figma.svg" [ref=e338]
+              - generic [ref=e339]:
+                - generic [ref=e340]: One end products
+                - generic [ref=e342]: 12 months updates
+                - generic [ref=e344]: 6 months of support
+                - generic [ref=e346]: One-time payments
+                - generic [ref=e348]: Lifetime perpetual license.
+                - separator [ref=e351]
+                - generic [ref=e352]: JavaScript version
+                - generic [ref=e354]: TypeScript version
+                - generic [ref=e356]: Design resources (Figma)
+                - generic [ref=e358]: Commercial applications
+              - link "Get started" [ref=e361] [cursor=pointer]:
+                - /url: https://mui.com/store/items/minimal-dashboard/
+          - img [ref=e362]
+          - img [ref=e363]
+      - generic [ref=e365]:
+        - generic [ref=e366]:
+          - img
+          - img
+        - img [ref=e367]
+        - generic [ref=e368]:
+          - generic [ref=e369]:
+            - generic [ref=e370]: testimonials
+            - heading "Rumors are flying that..." [level=2] [ref=e371]:
+              - text: Rumors are flying
+              - generic [ref=e372]: that...
+          - generic [ref=e373]:
+            - separator [ref=e374]
+            - list [ref=e376]:
+              - listitem [ref=e377]:
+                - generic [ref=e378]:
+                  - generic [ref=e379]:
+                    - img "5 Stars":
+                      - generic:
+                        - generic:
+                          - generic:
+                            - img
+                        - generic:
+                          - generic:
+                            - img
+                      - generic:
+                        - generic:
+                          - generic:
+                            - img
+                        - generic:
+                          - generic:
+                            - img
+                      - generic:
+                        - generic:
+                          - generic:
+                            - img
+                        - generic:
+                          - generic:
+                            - img
+                      - generic:
+                        - generic:
+                          - generic:
+                            - img
+                        - generic:
+                          - generic:
+                            - img
+                      - generic:
+                        - generic:
+                          - generic:
+                            - img
+                        - generic:
+                          - generic:
+                            - img
+                    - text: Design Quality
+                  - paragraph [ref=e380]: The quality of this template is very good, the TypeScript files are neat and the communication with the team behind this template is very good! I would recommend this template for any kind of project, as they implement new features every now and then and enhance their design. I will definitely be using more templates from this team and re-purchasing this template for other projects.
+                  - generic [ref=e381]:
+                    - img "Lucian Obrien" [ref=e383]
+                    - generic [ref=e384]:
+                      - generic [ref=e385]: Lucian Obrien
+                      - generic [ref=e386]: 2 years
+              - listitem [ref=e387]:
+                - generic [ref=e388]:
+                  - generic [ref=e389]:
+                    - img "5 Stars":
+                      - generic:
+                        - generic:
+                          - generic:
+                            - img
+                        - generic:
+                          - generic:
+                            - img
+                      - generic:
+                        - generic:
+                          - generic:
+                            - img
+                        - generic:
+                          - generic:
+                            - img
+                      - generic:
+                        - generic:
+                          - generic:
+                            - img
+                        - generic:
+                          - generic:
+                            - img
+                      - generic:
+                        - generic:
+                          - generic:
+                            - img
+                        - generic:
+                          - generic:
+                            - img
+                      - generic:
+                        - generic:
+                          - generic:
+                            - img
+                        - generic:
+                          - generic:
+                            - img
+                    - text: Design Quality
+                  - paragraph [ref=e390]: Amazing. I've never purchased complete front ends before, but I'll definitely be doing this again!
+                  - generic [ref=e391]:
+                    - img "Deja Brady" [ref=e393]
+                    - generic [ref=e394]:
+                      - generic [ref=e395]: Deja Brady
+                      - generic [ref=e396]: 2 years
+              - listitem [ref=e397]:
+                - generic [ref=e398]:
+                  - generic [ref=e399]:
+                    - img "5 Stars":
+                      - generic:
+                        - generic:
+                          - generic:
+                            - img
+                        - generic:
+                          - generic:
+                            - img
+                      - generic:
+                        - generic:
+                          - generic:
+                            - img
+                        - generic:
+                          - generic:
+                            - img
+                      - generic:
+                        - generic:
+                          - generic:
+                            - img
+                        - generic:
+                          - generic:
+                            - img
+                      - generic:
+                        - generic:
+                          - generic:
+                            - img
+                        - generic:
+                          - generic:
+                            - img
+                      - generic:
+                        - generic:
+                          - generic:
+                            - img
+                        - generic:
+                          - generic:
+                            - img
+                    - text: Code Quality
+                  - paragraph [ref=e400]: Clean & Complete (Design & Code). Thansk Minimal team :)
+                  - generic [ref=e401]:
+                    - img "Harrison Stein" [ref=e403]
+                    - generic [ref=e404]:
+                      - generic [ref=e405]: Harrison Stein
+                      - generic [ref=e406]: 3 years
+              - listitem [ref=e407]:
+                - generic [ref=e408]:
+                  - generic [ref=e409]:
+                    - img "5 Stars":
+                      - generic:
+                        - generic:
+                          - generic:
+                            - img
+                        - generic:
+                          - generic:
+                            - img
+                      - generic:
+                        - generic:
+                          - generic:
+                            - img
+                        - generic:
+                          - generic:
+                            - img
+                      - generic:
+                        - generic:
+                          - generic:
+                            - img
+                        - generic:
+                          - generic:
+                            - img
+                      - generic:
+                        - generic:
+                          - generic:
+                            - img
+                        - generic:
+                          - generic:
+                            - img
+                      - generic:
+                        - generic:
+                          - generic:
+                            - img
+                        - generic:
+                          - generic:
+                            - img
+                    - text: Customer Support
+                  - paragraph [ref=e410]: Thanks to Minimal for customer support with email. I solved the problem. And the code quality is good, too.
+                  - generic [ref=e411]:
+                    - img "Reece Chung" [ref=e413]
+                    - generic [ref=e414]:
+                      - generic [ref=e415]: Reece Chung
+                      - generic [ref=e416]: 3 years
+              - listitem [ref=e417]:
+                - generic [ref=e418]:
+                  - generic [ref=e419]:
+                    - img "5 Stars":
+                      - generic:
+                        - generic:
+                          - generic:
+                            - img
+                        - generic:
+                          - generic:
+                            - img
+                      - generic:
+                        - generic:
+                          - generic:
+                            - img
+                        - generic:
+                          - generic:
+                            - img
+                      - generic:
+                        - generic:
+                          - generic:
+                            - img
+                        - generic:
+                          - generic:
+                            - img
+                      - generic:
+                        - generic:
+                          - generic:
+                            - img
+                        - generic:
+                          - generic:
+                            - img
+                      - generic:
+                        - generic:
+                          - generic:
+                            - img
+                        - generic:
+                          - generic:
+                            - img
+                    - text: Customer Support
+                  - paragraph [ref=e420]: Great UI kit, really beautiful as well. Also the customer support is very warm-hearted. However, I hope the components and themes can be provided as a separated project (package).
+                  - generic [ref=e421]:
+                    - img "Lainey Davidson" [ref=e423]
+                    - generic [ref=e424]:
+                      - generic [ref=e425]: Lainey Davidson
+                      - generic [ref=e426]: 3 years
+              - listitem [ref=e427]:
+                - generic [ref=e428]:
+                  - generic [ref=e429]:
+                    - img "5 Stars":
+                      - generic:
+                        - generic:
+                          - generic:
+                            - img
+                        - generic:
+                          - generic:
+                            - img
+                      - generic:
+                        - generic:
+                          - generic:
+                            - img
+                        - generic:
+                          - generic:
+                            - img
+                      - generic:
+                        - generic:
+                          - generic:
+                            - img
+                        - generic:
+                          - generic:
+                            - img
+                      - generic:
+                        - generic:
+                          - generic:
+                            - img
+                        - generic:
+                          - generic:
+                            - img
+                      - generic:
+                        - generic:
+                          - generic:
+                            - img
+                        - generic:
+                          - generic:
+                            - img
+                    - text: Design Quality
+                  - paragraph [ref=e430]: I would never have been able to create all these beautifull components myself!
+                  - generic [ref=e431]:
+                    - img "Cristopher Cardenas" [ref=e433]
+                    - generic [ref=e434]:
+                      - generic [ref=e435]: Cristopher Cardenas
+                      - generic [ref=e436]: 3 years
+              - listitem [ref=e437]:
+                - generic [ref=e438]:
+                  - generic [ref=e439]:
+                    - img "5 Stars":
+                      - generic:
+                        - generic:
+                          - generic:
+                            - img
+                        - generic:
+                          - generic:
+                            - img
+                      - generic:
+                        - generic:
+                          - generic:
+                            - img
+                        - generic:
+                          - generic:
+                            - img
+                      - generic:
+                        - generic:
+                          - generic:
+                            - img
+                        - generic:
+                          - generic:
+                            - img
+                      - generic:
+                        - generic:
+                          - generic:
+                            - img
+                        - generic:
+                          - generic:
+                            - img
+                      - generic:
+                        - generic:
+                          - generic:
+                            - img
+                        - generic:
+                          - generic:
+                            - img
+                    - text: Code Quality
+                  - paragraph [ref=e440]: The quality of this template is excellent. However, as an individual, the cost of obtaining the TypeScript Source version is beyond my means. Despite my strong desire to acquire it, my limited personal budget does not allow me to do so.
+                  - generic [ref=e441]:
+                    - img "Melanie Noble" [ref=e443]
+                    - generic [ref=e444]:
+                      - generic [ref=e445]: Melanie Noble
+                      - generic [ref=e446]: 3 years
+              - listitem [ref=e447]:
+                - generic [ref=e448]:
+                  - generic [ref=e449]:
+                    - img "5 Stars":
+                      - generic:
+                        - generic:
+                          - generic:
+                            - img
+                        - generic:
+                          - generic:
+                            - img
+                      - generic:
+                        - generic:
+                          - generic:
+                            - img
+                        - generic:
+                          - generic:
+                            - img
+                      - generic:
+                        - generic:
+                          - generic:
+                            - img
+                        - generic:
+                          - generic:
+                            - img
+                      - generic:
+                        - generic:
+                          - generic:
+                            - img
+                        - generic:
+                          - generic:
+                            - img
+                      - generic:
+                        - generic:
+                          - generic:
+                            - img
+                        - generic:
+                          - generic:
+                            - img
+                    - text: Customizability
+                  - paragraph [ref=e450]: The design and code quality are impressive. Regular updates and excellent customer support are major advantages.
+                  - generic [ref=e451]:
+                    - img "Chase Day" [ref=e453]
+                    - generic [ref=e454]:
+                      - generic [ref=e455]: Chase Day
+                      - generic [ref=e456]: 3 years
+            - generic [ref=e457]:
+              - list
+              - generic [ref=e458]:
+                - button "Prev button" [disabled]:
+                  - img
+                - button "Next button" [disabled]:
+                  - img
+          - generic [ref=e459]:
+            - separator [ref=e460]
+            - generic [ref=e461]:
+              - generic [ref=e462]:
+                - paragraph [ref=e464]:
+                  - generic [ref=e465]: "0"
+                  - text: k+
+                - generic [ref=e466]: Purchased order
+              - separator [ref=e467]
+              - generic [ref=e468]:
+                - paragraph [ref=e470]:
+                  - generic [ref=e471]: "0"
+                  - text: +
+                - generic [ref=e472]: Happy customers
+              - separator [ref=e473]
+              - generic [ref=e474]:
+                - paragraph [ref=e476]:
+                  - generic [ref=e477]: "0"
+                  - text: +
+                - generic [ref=e478]: Review rate
+            - separator [ref=e479]
+      - generic [ref=e481]:
+        - generic [ref=e482]:
+          - img
+          - img
+        - img [ref=e483]
+        - generic [ref=e484]:
+          - generic [ref=e485]:
+            - generic [ref=e486]: FAQs
+            - heading "We’ve got the answers" [level=2] [ref=e487]:
+              - text: We’ve got the
+              - generic [ref=e488]: answers
+          - generic [ref=e489]:
+            - generic [ref=e490]:
+              - button "How can I get the update?" [expanded] [ref=e491] [cursor=pointer]:
+                - heading "How can I get the update?" [level=6] [ref=e493]
+              - region "How can I get the update?" [ref=e499]:
+                - paragraph [ref=e501]:
+                  - text: You will get 12 months of free
+                  - link "updates" [ref=e502] [cursor=pointer]:
+                    - /url: https://support.mui.com/hc/en-us/articles/360008775240-How-do-I-get-access-to-an-item-I-purchased
+                  - text: with the purchase. Please renew your license to get updates after that.
+            - button "Which license is right for you?" [ref=e504] [cursor=pointer]:
+              - heading "Which license is right for you?" [level=6] [ref=e506]
+            - button "How long is my license valid for?" [ref=e510] [cursor=pointer]:
+              - heading "How long is my license valid for?" [level=6] [ref=e512]
+            - button "Which platforms will the template support?" [ref=e516] [cursor=pointer]:
+              - heading "Which platforms will the template support?" [level=6] [ref=e518]
+            - button "For what kind of projects is the Standard license intended?" [ref=e522] [cursor=pointer]:
+              - heading "For what kind of projects is the Standard license intended?" [level=6] [ref=e524]
+            - button "Do you have a free demo to review the code before purchasing?" [ref=e528] [cursor=pointer]:
+              - heading "Do you have a free demo to review the code before purchasing?" [level=6] [ref=e530]
+        - generic [ref=e533]:
+          - img [ref=e534]
+          - img [ref=e535]
+          - img
+          - img
+          - generic [ref=e536]:
+            - heading "Still have questions?" [level=4] [ref=e538]
+            - paragraph [ref=e540]: Please describe your case to receive the most accurate advice
+            - link "Contact us" [ref=e542] [cursor=pointer]:
+              - /url: mailto:support@minimals.cc?subject=[Feedback] from Customer
+              - text: Contact us
+      - generic [ref=e546]:
+        - generic [ref=e547]:
+          - img
+          - img
+        - img [ref=e548]
+        - generic [ref=e549]:
+          - generic [ref=e550]:
+            - generic [ref=e552]:
+              - generic [ref=e553]: Looking For a
+              - heading "Landing page template?" [level=2] [ref=e554]:
+                - text: Landing page
+                - generic [ref=e555]: template?
+              - paragraph [ref=e556]: Fuse with dashboards to produce a superior product.
+            - generic [ref=e558]:
+              - img "Zone landing page" [ref=e559]
+              - link "Visit Zone UI" [ref=e561] [cursor=pointer]:
+                - /url: https://mui.com/store/items/zone-landing-page/
+                - text: Visit Zone UI
+          - img [ref=e564]
+      - generic [ref=e571]:
+        - img
+        - img [ref=e572]
+        - img [ref=e573]
+        - generic [ref=e575]:
+          - img "rocket" [ref=e577]
+          - generic [ref=e578]:
+            - heading "Get started with Minimal kittoday" [level=2] [ref=e579]:
+              - text: Get started with
+              - text: Minimal kittoday
+            - generic [ref=e580]:
+              - link "Purchase now" [ref=e582] [cursor=pointer]:
+                - /url: https://mui.com/store/items/minimal-dashboard/
+              - link "Get free version" [ref=e584] [cursor=pointer]:
+                - /url: https://mui.com/store/items/minimal-dashboard-free/
+                - text: Get free version
+  - contentinfo [ref=e589]:
+    - generic [ref=e590]:
+      - link "Logo" [ref=e591] [cursor=pointer]:
+        - /url: /
+        - img [ref=e592]
+      - generic [ref=e596]:
+        - text: © All rights reserved.
+        - text: made by
+        - link "minimals.cc" [ref=e597] [cursor=pointer]:
+          - /url: https://minimals.cc/

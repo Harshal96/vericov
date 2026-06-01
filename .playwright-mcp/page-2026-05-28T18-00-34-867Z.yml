@@ -1,0 +1,362 @@
+- generic [ref=e4]:
+  - complementary [ref=e5]:
+    - generic [ref=e6]:
+      - img [ref=e8]
+      - generic [ref=e11]: CoverAgent
+    - navigation [ref=e12]:
+      - link "Overview" [ref=e13] [cursor=pointer]:
+        - /url: "#"
+        - img [ref=e14]
+        - generic [ref=e16]: Overview
+      - link "Projects" [ref=e17] [cursor=pointer]:
+        - /url: "#"
+        - img [ref=e18]
+        - generic [ref=e20]: Projects
+      - link "Pull Requests" [ref=e21] [cursor=pointer]:
+        - /url: "#"
+        - img [ref=e22]
+        - generic [ref=e26]: Pull Requests
+      - link "Coverage" [ref=e27] [cursor=pointer]:
+        - /url: "#"
+        - img [ref=e28]
+        - generic [ref=e31]: Coverage
+        - img [ref=e32]
+      - link "Agents" [ref=e34] [cursor=pointer]:
+        - /url: "#"
+        - img [ref=e35]
+        - generic [ref=e38]: Agents
+        - img [ref=e39]
+      - link "Tests" [ref=e41] [cursor=pointer]:
+        - /url: "#"
+        - img [ref=e42]
+        - generic [ref=e44]: Tests
+      - link "Mutation Testing" [ref=e45] [cursor=pointer]:
+        - /url: "#"
+        - img [ref=e46]
+        - generic [ref=e49]: Mutation Testing
+      - link "Insights" [ref=e50] [cursor=pointer]:
+        - /url: "#"
+        - img [ref=e51]
+        - generic [ref=e53]: Insights
+      - link "Coverage Debt" [ref=e54] [cursor=pointer]:
+        - /url: "#"
+        - img [ref=e55]
+        - generic [ref=e57]: Coverage Debt
+      - link "Policies" [ref=e58] [cursor=pointer]:
+        - /url: "#"
+        - img [ref=e59]
+        - generic [ref=e61]: Policies
+      - link "Runners" [ref=e62] [cursor=pointer]:
+        - /url: "#"
+        - img [ref=e63]
+        - generic [ref=e66]: Runners
+      - link "Settings" [ref=e67] [cursor=pointer]:
+        - /url: "#"
+        - img [ref=e68]
+        - generic [ref=e71]: Settings
+    - generic [ref=e72]:
+      - generic [ref=e73]:
+        - generic [ref=e74]:
+          - img [ref=e76]
+          - img [ref=e79]
+        - paragraph [ref=e81]: Ask CoverAgent
+        - paragraph [ref=e82]: What changed in coverage this week?
+        - button "Open CoverAgent prompt" [ref=e83]:
+          - img
+      - generic [ref=e84]:
+        - generic [ref=e86]: SC
+        - generic [ref=e87]:
+          - paragraph [ref=e88]: Sarah Chen
+          - paragraph [ref=e89]: Acme Corp
+        - img [ref=e90]
+  - main [ref=e92]:
+    - generic [ref=e94]:
+      - generic [ref=e95]:
+        - button "Acme Monorepo" [ref=e96]:
+          - img
+          - generic [ref=e97]: Acme Monorepo
+          - img
+        - button "main" [ref=e98]:
+          - img
+          - generic [ref=e99]: main
+          - img
+        - button "May 12 - May 18" [ref=e100]:
+          - img
+          - generic [ref=e101]: May 12 - May 18
+          - img
+      - generic [ref=e102]:
+        - button "Search" [ref=e103]:
+          - img
+        - button "Docs" [ref=e104]:
+          - img
+        - button "Notifications" [ref=e105]:
+          - img
+        - button "Invite team" [ref=e106]:
+          - img
+    - generic [ref=e107]:
+      - generic [ref=e109]:
+        - generic [ref=e110]:
+          - generic [ref=e111]:
+            - paragraph [ref=e112]: Overall Coverage
+            - generic [ref=e113]:
+              - generic [ref=e114]: 87.6%
+              - generic [ref=e115]:
+                - img [ref=e116]
+                - text: 2.7%
+            - paragraph [ref=e119]: vs May 5 - May 11
+          - img [ref=e121]
+        - generic [ref=e131]:
+          - generic [ref=e133]:
+            - img [ref=e135]
+            - generic [ref=e139]:
+              - paragraph [ref=e140]: Lines Covered
+              - paragraph [ref=e141]: 45.2k/ 51.6k
+              - paragraph [ref=e142]:
+                - img [ref=e143]
+                - text: + 3.1%
+          - generic [ref=e147]:
+            - img [ref=e149]
+            - generic [ref=e153]:
+              - paragraph [ref=e154]: Branches Covered
+              - paragraph [ref=e155]: 82.1%
+              - paragraph [ref=e156]:
+                - img [ref=e157]
+                - text: + 4.4%
+          - generic [ref=e161]:
+            - img [ref=e163]
+            - generic [ref=e166]:
+              - paragraph [ref=e167]: Functions Covered
+              - paragraph [ref=e168]: 79.3%
+              - paragraph [ref=e169]:
+                - img [ref=e170]
+                - text: + 1.8%
+          - generic [ref=e174]:
+            - img [ref=e176]
+            - generic [ref=e177]:
+              - paragraph [ref=e178]: Statements Covered
+              - paragraph [ref=e179]: 88.4%
+              - paragraph [ref=e180]:
+                - img [ref=e181]
+                - text: + 2.1%
+        - generic [ref=e184]:
+          - img [ref=e186]
+          - generic [ref=e189]:
+            - paragraph [ref=e190]: Coverage Gate
+            - paragraph [ref=e191]: Passing
+            - paragraph [ref=e192]: "Threshold: 80%"
+      - generic [ref=e193]:
+        - generic [ref=e195]:
+          - generic [ref=e196]:
+            - generic [ref=e197]:
+              - heading "Coverage Trend" [level=3] [ref=e198]
+              - button "Line, branch, function, and statement trends" [ref=e199]:
+                - img [ref=e200]
+            - tablist [ref=e202]:
+              - tab "Line" [selected] [ref=e203]
+              - tab "Branch" [ref=e204]
+              - tab "Function" [ref=e205]
+              - tab "Statement" [ref=e206]
+          - tabpanel "Line" [ref=e208]:
+            - generic [ref=e209]:
+              - img "Coverage trend chart" [ref=e210]:
+                - generic [ref=e212]: 0%
+                - generic [ref=e214]: 20%
+                - generic [ref=e216]: 40%
+                - generic [ref=e218]: 60%
+                - generic [ref=e220]: 80%
+                - generic [ref=e222]: 100%
+                - generic [ref=e235]:
+                  - generic [ref=e236]: Apr 20
+                  - generic [ref=e237]: Apr 27
+                  - generic [ref=e238]: May 4
+                  - generic [ref=e239]: May 11
+                  - generic [ref=e240]: May 18
+              - generic [ref=e241]:
+                - paragraph [ref=e242]: May 11
+                - paragraph [ref=e243]:
+                  - text: "Line Coverage:"
+                  - generic [ref=e244]: 86.0%
+        - generic [ref=e245]:
+          - generic [ref=e246]:
+            - heading "Recent Pull Requests" [level=3] [ref=e247]
+            - button "View all" [ref=e248]
+          - generic [ref=e249]:
+            - generic [ref=e250]:
+              - generic [ref=e251]: +2.4%
+              - generic [ref=e252]:
+                - paragraph [ref=e253]: Add checkout validation and error handling
+                - generic [ref=e254]:
+                  - generic [ref=e255]: "#1287"
+                  - generic [ref=e256]: Merged
+              - img [ref=e257]
+              - generic [ref=e269]:
+                - paragraph [ref=e270]: 92%
+                - paragraph [ref=e271]: Coverage
+            - generic [ref=e272]:
+              - generic [ref=e273]: "-1.6%"
+              - generic [ref=e274]:
+                - paragraph [ref=e275]: Refactor pricing calculator and tests
+                - generic [ref=e276]:
+                  - generic [ref=e277]: "#1286"
+                  - generic [ref=e278]: Merged
+              - img [ref=e279]
+              - generic [ref=e291]:
+                - paragraph [ref=e292]: 78%
+                - paragraph [ref=e293]: Coverage
+            - generic [ref=e294]:
+              - generic [ref=e295]: +4.7%
+              - generic [ref=e296]:
+                - paragraph [ref=e297]: Add unit tests for user service
+                - generic [ref=e298]:
+                  - generic [ref=e299]: "#1285"
+                  - generic [ref=e300]: Merged
+              - img [ref=e301]
+              - generic [ref=e313]:
+                - paragraph [ref=e314]: 89%
+                - paragraph [ref=e315]: Coverage
+            - generic [ref=e316]:
+              - generic [ref=e317]: 0.0%
+              - generic [ref=e318]:
+                - paragraph [ref=e319]: Update dependencies and configs
+                - generic [ref=e320]:
+                  - generic [ref=e321]: "#1284"
+                  - generic [ref=e322]: Merged
+              - img [ref=e323]
+              - generic [ref=e335]:
+                - paragraph [ref=e336]: 87%
+                - paragraph [ref=e337]: Coverage
+        - generic [ref=e338]:
+          - generic [ref=e339]:
+            - generic [ref=e340]:
+              - img [ref=e341]
+              - heading "Agentic Insights" [level=3] [ref=e343]
+            - button "View all" [ref=e344]
+          - generic [ref=e345]:
+            - generic [ref=e346]:
+              - img [ref=e348]
+              - generic [ref=e350]:
+                - paragraph [ref=e351]: Uncovered Critical Path
+                - paragraph [ref=e352]: PaymentService.processRefund() has 3 uncovered branches in error handling.
+              - generic [ref=e353]: High Risk
+            - generic [ref=e354]:
+              - img [ref=e356]
+              - generic [ref=e358]:
+                - paragraph [ref=e359]: Weak Assertion Detected
+                - paragraph [ref=e360]: Test testUserRoleChange only asserts status code. Consider asserting outcomes.
+              - generic [ref=e361]: Medium Risk
+            - generic [ref=e362]:
+              - img [ref=e364]
+              - generic [ref=e367]:
+                - paragraph [ref=e368]: Flaky Test Detected
+                - paragraph [ref=e369]: testOrderTotalCalculation is flaky with a 21% failure rate.
+              - generic [ref=e370]: Low Risk
+            - generic [ref=e371]:
+              - img [ref=e373]
+              - generic [ref=e375]:
+                - paragraph [ref=e376]: New Tests Generated
+                - paragraph [ref=e377]: Agent generated 12 tests for uncovered paths in auth module.
+              - generic [ref=e378]: Review PR
+      - generic [ref=e379]:
+        - generic [ref=e380]:
+          - heading "Coverage by Package" [level=3] [ref=e382]
+          - generic [ref=e383]:
+            - generic [ref=e384]:
+              - img [ref=e385]
+              - generic [ref=e393]:
+                - paragraph [ref=e394]: 87.6%
+                - paragraph [ref=e395]: Total
+            - generic [ref=e396]:
+              - generic [ref=e397]:
+                - generic [ref=e399]: checkout
+                - generic [ref=e400]: 92.1%
+              - generic [ref=e401]:
+                - generic [ref=e403]: user-service
+                - generic [ref=e404]: 89.3%
+              - generic [ref=e405]:
+                - generic [ref=e407]: payment
+                - generic [ref=e408]: 78.8%
+              - generic [ref=e409]:
+                - generic [ref=e411]: notification
+                - generic [ref=e412]: 76.4%
+              - generic [ref=e413]:
+                - generic [ref=e415]: catalog
+                - generic [ref=e416]: 94.2%
+              - generic [ref=e417]:
+                - generic [ref=e419]: others
+                - generic [ref=e420]: 85.1%
+        - generic [ref=e421]:
+          - generic [ref=e422]:
+            - heading "Coverage Debt" [level=3] [ref=e423]
+            - button "Risk-weighted uncovered production paths" [ref=e424]:
+              - img [ref=e425]
+          - generic [ref=e427]:
+            - generic [ref=e429]:
+              - img "Low Risk gauge" [ref=e430]
+              - generic [ref=e433]:
+                - paragraph [ref=e434]: 12.4%
+                - paragraph [ref=e435]: Low Risk
+            - generic [ref=e436]:
+              - paragraph [ref=e437]: Debt Breakdown
+              - generic [ref=e438]:
+                - generic [ref=e440]: Low Risk
+                - generic [ref=e441]: 8.7%
+              - generic [ref=e442]:
+                - generic [ref=e444]: Medium Risk
+                - generic [ref=e445]: 3.1%
+              - generic [ref=e446]:
+                - generic [ref=e448]: High Risk
+                - generic [ref=e449]: 0.6%
+              - button "View debt backlog" [ref=e450]
+        - generic [ref=e451]:
+          - generic [ref=e452]:
+            - heading "Mutation Testing" [level=3] [ref=e453]
+            - button "Mutation score for changed files" [ref=e454]:
+              - img [ref=e455]
+          - generic [ref=e457]:
+            - generic [ref=e459]:
+              - img [ref=e460]
+              - generic [ref=e465]:
+                - paragraph [ref=e466]: 64%
+                - paragraph [ref=e467]: Mutation Score
+            - generic [ref=e468]:
+              - generic [ref=e469]:
+                - paragraph [ref=e470]: Survived Mutations
+                - paragraph [ref=e471]: 23 / 64
+              - generic [ref=e472]:
+                - paragraph [ref=e473]: Top Survived Areas
+                - generic [ref=e474]:
+                  - generic [ref=e475]: pricing.ts
+                  - generic [ref=e476]: discount.py
+                  - generic [ref=e477]: auth.go
+              - button "View full report" [ref=e478]
+      - generic [ref=e479]:
+        - generic [ref=e480]:
+          - heading "Recent Activity" [level=3] [ref=e482]
+          - generic [ref=e483]:
+            - generic [ref=e484]:
+              - img [ref=e485]
+              - paragraph [ref=e487]: CoverAgent opened a PR with 12 new tests for auth.service.ts
+              - generic [ref=e488]: 2m ago
+            - generic [ref=e489]:
+              - img [ref=e490]
+              - paragraph [ref=e493]: "jayden merged PR #1287 \"Add checkout validation and error handling\""
+              - generic [ref=e494]: 1h ago
+            - generic [ref=e495]:
+              - img [ref=e496]
+              - paragraph [ref=e499]: Coverage gate passed on main
+              - generic [ref=e500]: 1h ago
+        - generic [ref=e501]:
+          - generic [ref=e502]:
+            - img [ref=e503]
+            - heading "Ask CoverAgent" [level=3] [ref=e506]
+          - generic [ref=e507]:
+            - generic [ref=e508]:
+              - button "Why did coverage drop in payment module?" [ref=e509]
+              - button "Show me high risk gaps" [ref=e510]
+              - button "What tests are flaky?" [ref=e511]
+            - generic [ref=e512]:
+              - img [ref=e514]
+              - generic [ref=e517]:
+                - textbox "Ask anything about your coverage..." [ref=e518]
+                - button "Send question" [ref=e519]:
+                  - img

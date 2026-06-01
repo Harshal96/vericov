@@ -1,0 +1,593 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - generic [ref=e5]:
+      - list [ref=e7]:
+        - listitem [ref=e8]:
+          - button "shadcn ui kit png logo Shadcn UI Kit" [ref=e9] [cursor=pointer]:
+            - img "shadcn ui kit png logo" [ref=e10]
+            - generic [ref=e11]: Shadcn UI Kit
+            - img [ref=e12]
+      - generic [ref=e18]:
+        - generic [ref=e19]:
+          - generic [ref=e20]: Dashboards
+          - list [ref=e22]:
+            - listitem [ref=e23]:
+              - link "Classic Dashboard" [ref=e24] [cursor=pointer]:
+                - /url: /dashboard/default
+                - img [ref=e25]
+                - generic [ref=e28]: Classic Dashboard
+            - listitem [ref=e29]:
+              - button "E-commerce" [ref=e31] [cursor=pointer]:
+                - img [ref=e32]
+                - generic [ref=e35]: E-commerce
+                - img [ref=e36]
+            - listitem [ref=e38]:
+              - button "Payment Dashboard" [ref=e40] [cursor=pointer]:
+                - img [ref=e41]
+                - generic [ref=e43]: Payment Dashboard
+                - img [ref=e44]
+            - listitem [ref=e46]:
+              - button "Hotel Dashboard" [ref=e48] [cursor=pointer]:
+                - img [ref=e49]
+                - generic [ref=e53]: Hotel Dashboard
+                - img [ref=e54]
+            - listitem [ref=e56]:
+              - button "Project Management" [ref=e58] [cursor=pointer]:
+                - img [ref=e59]
+                - generic [ref=e62]: Project Management
+                - img [ref=e63]
+            - listitem [ref=e65]:
+              - button "Real Estate" [ref=e67] [cursor=pointer]:
+                - img [ref=e68]
+                - generic [ref=e72]: Real Estate
+                - img [ref=e73]
+            - listitem [ref=e75]:
+              - link "Sales" [ref=e76] [cursor=pointer]:
+                - /url: /dashboard/sales
+                - img [ref=e77]
+                - generic [ref=e80]: Sales
+            - listitem [ref=e81]:
+              - link "CRM" [ref=e82] [cursor=pointer]:
+                - /url: /dashboard/crm
+                - img [ref=e83]
+                - generic [ref=e85]: CRM
+            - listitem [ref=e86]:
+              - link "Website Analytics" [ref=e87] [cursor=pointer]:
+                - /url: /dashboard/website-analytics
+                - img [ref=e88]
+                - generic [ref=e91]: Website Analytics
+            - listitem [ref=e92]:
+              - link "File Manager" [ref=e93] [cursor=pointer]:
+                - /url: /dashboard/file-manager
+                - img [ref=e94]
+                - generic [ref=e96]: File Manager
+            - listitem [ref=e97]:
+              - link "Crypto" [ref=e98] [cursor=pointer]:
+                - /url: /dashboard/crypto
+                - img [ref=e99]
+                - generic [ref=e101]: Crypto
+            - listitem [ref=e102]:
+              - link "Academy/School" [ref=e103] [cursor=pointer]:
+                - /url: /dashboard/academy
+                - img [ref=e104]
+                - generic [ref=e107]: Academy/School
+            - listitem [ref=e108]:
+              - link "Hospital Management" [ref=e109] [cursor=pointer]:
+                - /url: /dashboard/hospital-management
+                - img [ref=e110]
+                - generic [ref=e112]: Hospital Management
+            - listitem [ref=e113]:
+              - link "Finance Dashboard" [ref=e114] [cursor=pointer]:
+                - /url: /dashboard/finance
+                - img [ref=e115]
+                - generic [ref=e117]: Finance Dashboard
+        - generic [ref=e118]:
+          - generic [ref=e119]: Apps
+          - list [ref=e121]:
+            - listitem [ref=e122]:
+              - link "Kanban" [ref=e123] [cursor=pointer]:
+                - /url: /dashboard/apps/kanban
+                - img [ref=e124]
+                - generic [ref=e126]: Kanban
+            - listitem [ref=e127]:
+              - link "Notes" [ref=e128] [cursor=pointer]:
+                - /url: /dashboard/apps/notes
+                - img [ref=e129]
+                - generic [ref=e132]: Notes
+              - generic: "8"
+            - listitem [ref=e133]:
+              - link "Chats" [ref=e134] [cursor=pointer]:
+                - /url: /dashboard/apps/chat
+                - img [ref=e135]
+                - generic [ref=e137]: Chats
+              - generic: "5"
+            - listitem [ref=e138]:
+              - link "Social Media" [ref=e139] [cursor=pointer]:
+                - /url: /dashboard/apps/social-media
+                - img [ref=e140]
+                - generic [ref=e143]: Social Media
+              - generic: New
+            - listitem [ref=e144]:
+              - link "Mail" [ref=e145] [cursor=pointer]:
+                - /url: /dashboard/apps/mail
+                - img [ref=e146]
+                - generic [ref=e149]: Mail
+            - listitem [ref=e150]:
+              - link "Todo List App" [ref=e151] [cursor=pointer]:
+                - /url: /dashboard/apps/todo-list-app
+                - img [ref=e152]
+                - generic [ref=e155]: Todo List App
+            - listitem [ref=e156]:
+              - link "Tasks" [ref=e157] [cursor=pointer]:
+                - /url: /dashboard/apps/tasks
+                - img [ref=e158]
+                - generic [ref=e162]: Tasks
+            - listitem [ref=e163]:
+              - link "Calendar" [ref=e164] [cursor=pointer]:
+                - /url: /dashboard/apps/calendar
+                - img [ref=e165]
+                - generic [ref=e167]: Calendar
+            - listitem [ref=e168]:
+              - link "File Manager" [ref=e169] [cursor=pointer]:
+                - /url: /dashboard/apps/file-manager
+                - img [ref=e170]
+                - generic [ref=e175]: File Manager
+              - generic: New
+            - listitem [ref=e176]:
+              - link "Api Keys" [ref=e177] [cursor=pointer]:
+                - /url: /dashboard/apps/api-keys
+                - img [ref=e178]
+                - generic [ref=e182]: Api Keys
+            - listitem [ref=e183]:
+              - link "POS App" [ref=e184] [cursor=pointer]:
+                - /url: /dashboard/apps/pos-system
+                - img [ref=e185]
+                - generic [ref=e187]: POS App
+            - listitem [ref=e188]:
+              - link "Courses" [ref=e189] [cursor=pointer]:
+                - /url: /dashboard/apps/courses
+                - img [ref=e190]
+                - generic [ref=e193]: Courses
+              - generic: New
+        - generic [ref=e194]:
+          - generic [ref=e195]: AI Apps
+          - list [ref=e197]:
+            - listitem [ref=e198]:
+              - link "AI Chat" [ref=e199] [cursor=pointer]:
+                - /url: /dashboard/apps/ai-chat
+                - img [ref=e200]
+                - generic [ref=e210]: AI Chat
+            - listitem [ref=e211]:
+              - link "AI Chat V2" [ref=e212] [cursor=pointer]:
+                - /url: /dashboard/apps/ai-chat-v2
+                - img [ref=e213]
+                - generic [ref=e225]: AI Chat V2
+              - generic: New
+            - listitem [ref=e226]:
+              - link "Image Generator" [ref=e227] [cursor=pointer]:
+                - /url: /dashboard/apps/ai-image-generator
+                - img [ref=e228]
+                - generic [ref=e233]: Image Generator
+            - listitem [ref=e234]:
+              - link "Text to Speech" [ref=e235] [cursor=pointer]:
+                - /url: /dashboard/apps/text-to-speech
+                - img [ref=e236]
+                - generic [ref=e240]: Text to Speech
+              - generic: Coming
+        - generic [ref=e241]:
+          - generic [ref=e242]: Pages
+          - list [ref=e244]:
+            - listitem [ref=e245]:
+              - link "Users List" [ref=e246] [cursor=pointer]:
+                - /url: /dashboard/pages/users
+                - img [ref=e247]
+                - generic [ref=e252]: Users List
+            - listitem [ref=e253]:
+              - link "Profile V1" [ref=e254] [cursor=pointer]:
+                - /url: /dashboard/pages/profile
+                - img [ref=e255]
+                - generic [ref=e258]: Profile V1
+            - listitem [ref=e259]:
+              - link "Profile V2" [ref=e260] [cursor=pointer]:
+                - /url: /dashboard/pages/user-profile
+                - img [ref=e261]
+                - generic [ref=e264]: Profile V2
+            - listitem [ref=e265]:
+              - link "Onboarding Flow" [ref=e266] [cursor=pointer]:
+                - /url: /dashboard/pages/onboarding-flow
+                - img [ref=e267]
+                - generic [ref=e271]: Onboarding Flow
+            - listitem [ref=e272]:
+              - button "Empty States" [ref=e274] [cursor=pointer]:
+                - img [ref=e275]
+                - generic [ref=e280]: Empty States
+                - img [ref=e281]
+            - listitem [ref=e283]:
+              - button "Settings" [ref=e285] [cursor=pointer]:
+                - img [ref=e286]
+                - generic [ref=e289]: Settings
+                - img [ref=e290]
+            - listitem [ref=e292]:
+              - button "Pricing" [ref=e294] [cursor=pointer]:
+                - img [ref=e295]
+                - generic [ref=e298]: Pricing
+                - img [ref=e299]
+            - listitem [ref=e301]:
+              - button "Authentication" [ref=e303] [cursor=pointer]:
+                - img [ref=e304]
+                - generic [ref=e313]: Authentication
+                - img [ref=e314]
+            - listitem [ref=e316]:
+              - link "Notifications Page" [ref=e317] [cursor=pointer]:
+                - /url: /dashboard/pages/notifications
+                - img [ref=e318]
+                - generic [ref=e321]: Notifications Page
+            - listitem [ref=e322]:
+              - button "Error Pages" [ref=e324] [cursor=pointer]:
+                - img [ref=e325]
+                - generic [ref=e334]: Error Pages
+                - img [ref=e335]
+        - generic [ref=e337]:
+          - generic [ref=e338]: Others
+          - list [ref=e340]:
+            - listitem [ref=e341]:
+              - button "Widgets" [ref=e343] [cursor=pointer]:
+                - img [ref=e344]
+                - generic [ref=e346]: Widgets
+                - img [ref=e347]
+            - listitem [ref=e349]:
+              - link "Download Shadcn UI Kit" [ref=e350] [cursor=pointer]:
+                - /url: /pricing
+                - img [ref=e351]
+                - generic [ref=e354]: Download Shadcn UI Kit
+            - listitem [ref=e355]:
+              - link "Components" [ref=e356] [cursor=pointer]:
+                - /url: /components
+                - img [ref=e357]
+                - generic [ref=e362]: Components
+            - listitem [ref=e363]:
+              - link "Blocks" [ref=e364] [cursor=pointer]:
+                - /url: /blocks
+                - img [ref=e365]
+                - generic [ref=e370]: Blocks
+            - listitem [ref=e371]:
+              - link "Examples" [ref=e372] [cursor=pointer]:
+                - /url: /examples
+                - img [ref=e373]
+                - generic [ref=e378]: Examples
+            - listitem [ref=e379]:
+              - link "WebsiteTemplates" [ref=e380] [cursor=pointer]:
+                - /url: /templates
+                - img [ref=e381]
+                - generic [ref=e384]: WebsiteTemplates
+            - listitem [ref=e385]:
+              - link "Github" [ref=e386] [cursor=pointer]:
+                - /url: https://github.com/bundui
+                - img [ref=e387]
+                - generic [ref=e390]: Github
+      - generic [ref=e391]:
+        - generic [ref=e392]:
+          - generic [ref=e393]:
+            - generic [ref=e394]: Unlock Everything
+            - generic [ref=e395]: Get instant access to all premium dashboards, templates, and UI components. Pay once, use forever in unlimited projects.
+          - link "Get Full Access" [ref=e397] [cursor=pointer]:
+            - /url: https://shadcnuikit.com/pricing
+            - text: Get Full Access
+        - list [ref=e399]:
+          - listitem [ref=e400]:
+            - button "JS Toby Belhome hello@tobybelhome.com" [ref=e401] [cursor=pointer]:
+              - generic [ref=e403]: JS
+              - generic [ref=e404]:
+                - generic [ref=e405]: Toby Belhome
+                - generic [ref=e406]: hello@tobybelhome.com
+              - img [ref=e407]
+    - main [ref=e409]:
+      - generic [ref=e411]:
+        - button [ref=e412] [cursor=pointer]:
+          - img
+        - generic [ref=e413]:
+          - generic [ref=e414]:
+            - img [ref=e415]
+            - searchbox "Search..." [ref=e418] [cursor=pointer]
+            - generic [ref=e419]:
+              - img [ref=e420]
+              - generic [ref=e422]: k
+          - generic [ref=e423]:
+            - heading "Command Palette" [level=2] [ref=e424]
+            - paragraph [ref=e425]: Search for a command to run...
+        - generic [ref=e426]:
+          - link "Get Pro" [ref=e427] [cursor=pointer]:
+            - /url: https://shadcnuikit.com/pricing
+          - button [ref=e428] [cursor=pointer]:
+            - img
+          - button [ref=e430] [cursor=pointer]:
+            - img
+          - generic [ref=e432] [cursor=pointer]: TB
+      - generic [ref=e435]:
+        - generic [ref=e436]:
+          - heading "Dashboard" [level=1] [ref=e437]
+          - generic [ref=e438]:
+            - button "01 May 2026 - 28 May 2026" [ref=e440] [cursor=pointer]:
+              - img
+              - text: 01 May 2026 - 28 May 2026
+            - button "Download" [ref=e441] [cursor=pointer]:
+              - img
+              - generic [ref=e442]: Download
+        - generic [ref=e443]:
+          - generic [ref=e444]:
+            - generic [ref=e445]:
+              - generic [ref=e446]: Team Members
+              - generic [ref=e447]: Invite your team members to collaborate.
+            - generic [ref=e448]:
+              - generic [ref=e449]:
+                - generic [ref=e450]:
+                  - generic [ref=e452]: OM
+                  - generic [ref=e453]:
+                    - paragraph [ref=e454]: Toby Belhome
+                    - paragraph [ref=e455]: contact@bundui.io
+                - button "Viewer" [ref=e456] [cursor=pointer]:
+                  - text: Viewer
+                  - img
+              - generic [ref=e457]:
+                - generic [ref=e458]:
+                  - generic [ref=e460]: OM
+                  - generic [ref=e461]:
+                    - paragraph [ref=e462]: Jackson Lee
+                    - paragraph [ref=e463]: pre@example.com
+                - button "Developer" [ref=e464] [cursor=pointer]:
+                  - text: Developer
+                  - img
+              - generic [ref=e465]:
+                - generic [ref=e466]:
+                  - generic [ref=e468]: OM
+                  - generic [ref=e469]:
+                    - paragraph [ref=e470]: Hally Gray
+                    - paragraph [ref=e471]: hally@site.com
+                - button "Viewer" [ref=e472] [cursor=pointer]:
+                  - text: Viewer
+                  - img
+          - generic [ref=e473]:
+            - generic [ref=e475]: Subscriptions
+            - generic [ref=e476]:
+              - generic [ref=e477]: "+4850"
+              - paragraph [ref=e478]: +180.1% from last month
+          - generic [ref=e481]:
+            - generic [ref=e483]: Total Revenue
+            - generic [ref=e484]:
+              - generic [ref=e485]: $15,231.89
+              - paragraph [ref=e486]: +20.1% from last month
+          - generic [ref=e489]:
+            - generic [ref=e490]:
+              - generic [ref=e491]:
+                - generic [ref=e493]: OM
+                - generic [ref=e494]:
+                  - paragraph [ref=e495]: Sofia Davis
+                  - paragraph [ref=e496]: m@example.com
+              - button "New message" [ref=e497] [cursor=pointer]:
+                - img
+                - generic [ref=e498]: New message
+            - generic [ref=e500]:
+              - generic [ref=e501]: Hi, how can I help you today?
+              - generic [ref=e502]: Hey, I'm having trouble with my account.
+              - generic [ref=e503]: What seems to be the problem?
+              - generic [ref=e504]: I can't log in.
+            - generic [ref=e506]:
+              - textbox "Type your message..." [ref=e507]
+              - button "Send" [disabled]:
+                - img
+                - generic: Send
+          - generic [ref=e510]:
+            - generic [ref=e511]:
+              - generic [ref=e512]: Exercise Minutes
+              - generic [ref=e513]: Your exercise minutes are ahead of where you normally are.
+            - button "Export" [ref=e514] [cursor=pointer]:
+              - img
+              - generic [ref=e515]: Export
+          - generic [ref=e520]:
+            - generic [ref=e521]:
+              - generic [ref=e522]: Latest Payments
+              - generic [ref=e523]: See recent payments from your customers here.
+              - textbox "Filter payments..." [ref=e526]
+            - generic [ref=e527]:
+              - table [ref=e530]:
+                - rowgroup [ref=e531]:
+                  - row "Select all Customer Email Amount Status" [ref=e532]:
+                    - columnheader "Select all" [ref=e533]:
+                      - checkbox "Select all" [ref=e534]
+                      - checkbox
+                    - columnheader "Customer" [ref=e535]
+                    - columnheader "Email" [ref=e536]
+                    - columnheader "Amount" [ref=e537]:
+                      - generic [ref=e538]: Amount
+                    - columnheader "Status" [ref=e539]
+                    - columnheader [ref=e540]
+                - rowgroup [ref=e541]:
+                  - row "Select row Kenneth Thompson ken99@yahoo.com $316.00 success Open menu" [ref=e542]:
+                    - cell "Select row" [ref=e543]:
+                      - checkbox "Select row" [ref=e544]
+                      - checkbox
+                    - cell "Kenneth Thompson" [ref=e545]:
+                      - generic [ref=e546]: Kenneth Thompson
+                    - cell "ken99@yahoo.com" [ref=e547]:
+                      - generic [ref=e548]: ken99@yahoo.com
+                    - cell "$316.00" [ref=e549]:
+                      - generic [ref=e550]: $316.00
+                    - cell "success" [ref=e551]:
+                      - generic [ref=e552]: success
+                    - cell "Open menu" [ref=e553]:
+                      - button "Open menu" [ref=e555] [cursor=pointer]:
+                        - generic [ref=e556]: Open menu
+                        - img
+                  - row "Select row Abraham Lincoln abe45@gmail.com $242.00 success Open menu" [ref=e557]:
+                    - cell "Select row" [ref=e558]:
+                      - checkbox "Select row" [ref=e559]
+                      - checkbox
+                    - cell "Abraham Lincoln" [ref=e560]:
+                      - generic [ref=e561]: Abraham Lincoln
+                    - cell "abe45@gmail.com" [ref=e562]:
+                      - generic [ref=e563]: abe45@gmail.com
+                    - cell "$242.00" [ref=e564]:
+                      - generic [ref=e565]: $242.00
+                    - cell "success" [ref=e566]:
+                      - generic [ref=e567]: success
+                    - cell "Open menu" [ref=e568]:
+                      - button "Open menu" [ref=e570] [cursor=pointer]:
+                        - generic [ref=e571]: Open menu
+                        - img
+                  - row "Select row Monserrat Rodriguez monserrat44@gmail.com $837.00 processing Open menu" [ref=e572]:
+                    - cell "Select row" [ref=e573]:
+                      - checkbox "Select row" [ref=e574]
+                      - checkbox
+                    - cell "Monserrat Rodriguez" [ref=e575]:
+                      - generic [ref=e576]: Monserrat Rodriguez
+                    - cell "monserrat44@gmail.com" [ref=e577]:
+                      - generic [ref=e578]: monserrat44@gmail.com
+                    - cell "$837.00" [ref=e579]:
+                      - generic [ref=e580]: $837.00
+                    - cell "processing" [ref=e581]:
+                      - generic [ref=e582]: processing
+                    - cell "Open menu" [ref=e583]:
+                      - button "Open menu" [ref=e585] [cursor=pointer]:
+                        - generic [ref=e586]: Open menu
+                        - img
+                  - row "Select row Silas Johnson silas22@gmail.com $874.00 success Open menu" [ref=e587]:
+                    - cell "Select row" [ref=e588]:
+                      - checkbox "Select row" [ref=e589]
+                      - checkbox
+                    - cell "Silas Johnson" [ref=e590]:
+                      - generic [ref=e591]: Silas Johnson
+                    - cell "silas22@gmail.com" [ref=e592]:
+                      - generic [ref=e593]: silas22@gmail.com
+                    - cell "$874.00" [ref=e594]:
+                      - generic [ref=e595]: $874.00
+                    - cell "success" [ref=e596]:
+                      - generic [ref=e597]: success
+                    - cell "Open menu" [ref=e598]:
+                      - button "Open menu" [ref=e600] [cursor=pointer]:
+                        - generic [ref=e601]: Open menu
+                        - img
+                  - row "Select row Carmella DeVito carmella@hotmail.com $721.00 failed Open menu" [ref=e602]:
+                    - cell "Select row" [ref=e603]:
+                      - checkbox "Select row" [ref=e604]
+                      - checkbox
+                    - cell "Carmella DeVito" [ref=e605]:
+                      - generic [ref=e606]: Carmella DeVito
+                    - cell "carmella@hotmail.com" [ref=e607]:
+                      - generic [ref=e608]: carmella@hotmail.com
+                    - cell "$721.00" [ref=e609]:
+                      - generic [ref=e610]: $721.00
+                    - cell "failed" [ref=e611]:
+                      - generic [ref=e612]: failed
+                    - cell "Open menu" [ref=e613]:
+                      - button "Open menu" [ref=e615] [cursor=pointer]:
+                        - generic [ref=e616]: Open menu
+                        - img
+                  - row "Select row Maria Garcia maria@gmail.com $529.00 success Open menu" [ref=e617]:
+                    - cell "Select row" [ref=e618]:
+                      - checkbox "Select row" [ref=e619]
+                      - checkbox
+                    - cell "Maria Garcia" [ref=e620]:
+                      - generic [ref=e621]: Maria Garcia
+                    - cell "maria@gmail.com" [ref=e622]:
+                      - generic [ref=e623]: maria@gmail.com
+                    - cell "$529.00" [ref=e624]:
+                      - generic [ref=e625]: $529.00
+                    - cell "success" [ref=e626]:
+                      - generic [ref=e627]: success
+                    - cell "Open menu" [ref=e628]:
+                      - button "Open menu" [ref=e630] [cursor=pointer]:
+                        - generic [ref=e631]: Open menu
+                        - img
+                  - row "Select row James Wilson james34@outlook.com $438.00 processing Open menu" [ref=e632]:
+                    - cell "Select row" [ref=e633]:
+                      - checkbox "Select row" [ref=e634]
+                      - checkbox
+                    - cell "James Wilson" [ref=e635]:
+                      - generic [ref=e636]: James Wilson
+                    - cell "james34@outlook.com" [ref=e637]:
+                      - generic [ref=e638]: james34@outlook.com
+                    - cell "$438.00" [ref=e639]:
+                      - generic [ref=e640]: $438.00
+                    - cell "processing" [ref=e641]:
+                      - generic [ref=e642]: processing
+                    - cell "Open menu" [ref=e643]:
+                      - button "Open menu" [ref=e645] [cursor=pointer]:
+                        - generic [ref=e646]: Open menu
+                        - img
+                  - row "Select row Sarah Jones sarah.j@yahoo.com $692.00 success Open menu" [ref=e647]:
+                    - cell "Select row" [ref=e648]:
+                      - checkbox "Select row" [ref=e649]
+                      - checkbox
+                    - cell "Sarah Jones" [ref=e650]:
+                      - generic [ref=e651]: Sarah Jones
+                    - cell "sarah.j@yahoo.com" [ref=e652]:
+                      - generic [ref=e653]: sarah.j@yahoo.com
+                    - cell "$692.00" [ref=e654]:
+                      - generic [ref=e655]: $692.00
+                    - cell "success" [ref=e656]:
+                      - generic [ref=e657]: success
+                    - cell "Open menu" [ref=e658]:
+                      - button "Open menu" [ref=e660] [cursor=pointer]:
+                        - generic [ref=e661]: Open menu
+                        - img
+              - generic [ref=e662]:
+                - paragraph [ref=e663]: 0 of 16 row(s) selected.
+                - generic [ref=e664]:
+                  - button [disabled]:
+                    - img
+                  - button [ref=e665] [cursor=pointer]:
+                    - img
+          - generic [ref=e666]:
+            - generic [ref=e667]:
+              - generic [ref=e668]: Payment Method
+              - generic [ref=e669]: Add a new payment method to your account.
+            - generic [ref=e670]:
+              - radiogroup [ref=e671]:
+                - generic [ref=e672]:
+                  - radio "Card" [checked] [ref=e673]:
+                    - img [ref=e674]
+                  - radio [checked]
+                  - generic [ref=e676]:
+                    - img [ref=e677]
+                    - text: Card
+                - generic [ref=e679]:
+                  - radio "Paypal" [ref=e680]
+                  - radio
+                  - generic [ref=e681]:
+                    - img [ref=e682]
+                    - text: Paypal
+                - generic [ref=e684]:
+                  - radio "Apple" [ref=e685]
+                  - radio
+                  - generic [ref=e686]:
+                    - img [ref=e687]
+                    - text: Apple
+              - generic [ref=e689]:
+                - generic [ref=e690]: Name on the card
+                - textbox "Name on the card" [ref=e691]
+              - generic [ref=e692]:
+                - generic [ref=e693]: City
+                - textbox "City" [ref=e694]:
+                  - /placeholder: ""
+              - generic [ref=e695]:
+                - generic [ref=e696]: Card number
+                - textbox "Card number" [ref=e697]:
+                  - /placeholder: ""
+              - generic [ref=e698]:
+                - generic [ref=e699]:
+                  - generic [ref=e700]: Expires
+                  - combobox "Month" [ref=e701]:
+                    - generic: Month
+                    - img
+                  - combobox [ref=e702]
+                - generic [ref=e703]:
+                  - generic [ref=e704]: Year
+                  - combobox "Year" [ref=e705]:
+                    - generic: Year
+                    - img
+                  - combobox [ref=e706]
+                - generic [ref=e707]:
+                  - generic [ref=e708]: CVC
+                  - textbox "CVC" [ref=e709]
+            - button "Continue" [ref=e711] [cursor=pointer]
+  - region "Notifications alt+T"

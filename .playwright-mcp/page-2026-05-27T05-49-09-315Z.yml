@@ -1,0 +1,365 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - generic [ref=e3]:
+      - button [ref=e4] [cursor=pointer]:
+        - img [ref=e5]
+      - link "Logo" [ref=e8] [cursor=pointer]:
+        - /url: /
+        - img [ref=e9]
+      - region "scrollable content" [ref=e17]:
+        - generic [ref=e18]:
+          - navigation [ref=e19]:
+            - list [ref=e20]:
+              - listitem [ref=e21]:
+                - generic [ref=e22] [cursor=pointer]: Coverage
+                - list [ref=e26]:
+                  - listitem [ref=e27]:
+                    - link "Overview" [ref=e28] [cursor=pointer]:
+                      - /url: /dashboard/
+                      - img [ref=e30]
+                      - generic [ref=e35]: Overview
+                  - listitem [ref=e36]:
+                    - link "Projects" [ref=e37] [cursor=pointer]:
+                      - /url: /dashboard/?view=projects
+                      - img [ref=e39]
+                      - generic [ref=e44]: Projects
+                  - listitem [ref=e45]:
+                    - link "Pull requests" [ref=e46] [cursor=pointer]:
+                      - /url: /dashboard/?view=pull-requests
+                      - img [ref=e48]
+                      - generic [ref=e52]: Pull requests
+                  - listitem [ref=e53]:
+                    - link "Coverage" [ref=e54] [cursor=pointer]:
+                      - /url: /dashboard/?view=coverage
+                      - img [ref=e56]
+                      - generic [ref=e60]: Coverage
+                  - listitem [ref=e61]:
+                    - link "Insights" [ref=e62] [cursor=pointer]:
+                      - /url: /dashboard/?view=insights
+                      - img [ref=e64]
+                      - generic [ref=e70]: Insights
+              - listitem [ref=e71]:
+                - generic [ref=e72] [cursor=pointer]: Automation
+                - list [ref=e76]:
+                  - listitem [ref=e77]:
+                    - link "Agents" [ref=e78] [cursor=pointer]:
+                      - /url: /dashboard/?view=agents
+                      - img [ref=e80]
+                      - generic [ref=e85]: Agents
+                  - listitem [ref=e86]:
+                    - link "Tests" [ref=e87] [cursor=pointer]:
+                      - /url: /dashboard/?view=tests
+                      - img [ref=e89]
+                      - generic [ref=e93]: Tests
+                  - listitem [ref=e94]:
+                    - link "Mutation testing" [ref=e95] [cursor=pointer]:
+                      - /url: /dashboard/?view=mutation
+                      - img [ref=e97]
+                      - generic [ref=e101]: Mutation testing
+                  - listitem [ref=e102]:
+                    - link "Coverage debt" [ref=e103] [cursor=pointer]:
+                      - /url: /dashboard/?view=debt
+                      - img [ref=e105]
+                      - generic [ref=e110]: Coverage debt
+                  - listitem [ref=e111]:
+                    - link "Policies" [ref=e112] [cursor=pointer]:
+                      - /url: /dashboard/?view=policies
+                      - img [ref=e114]
+                      - generic [ref=e118]: Policies
+                  - listitem [ref=e119]:
+                    - link "Runners" [ref=e120] [cursor=pointer]:
+                      - /url: /dashboard/?view=runners
+                      - img [ref=e122]
+                      - generic [ref=e126]: Runners
+                  - listitem [ref=e127]:
+                    - link "Settings" [ref=e128] [cursor=pointer]:
+                      - /url: /dashboard/?view=settings
+                      - img [ref=e130]
+                      - generic [ref=e134]: Settings
+          - generic [ref=e136]:
+            - generic [ref=e137]:
+              - img "Jaydon Frankie" [ref=e139]
+              - generic [ref=e140]: Free
+            - generic [ref=e141]:
+              - heading "Jaydon Frankie" [level=6] [ref=e142]
+              - paragraph [ref=e143]: demo@minimals.cc
+            - link "Upgrade to Pro" [ref=e144] [cursor=pointer]:
+              - /url: https://mui.com/store/items/minimal-dashboard/
+              - text: Upgrade to Pro
+    - generic [ref=e145]:
+      - banner [ref=e146]:
+        - generic [ref=e148]:
+          - button "Acme Acme Pro" [ref=e149] [cursor=pointer]:
+            - img "Acme" [ref=e150]
+            - generic [ref=e151]: Acme
+            - generic [ref=e152]: Pro
+          - generic [ref=e153]:
+            - generic [ref=e154] [cursor=pointer]:
+              - button [ref=e155]:
+                - img [ref=e156]
+              - generic [ref=e158]: ⌘K
+            - button "GB" [ref=e159] [cursor=pointer]:
+              - img "GB" [ref=e161]
+            - button "4" [ref=e162] [cursor=pointer]:
+              - generic [ref=e163]:
+                - img [ref=e164]
+                - generic [ref=e167]: "4"
+            - button [ref=e168] [cursor=pointer]:
+              - img [ref=e169]
+            - button "settings" [ref=e174] [cursor=pointer]:
+              - img [ref=e176]
+            - button "Jaydon Frankie" [ref=e179] [cursor=pointer]:
+              - img "Jaydon Frankie" [ref=e182]
+      - main [ref=e184]:
+        - generic [ref=e186]:
+          - generic [ref=e188]:
+            - generic [ref=e189]:
+              - generic [ref=e190]: Gate passing
+              - generic [ref=e191]: Updated 2m ago
+            - generic [ref=e192]:
+              - heading "Coverage command center" [level=4] [ref=e193]
+              - paragraph [ref=e194]: Track repository coverage, inspect agent findings, and queue the next high-value test run from one dashboard.
+            - generic [ref=e195]:
+              - button "main" [ref=e196] [cursor=pointer]:
+                - img [ref=e198]
+                - text: main
+                - img [ref=e202]
+              - button "May 12 - May 18" [ref=e204] [cursor=pointer]:
+                - img [ref=e206]
+                - text: May 12 - May 18
+                - img [ref=e211]
+              - button "Queue agent" [ref=e213] [cursor=pointer]:
+                - img [ref=e215]
+                - text: Queue agent
+          - generic [ref=e221]:
+            - generic [ref=e223]:
+              - generic [ref=e224]: Coverage gate
+              - generic [ref=e225]: Branch main · May 12 - May 18
+            - generic [ref=e227]:
+              - generic [ref=e228]:
+                - heading "12.4%" [level=3] [ref=e230]
+                - paragraph [ref=e231]: Low risk
+              - generic [ref=e232]:
+                - generic [ref=e233]: 80% threshold
+                - generic [ref=e234]: No blocker
+                - generic [ref=e235]: 3 warnings
+          - generic [ref=e237]:
+            - generic [ref=e238]:
+              - img [ref=e240]
+              - generic [ref=e243]: +3.1%
+            - heading "Lines covered" [level=6] [ref=e244]
+            - generic [ref=e245]:
+              - heading "45.2k" [level=4] [ref=e246]
+              - paragraph [ref=e247]: / 51.6k
+          - generic [ref=e258]:
+            - generic [ref=e259]:
+              - img [ref=e261]
+              - generic [ref=e264]: +4.4%
+            - heading "Branches covered" [level=6] [ref=e265]
+            - heading "82.1%" [level=4] [ref=e267]
+          - generic [ref=e278]:
+            - generic [ref=e279]:
+              - img [ref=e281]
+              - generic [ref=e284]: +1.8%
+            - heading "Functions covered" [level=6] [ref=e285]
+            - heading "79.3%" [level=4] [ref=e287]
+          - generic [ref=e298]:
+            - generic [ref=e299]:
+              - img [ref=e301]
+              - generic [ref=e304]: +2.1%
+            - heading "Statements covered" [level=6] [ref=e305]
+            - heading "88.4%" [level=4] [ref=e307]
+          - generic [ref=e318]:
+            - generic [ref=e319]:
+              - generic [ref=e320]:
+                - generic [ref=e321]: Coverage trend
+                - generic [ref=e322]: Line Coverage is 84.9% on main
+              - group "Coverage metric" [ref=e324]:
+                - button "Line coverage" [pressed] [ref=e325] [cursor=pointer]: Line
+                - button "Branch coverage" [ref=e326] [cursor=pointer]: Branch
+                - button "Function coverage" [ref=e327] [cursor=pointer]: Function
+                - button "Statement coverage" [ref=e328] [cursor=pointer]: Statement
+            - generic [ref=e330]:
+              - generic [ref=e332]: 0%
+              - generic [ref=e335]: 20%
+              - generic [ref=e338]: 40%
+              - generic [ref=e341]: 60%
+              - generic [ref=e344]: 80%
+              - generic [ref=e347]: 100%
+              - img [ref=e349]
+              - generic [ref=e363]:
+                - text: May 11
+                - 'heading "Line Coverage: 84.9%" [level=6] [ref=e364]'
+              - generic [ref=e365]:
+                - generic [ref=e366]: Apr 20
+                - generic [ref=e367]: Apr 27
+                - generic [ref=e368]: May 4
+                - generic [ref=e369]: May 11
+                - generic [ref=e370]: May 18
+          - generic [ref=e372]:
+            - generic [ref=e373]:
+              - generic [ref=e374]:
+                - generic [ref=e375]: Agentic insights
+                - generic [ref=e376]: Ranked by risk-adjusted value
+              - button "View all" [ref=e378] [cursor=pointer]: View all
+            - generic [ref=e380]:
+              - generic [ref=e382]:
+                - img [ref=e384]
+                - generic [ref=e387]:
+                  - heading "Uncovered critical path" [level=6] [ref=e388]
+                  - text: PaymentService.processRefund() has 3 uncovered branches in error handling.
+              - generic [ref=e390]:
+                - img [ref=e392]
+                - generic [ref=e395]:
+                  - heading "Weak assertion detected" [level=6] [ref=e396]
+                  - text: testUserRoleChange only asserts status code. Consider asserting outcomes.
+              - generic [ref=e398]:
+                - img [ref=e400]
+                - generic [ref=e403]:
+                  - heading "Flaky test detected" [level=6] [ref=e404]
+                  - text: testOrderTotalCalculation is flaky with a 21% failure rate.
+              - generic [ref=e406]:
+                - img [ref=e408]
+                - generic [ref=e413]:
+                  - heading "New tests generated" [level=6] [ref=e414]
+                  - text: Agent generated 12 tests for uncovered paths in auth module.
+          - generic [ref=e416]:
+            - generic [ref=e417]:
+              - generic [ref=e419]: Recent pull requests
+              - button "View all" [ref=e421] [cursor=pointer]: View all
+            - generic [ref=e423]:
+              - generic [ref=e425]:
+                - generic [ref=e426]: +2.4%
+                - generic [ref=e427]:
+                  - heading "Add checkout validation and error handling" [level=6] [ref=e428]
+                  - generic [ref=e429]:
+                    - paragraph [ref=e430]: "#1287"
+                    - generic [ref=e432]: Merged
+                - generic [ref=e442]:
+                  - heading "92%" [level=6] [ref=e443]
+                  - text: Coverage
+              - generic [ref=e446]:
+                - generic [ref=e447]: "-1.6%"
+                - generic [ref=e448]:
+                  - heading "Refactor pricing calculator and tests" [level=6] [ref=e449]
+                  - generic [ref=e450]:
+                    - paragraph [ref=e451]: "#1286"
+                    - generic [ref=e453]: Merged
+                - generic [ref=e463]:
+                  - heading "78%" [level=6] [ref=e464]
+                  - text: Coverage
+              - generic [ref=e467]:
+                - generic [ref=e468]: +4.7%
+                - generic [ref=e469]:
+                  - heading "Add unit tests for user service" [level=6] [ref=e470]
+                  - generic [ref=e471]:
+                    - paragraph [ref=e472]: "#1285"
+                    - generic [ref=e474]: Merged
+                - generic [ref=e484]:
+                  - heading "89%" [level=6] [ref=e485]
+                  - text: Coverage
+              - generic [ref=e488]:
+                - generic [ref=e489]: 0.0%
+                - generic [ref=e490]:
+                  - heading "Update dependencies and configs" [level=6] [ref=e491]
+                  - generic [ref=e492]:
+                    - paragraph [ref=e493]: "#1284"
+                    - generic [ref=e495]: Merged
+                - generic [ref=e505]:
+                  - heading "87%" [level=6] [ref=e506]
+                  - text: Coverage
+          - generic [ref=e508]:
+            - generic [ref=e511]: Coverage by package
+            - generic [ref=e513]:
+              - generic [ref=e516]:
+                - heading "87.6%" [level=4] [ref=e517]
+                - text: Total
+              - generic [ref=e518]:
+                - generic [ref=e519]:
+                  - paragraph [ref=e521]: checkout
+                  - heading "92.1%" [level=6] [ref=e522]
+                - generic [ref=e523]:
+                  - paragraph [ref=e525]: user-service
+                  - heading "89.3%" [level=6] [ref=e526]
+                - generic [ref=e527]:
+                  - paragraph [ref=e529]: payment
+                  - heading "78.8%" [level=6] [ref=e530]
+                - generic [ref=e531]:
+                  - paragraph [ref=e533]: notification
+                  - heading "76.4%" [level=6] [ref=e534]
+                - generic [ref=e535]:
+                  - paragraph [ref=e537]: catalog
+                  - heading "94.2%" [level=6] [ref=e538]
+                - generic [ref=e539]:
+                  - paragraph [ref=e541]: others
+                  - heading "85.1%" [level=6] [ref=e542]
+          - generic [ref=e544]:
+            - generic [ref=e545]:
+              - generic [ref=e547]: Coverage debt
+              - img [ref=e549]
+            - generic [ref=e554]:
+              - generic [ref=e555]:
+                - heading "12.4%" [level=3] [ref=e557]
+                - paragraph [ref=e558]: Low risk
+              - generic [ref=e559]:
+                - paragraph [ref=e561]: Low risk
+                - heading "8.7%" [level=6] [ref=e562]
+              - generic [ref=e563]:
+                - paragraph [ref=e565]: Medium risk
+                - heading "3.1%" [level=6] [ref=e566]
+              - generic [ref=e567]:
+                - paragraph [ref=e569]: High risk
+                - heading "0.6%" [level=6] [ref=e570]
+              - button "View debt backlog" [ref=e571] [cursor=pointer]: View debt backlog
+          - generic [ref=e573]:
+            - generic [ref=e574]:
+              - generic [ref=e576]: Mutation testing
+              - img [ref=e578]
+            - generic [ref=e583]:
+              - generic [ref=e584]:
+                - generic [ref=e587]:
+                  - heading "64%" [level=4] [ref=e588]
+                  - text: Score
+                - generic [ref=e589]:
+                  - heading "Survived mutations" [level=6] [ref=e590]
+                  - heading "23 / 64" [level=5] [ref=e591]
+              - generic [ref=e592]:
+                - generic [ref=e594]: pricing.ts
+                - generic [ref=e596]: discount.py
+                - generic [ref=e598]: auth.go
+              - button "View full report" [ref=e599] [cursor=pointer]: View full report
+          - generic [ref=e601]:
+            - generic [ref=e604]: Recent activity
+            - generic [ref=e606]:
+              - generic [ref=e608]:
+                - img [ref=e609]
+                - paragraph [ref=e614]: CoverAgent opened a PR with 12 new tests for auth.service.ts
+                - generic [ref=e615]: 2m ago
+              - generic [ref=e617]:
+                - img [ref=e618]
+                - paragraph [ref=e620]: "jayden merged PR #1287 \"Add checkout validation and error handling\""
+                - generic [ref=e621]: 1h ago
+              - generic [ref=e623]:
+                - img [ref=e624]
+                - paragraph [ref=e627]: Coverage gate passed on main
+                - generic [ref=e628]: 1h ago
+          - generic [ref=e630]:
+            - generic [ref=e633]: Ask CoverAgent
+            - generic [ref=e635]:
+              - generic [ref=e636]:
+                - button "Why did coverage drop in payment module?" [ref=e637] [cursor=pointer]:
+                  - generic [ref=e638]: Why did coverage drop in payment module?
+                - button "Show me high risk gaps" [ref=e639] [cursor=pointer]:
+                  - generic [ref=e640]: Show me high risk gaps
+                - button "What tests are flaky?" [ref=e641] [cursor=pointer]:
+                  - generic [ref=e642]: What tests are flaky?
+              - generic [ref=e645]:
+                - img [ref=e647]
+                - paragraph [ref=e649]: Coverage is up 2.7% this week. The payment module is the highest-value target for the next generated test run.
+              - generic [ref=e650]:
+                - generic [ref=e652]:
+                  - textbox "Ask anything about your coverage..." [ref=e653]
+                  - group
+                - button [ref=e654] [cursor=pointer]:
+                  - img [ref=e655]
+  - alert [ref=e658]

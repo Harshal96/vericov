@@ -1,0 +1,196 @@
+- generic [active] [ref=e1]:
+  - main [ref=e3]:
+    - generic [ref=e4]:
+      - button "Toggle navigation" [ref=e5]:
+        - img
+        - generic [ref=e6]: Toggle Sidebar
+      - button "Open command palette" [ref=e7]:
+        - img
+      - generic [ref=e8]:
+        - button "Notifications" [ref=e9]:
+          - img
+        - button "Toggle theme" [ref=e11]:
+          - img
+          - img
+        - button "Customize appearance" [ref=e12]:
+          - img
+        - button "Open profile menu" [ref=e13] [cursor=pointer]:
+          - generic [ref=e15]: TB
+    - main [ref=e16]:
+      - generic [ref=e17]:
+        - generic [ref=e18]:
+          - heading "Dashboard" [level=1] [ref=e19]
+          - generic [ref=e20]:
+            - button [ref=e21]:
+              - img
+            - button [ref=e22]:
+              - img
+        - generic [ref=e23]:
+          - generic [ref=e24]:
+            - generic [ref=e25]:
+              - generic [ref=e26]: Team Members
+              - generic [ref=e27]: Invite your team members to collaborate.
+            - generic [ref=e28]:
+              - generic [ref=e29]:
+                - generic [ref=e31]: TB
+                - generic [ref=e32]:
+                  - generic [ref=e33]: Toby Belhome
+                  - generic [ref=e34]: contact@bundui.io
+                - combobox [ref=e35]:
+                  - img
+                - combobox [ref=e36]
+              - generic [ref=e37]:
+                - generic [ref=e39]: JL
+                - generic [ref=e40]:
+                  - generic [ref=e41]: Jackson Lee
+                  - generic [ref=e42]: pre@example.com
+                - combobox [ref=e43]:
+                  - img
+                - combobox [ref=e44]
+              - generic [ref=e45]:
+                - generic [ref=e47]: OM
+                - generic [ref=e48]:
+                  - generic [ref=e49]: Hally Gray
+                  - generic [ref=e50]: hally@site.com
+                - combobox [ref=e51]:
+                  - img
+                - combobox [ref=e52]
+          - generic [ref=e53]:
+            - generic [ref=e55]: Subscriptions
+            - generic [ref=e56]:
+              - generic [ref=e57]: "+4850"
+              - generic [ref=e58]: +180.1% from last month
+              - generic [ref=e62]:
+                - generic [ref=e63]: "240"
+                - generic [ref=e64]: "300"
+                - generic [ref=e65]: "200"
+                - generic [ref=e66]: "278"
+                - generic [ref=e67]: "189"
+                - generic [ref=e68]: "239"
+                - generic [ref=e69]: "278"
+                - generic [ref=e70]: "189"
+          - generic [ref=e71]:
+            - generic [ref=e73]: Total Revenue
+            - generic [ref=e74]:
+              - generic [ref=e75]: $15,231.89
+              - generic [ref=e76]: +20.1% from last month
+          - generic [ref=e80]:
+            - generic [ref=e81]:
+              - generic [ref=e83]: SD
+              - generic [ref=e84]:
+                - generic [ref=e85]: Sofia Davis
+                - generic [ref=e86]: m@example.com
+              - button "Add contact" [ref=e87]:
+                - img
+            - generic [ref=e88]:
+              - generic [ref=e89]:
+                - generic [ref=e90]: Hi, how can I help you today?
+                - generic [ref=e91]: Hey, I'm having trouble with my account.
+                - generic [ref=e92]: What seems to be the problem?
+                - generic [ref=e93]: I can't log in.
+              - generic [ref=e94]:
+                - textbox "Type your message..." [ref=e95]
+                - button "Send message" [ref=e96]:
+                  - img
+          - generic [ref=e98]:
+            - generic [ref=e99]:
+              - generic [ref=e100]: Exercise Minutes
+              - generic [ref=e101]: Your exercise minutes are ahead of where you normally are.
+            - button "Export" [ref=e103]:
+              - img
+              - text: Export
+          - generic [ref=e108]:
+            - generic [ref=e109]:
+              - generic [ref=e110]:
+                - generic [ref=e111]: Latest Payments
+                - generic [ref=e112]: See recent payments from your customers here.
+              - textbox "Filter payments..." [ref=e114]
+            - generic [ref=e115]:
+              - table [ref=e118]:
+                - rowgroup [ref=e119]:
+                  - row "Select all visible payments Customer Email Amount Status" [ref=e120]:
+                    - columnheader "Select all visible payments" [ref=e121]:
+                      - checkbox "Select all visible payments" [ref=e122]
+                      - checkbox
+                    - columnheader "Customer" [ref=e123]
+                    - columnheader "Email" [ref=e124]
+                    - columnheader "Amount" [ref=e125]
+                    - columnheader "Status" [ref=e126]
+                    - columnheader [ref=e127]
+                - rowgroup [ref=e128]:
+                  - row "Select Kenneth Thompson Kenneth Thompson ken99@yahoo.com $316 Success Payment actions for Kenneth Thompson" [ref=e129]:
+                    - cell "Select Kenneth Thompson" [ref=e130]:
+                      - checkbox "Select Kenneth Thompson" [ref=e131]
+                      - checkbox
+                    - cell "Kenneth Thompson" [ref=e132]
+                    - cell "ken99@yahoo.com" [ref=e133]
+                    - cell "$316" [ref=e134]
+                    - cell "Success" [ref=e135]:
+                      - generic [ref=e136]: Success
+                    - cell "Payment actions for Kenneth Thompson" [ref=e137]:
+                      - button "Payment actions for Kenneth Thompson" [ref=e138]:
+                        - img
+                  - row "Select Abraham Lincoln Abraham Lincoln abe45@gmail.com $242 Success Payment actions for Abraham Lincoln" [ref=e139]:
+                    - cell "Select Abraham Lincoln" [ref=e140]:
+                      - checkbox "Select Abraham Lincoln" [ref=e141]
+                      - checkbox
+                    - cell "Abraham Lincoln" [ref=e142]
+                    - cell "abe45@gmail.com" [ref=e143]
+                    - cell "$242" [ref=e144]
+                    - cell "Success" [ref=e145]:
+                      - generic [ref=e146]: Success
+                    - cell "Payment actions for Abraham Lincoln" [ref=e147]:
+                      - button "Payment actions for Abraham Lincoln" [ref=e148]:
+                        - img
+                  - row "Select Monserrat Rodriguez Monserrat Rodriguez monserrat44@gmail.com $837 Processing Payment actions for Monserrat Rodriguez" [ref=e149]:
+                    - cell "Select Monserrat Rodriguez" [ref=e150]:
+                      - checkbox "Select Monserrat Rodriguez" [ref=e151]
+                      - checkbox
+                    - cell "Monserrat Rodriguez" [ref=e152]
+                    - cell "monserrat44@gmail.com" [ref=e153]
+                    - cell "$837" [ref=e154]
+                    - cell "Processing" [ref=e155]:
+                      - generic [ref=e156]: Processing
+                    - cell "Payment actions for Monserrat Rodriguez" [ref=e157]:
+                      - button "Payment actions for Monserrat Rodriguez" [ref=e158]:
+                        - img
+              - generic [ref=e159]:
+                - generic [ref=e160]: 0 of 3 selected
+                - generic [ref=e161]: •
+                - generic [ref=e162]: "Visible total: $1,395"
+                - generic [ref=e163]: •
+                - generic [ref=e164]: "Selected total: $0"
+          - generic [ref=e165]:
+            - generic [ref=e166]:
+              - generic [ref=e167]: Payment Method
+              - generic [ref=e168]: Add a new payment method to your account.
+            - generic [ref=e170]:
+              - tablist [ref=e172]:
+                - tab "Card" [selected] [ref=e173]:
+                  - img
+                  - generic [ref=e174]: Card
+                - tab "Paypal" [ref=e175]:
+                  - img
+                  - generic [ref=e176]: Paypal
+                - tab "Apple" [ref=e177]:
+                  - img
+                  - generic [ref=e178]: Apple
+              - generic [ref=e179]:
+                - generic [ref=e180]: Name on the card
+                - textbox "Name on the card" [ref=e181]
+              - generic [ref=e182]:
+                - generic [ref=e183]: Card number
+                - textbox "Card number" [ref=e184]:
+                  - /placeholder: 4242 4242 4242 4242
+              - generic [ref=e185]:
+                - generic [ref=e186]:
+                  - generic [ref=e187]: Expires
+                  - textbox "Expires" [ref=e188]:
+                    - /placeholder: MM/YY
+                - generic [ref=e189]:
+                  - generic [ref=e190]: CVC
+                  - textbox "CVC" [ref=e191]
+              - button "Continue" [ref=e192]
+  - region "Notifications alt+T"
+  - button "Open Next.js Dev Tools" [ref=e198] [cursor=pointer]:
+    - img [ref=e199]

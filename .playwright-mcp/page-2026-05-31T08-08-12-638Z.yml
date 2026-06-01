@@ -1,0 +1,323 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - generic [ref=e5]:
+      - list [ref=e7]:
+        - listitem [ref=e8]:
+          - button "S Shadcn UI Kit" [ref=e9]:
+            - generic [ref=e11]: S
+            - generic [ref=e12]: Shadcn UI Kit
+            - img [ref=e13]
+      - generic [ref=e15]:
+        - generic [ref=e16]:
+          - generic [ref=e17]: Dashboards
+          - list [ref=e19]:
+            - listitem [ref=e20]:
+              - link "Classic Dashboard" [ref=e21] [cursor=pointer]:
+                - /url: /dashboard/default
+                - img [ref=e22]
+                - generic [ref=e25]: Classic Dashboard
+            - listitem [ref=e26]:
+              - link "E-commerce" [ref=e27] [cursor=pointer]:
+                - /url: /dashboard/ecommerce
+                - img [ref=e28]
+                - generic [ref=e31]: E-commerce
+            - listitem [ref=e32]:
+              - link "Payment Dashboard" [ref=e33] [cursor=pointer]:
+                - /url: /dashboard/payments
+                - img [ref=e34]
+                - generic [ref=e36]: Payment Dashboard
+            - listitem [ref=e37]:
+              - link "Hotel Dashboard" [ref=e38] [cursor=pointer]:
+                - /url: /dashboard/hotel
+                - img [ref=e39]
+                - generic [ref=e43]: Hotel Dashboard
+            - listitem [ref=e44]:
+              - link "Project Management" [ref=e45] [cursor=pointer]:
+                - /url: /dashboard/projects
+                - img [ref=e46]
+                - generic [ref=e48]: Project Management
+            - listitem [ref=e49]:
+              - link "Sales" [ref=e50] [cursor=pointer]:
+                - /url: /dashboard/sales
+                - img [ref=e51]
+                - generic [ref=e54]: Sales
+            - listitem [ref=e55]:
+              - link "CRM" [ref=e56] [cursor=pointer]:
+                - /url: /dashboard/crm
+                - img [ref=e57]
+                - generic [ref=e60]: CRM
+            - listitem [ref=e61]:
+              - link "Website Analytics" [ref=e62] [cursor=pointer]:
+                - /url: /dashboard/website-analytics
+                - img [ref=e63]
+                - generic [ref=e65]: Website Analytics
+            - listitem [ref=e66]:
+              - link "File Manager" [ref=e67] [cursor=pointer]:
+                - /url: /dashboard/file-manager
+                - img [ref=e68]
+                - generic [ref=e70]: File Manager
+            - listitem [ref=e71]:
+              - link "Crypto" [ref=e72] [cursor=pointer]:
+                - /url: /dashboard/crypto
+                - img [ref=e73]
+                - generic [ref=e77]: Crypto
+            - listitem [ref=e78]:
+              - link "Academy/School" [ref=e79] [cursor=pointer]:
+                - /url: /dashboard/academy
+                - img [ref=e80]
+                - generic [ref=e83]: Academy/School
+            - listitem [ref=e84]:
+              - link "Hospital Management" [ref=e85] [cursor=pointer]:
+                - /url: /dashboard/hospital
+                - img [ref=e86]
+                - generic [ref=e89]: Hospital Management
+            - listitem [ref=e90]:
+              - link "Finance Dashboard" [ref=e91] [cursor=pointer]:
+                - /url: /dashboard/finance
+                - img [ref=e92]
+                - generic [ref=e94]: Finance Dashboard
+        - generic [ref=e95]:
+          - generic [ref=e96]: Apps
+          - list [ref=e98]:
+            - listitem [ref=e99]:
+              - link "Kanban" [ref=e100] [cursor=pointer]:
+                - /url: /dashboard/apps/kanban
+                - img [ref=e101]
+                - generic [ref=e102]: Kanban
+            - listitem [ref=e103]:
+              - link "Notes" [ref=e104] [cursor=pointer]:
+                - /url: /dashboard/apps/notes
+                - img [ref=e105]
+                - generic [ref=e108]: Notes
+              - generic: "8"
+            - listitem [ref=e109]:
+              - link "Chats" [ref=e110] [cursor=pointer]:
+                - /url: /dashboard/apps/chat
+                - img [ref=e111]
+                - generic [ref=e113]: Chats
+              - generic: "5"
+            - listitem [ref=e114]:
+              - link "Social Media" [ref=e115] [cursor=pointer]:
+                - /url: /dashboard/apps/social-media
+                - img [ref=e116]
+                - generic [ref=e119]: Social Media
+              - generic:
+                - generic: New
+            - listitem [ref=e120]:
+              - link "Mail" [ref=e121] [cursor=pointer]:
+                - /url: /dashboard/apps/mail
+                - img [ref=e122]
+                - generic [ref=e125]: Mail
+        - generic [ref=e126]:
+          - generic [ref=e127]: Unlock Everything
+          - paragraph [ref=e128]: Get instant access to all premium dashboards, templates, and UI components. Pay once, use forever.
+          - link "Get Full Access" [ref=e129] [cursor=pointer]:
+            - /url: /pricing
+            - text: Get Full Access
+      - list [ref=e132]:
+        - listitem [ref=e133]:
+          - button "TB Toby Belhome hello@tobybelhome.com" [ref=e134]:
+            - generic [ref=e136]: TB
+            - generic [ref=e137]:
+              - generic [ref=e138]: Toby Belhome
+              - generic [ref=e139]: hello@tobybelhome.com
+            - img [ref=e140]
+    - main [ref=e142]:
+      - generic [ref=e143]:
+        - button "Toggle navigation" [ref=e144]:
+          - img
+          - generic [ref=e145]: Toggle Sidebar
+        - button "Search... ⌘ K" [ref=e146] [cursor=pointer]:
+          - img [ref=e147]
+          - generic [ref=e150]: Search...
+          - generic [ref=e151]: ⌘ K
+        - generic [ref=e152]:
+          - link "Get Pro" [ref=e153] [cursor=pointer]:
+            - /url: /pricing
+          - button "Notifications" [ref=e154]:
+            - img
+          - button "Toggle theme" [ref=e156]:
+            - img
+            - img
+          - button "Customize appearance" [ref=e157]:
+            - img
+          - button "Open profile menu" [ref=e158] [cursor=pointer]:
+            - generic [ref=e160]: TB
+      - main [ref=e161]:
+        - generic [ref=e162]:
+          - generic [ref=e163]:
+            - heading "Dashboard" [level=1] [ref=e164]
+            - generic [ref=e165]:
+              - button "01 May 2026 - 28 May 2026" [ref=e166]:
+                - img
+                - generic [ref=e167]: 01 May 2026 - 28 May 2026
+              - button "Download" [ref=e168]:
+                - img
+                - generic [ref=e169]: Download
+          - generic [ref=e170]:
+            - generic [ref=e171]:
+              - generic [ref=e172]:
+                - generic [ref=e173]: Team Members
+                - generic [ref=e174]: Invite your team members to collaborate.
+              - generic [ref=e175]:
+                - generic [ref=e176]:
+                  - generic [ref=e178]: TB
+                  - generic [ref=e179]:
+                    - generic [ref=e180]: Toby Belhome
+                    - generic [ref=e181]: contact@bundui.io
+                  - combobox [ref=e182]:
+                    - img
+                  - combobox [ref=e183]
+                - generic [ref=e184]:
+                  - generic [ref=e186]: JL
+                  - generic [ref=e187]:
+                    - generic [ref=e188]: Jackson Lee
+                    - generic [ref=e189]: pre@example.com
+                  - combobox [ref=e190]:
+                    - img
+                  - combobox [ref=e191]
+                - generic [ref=e192]:
+                  - generic [ref=e194]: OM
+                  - generic [ref=e195]:
+                    - generic [ref=e196]: Hally Gray
+                    - generic [ref=e197]: hally@site.com
+                  - combobox [ref=e198]:
+                    - img
+                  - combobox [ref=e199]
+            - generic [ref=e200]:
+              - generic [ref=e202]: Subscriptions
+              - generic [ref=e203]:
+                - generic [ref=e204]: "+4850"
+                - generic [ref=e205]: +180.1% from last month
+                - generic [ref=e209]:
+                  - generic [ref=e210]: "240"
+                  - generic [ref=e211]: "300"
+                  - generic [ref=e212]: "200"
+                  - generic [ref=e213]: "278"
+                  - generic [ref=e214]: "189"
+                  - generic [ref=e215]: "239"
+                  - generic [ref=e216]: "278"
+                  - generic [ref=e217]: "189"
+            - generic [ref=e218]:
+              - generic [ref=e220]: Total Revenue
+              - generic [ref=e221]:
+                - generic [ref=e222]: $15,231.89
+                - generic [ref=e223]: +20.1% from last month
+            - generic [ref=e227]:
+              - generic [ref=e228]:
+                - generic [ref=e230]: SD
+                - generic [ref=e231]:
+                  - generic [ref=e232]: Sofia Davis
+                  - generic [ref=e233]: m@example.com
+                - button "Add contact" [ref=e234]:
+                  - img
+              - generic [ref=e235]:
+                - generic [ref=e236]:
+                  - generic [ref=e237]: Hi, how can I help you today?
+                  - generic [ref=e238]: Hey, I'm having trouble with my account.
+                  - generic [ref=e239]: What seems to be the problem?
+                  - generic [ref=e240]: I can't log in.
+                - generic [ref=e241]:
+                  - textbox "Type your message..." [ref=e242]
+                  - button "Send message" [ref=e243]:
+                    - img
+            - generic [ref=e245]:
+              - generic [ref=e246]:
+                - generic [ref=e247]: Exercise Minutes
+                - generic [ref=e248]: Your exercise minutes are ahead of where you normally are.
+              - button "Export" [ref=e249]:
+                - img
+                - text: Export
+            - generic [ref=e254]:
+              - generic [ref=e255]:
+                - generic [ref=e256]:
+                  - generic [ref=e257]: Latest Payments
+                  - generic [ref=e258]: See recent payments from your customers here.
+                - textbox "Filter payments..." [ref=e259]
+              - generic [ref=e260]:
+                - table [ref=e263]:
+                  - rowgroup [ref=e264]:
+                    - row "Select all visible payments Customer Email Amount Status" [ref=e265]:
+                      - columnheader "Select all visible payments" [ref=e266]:
+                        - checkbox "Select all visible payments" [ref=e267]
+                        - checkbox
+                      - columnheader "Customer" [ref=e268]
+                      - columnheader "Email" [ref=e269]
+                      - columnheader "Amount" [ref=e270]
+                      - columnheader "Status" [ref=e271]
+                      - columnheader [ref=e272]
+                  - rowgroup [ref=e273]:
+                    - row "Select Kenneth Thompson Kenneth Thompson ken99@yahoo.com $316 Success Payment actions for Kenneth Thompson" [ref=e274]:
+                      - cell "Select Kenneth Thompson" [ref=e275]:
+                        - checkbox "Select Kenneth Thompson" [ref=e276]
+                        - checkbox
+                      - cell "Kenneth Thompson" [ref=e277]
+                      - cell "ken99@yahoo.com" [ref=e278]
+                      - cell "$316" [ref=e279]
+                      - cell "Success" [ref=e280]:
+                        - generic [ref=e281]: Success
+                      - cell "Payment actions for Kenneth Thompson" [ref=e282]:
+                        - button "Payment actions for Kenneth Thompson" [ref=e283]:
+                          - img
+                    - row "Select Abraham Lincoln Abraham Lincoln abe45@gmail.com $242 Success Payment actions for Abraham Lincoln" [ref=e284]:
+                      - cell "Select Abraham Lincoln" [ref=e285]:
+                        - checkbox "Select Abraham Lincoln" [ref=e286]
+                        - checkbox
+                      - cell "Abraham Lincoln" [ref=e287]
+                      - cell "abe45@gmail.com" [ref=e288]
+                      - cell "$242" [ref=e289]
+                      - cell "Success" [ref=e290]:
+                        - generic [ref=e291]: Success
+                      - cell "Payment actions for Abraham Lincoln" [ref=e292]:
+                        - button "Payment actions for Abraham Lincoln" [ref=e293]:
+                          - img
+                    - row "Select Monserrat Rodriguez Monserrat Rodriguez monserrat44@gmail.com $837 Processing Payment actions for Monserrat Rodriguez" [ref=e294]:
+                      - cell "Select Monserrat Rodriguez" [ref=e295]:
+                        - checkbox "Select Monserrat Rodriguez" [ref=e296]
+                        - checkbox
+                      - cell "Monserrat Rodriguez" [ref=e297]
+                      - cell "monserrat44@gmail.com" [ref=e298]
+                      - cell "$837" [ref=e299]
+                      - cell "Processing" [ref=e300]:
+                        - generic [ref=e301]: Processing
+                      - cell "Payment actions for Monserrat Rodriguez" [ref=e302]:
+                        - button "Payment actions for Monserrat Rodriguez" [ref=e303]:
+                          - img
+                - generic [ref=e304]:
+                  - generic [ref=e305]: 0 of 3 selected
+                  - generic [ref=e306]: •
+                  - generic [ref=e307]: "Visible total: $1,395"
+                  - generic [ref=e308]: •
+                  - generic [ref=e309]: "Selected total: $0"
+            - generic [ref=e310]:
+              - generic [ref=e311]:
+                - generic [ref=e312]: Payment Method
+                - generic [ref=e313]: Add a new payment method to your account.
+              - generic [ref=e315]:
+                - tablist [ref=e317]:
+                  - tab "Card" [selected] [ref=e318]:
+                    - img
+                    - text: Card
+                  - tab "Paypal" [ref=e319]:
+                    - img
+                    - text: Paypal
+                  - tab "Apple" [ref=e320]:
+                    - img
+                    - text: Apple
+                - generic [ref=e321]:
+                  - generic [ref=e322]: Name on the card
+                  - textbox "Name on the card" [ref=e323]
+                - generic [ref=e324]:
+                  - generic [ref=e325]: Card number
+                  - textbox "Card number" [ref=e326]:
+                    - /placeholder: 4242 4242 4242 4242
+                - generic [ref=e327]:
+                  - generic [ref=e328]:
+                    - generic [ref=e329]: Expires
+                    - textbox "Expires" [ref=e330]:
+                      - /placeholder: MM/YY
+                  - generic [ref=e331]:
+                    - generic [ref=e332]: CVC
+                    - textbox "CVC" [ref=e333]
+                - button "Continue" [ref=e334]
+  - region "Notifications alt+T"
