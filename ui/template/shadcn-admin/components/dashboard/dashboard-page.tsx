@@ -2,27 +2,25 @@
 
 import * as React from "react";
 import {
+  Apple,
+  BadgeDollarSign,
   CalendarDays,
-  CheckCircle2,
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsUpDown,
   CreditCard,
   Download,
   Ellipsis,
   FileDown,
   Plus,
   SendHorizontal,
-  WalletCards,
 } from "lucide-react";
-import {
-  Bar,
-  BarChart,
-  Line,
-  LineChart,
-  XAxis,
-  YAxis,
-} from "recharts";
+import { Line, LineChart, XAxis, YAxis } from "recharts";
 import { toast } from "sonner";
 
 import { appendChatMessage } from "@/lib/chat";
+import { cn } from "@/lib/utils";
 import {
   exerciseData,
   filterPayments,
@@ -62,6 +60,17 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
+  Command,
+  CommandGroup,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -96,18 +105,95 @@ const exerciseChartConfig = {
   },
 } satisfies ChartConfig;
 
-const subscriptionsChartConfig = {
-  value: {
-    label: "Subscriptions",
-    color: "var(--chart-1)",
-  },
-} satisfies ChartConfig;
+const roleOptions = [
+  { value: "Viewer", description: "Can view and comment." },
+  { value: "Developer", description: "Can view, comment and edit." },
+  { value: "Billing", description: "Can view, comment and manage billing." },
+  { value: "Owner", description: "Admin-level access to all resources." },
+] as const;
+
+const datePresets = [
+  "Today",
+  "Yesterday",
+  "This Week",
+  "Last 7 Days",
+  "Last 28 Days",
+  "This Month",
+  "Last Month",
+  "This Year",
+];
+
+const calendarDays = [
+  "31",
+  "1",
+  "2",
+  "3",
+  "4",
+  "5",
+  "6",
+  "7",
+  "8",
+  "9",
+  "10",
+  "11",
+  "12",
+  "13",
+  "14",
+  "15",
+  "16",
+  "17",
+  "18",
+  "19",
+  "20",
+  "21",
+  "22",
+  "23",
+  "24",
+  "25",
+  "26",
+  "27",
+  "28",
+  "29",
+  "30",
+  "1",
+  "2",
+  "3",
+  "4",
+];
+
+const monthOptions = [
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
+];
+
+const yearOptions = [
+  "2026",
+  "2027",
+  "2028",
+  "2029",
+  "2030",
+  "2031",
+  "2032",
+  "2033",
+  "2034",
+  "2035",
+];
 
 export function DashboardPage() {
   return (
-    <div className="mx-auto grid max-w-[1134px] min-w-0 gap-4">
+    <div className="grid w-full min-w-0 gap-4">
       <DashboardHeader />
-      <section className="grid min-w-0 grid-cols-1 gap-4 lg:grid-cols-3">
+      <section className="grid w-full min-w-0 grid-cols-1 gap-4 lg:grid-cols-3">
         <TeamMembersCard />
         <SubscriptionsCard />
         <RevenueCard />
@@ -127,14 +213,7 @@ function DashboardHeader() {
         Dashboard
       </h1>
       <div className="ml-auto flex items-center gap-2">
-        <Button
-          className="h-9 gap-2 px-3"
-          variant="outline"
-          onClick={() => toast("Date range picker ready for wiring.")}
-        >
-          <CalendarDays className="size-4" />
-          <span className="hidden sm:inline">01 May 2026 - 28 May 2026</span>
-        </Button>
+        <DateRangePopover />
         <Button
           className="h-9 gap-2 bg-primary px-3 text-primary-foreground hover:bg-primary/90"
           onClick={() => toast.success("Dashboard export started.")}
@@ -144,6 +223,64 @@ function DashboardHeader() {
         </Button>
       </div>
     </div>
+  );
+}
+
+function DateRangePopover() {
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button className="h-9 gap-2 px-3" variant="outline">
+          <CalendarDays className="size-4" />
+          <span className="hidden sm:inline">
+            05 May 2026 - 01 Jun 2026
+          </span>
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-auto p-4">
+        <div className="grid grid-cols-[120px_1fr] gap-4">
+          <div className="grid content-start gap-1 border-r pr-3">
+            {datePresets.map((preset) => (
+              <button
+                className="rounded-md px-2 py-1.5 text-left text-sm transition-colors hover:bg-accent"
+                key={preset}
+                type="button"
+              >
+                {preset}
+              </button>
+            ))}
+          </div>
+          <div className="w-[244px]">
+            <div className="mb-3 flex items-center justify-center gap-2 text-sm font-medium">
+              June 2026
+            </div>
+            <div className="grid grid-cols-7 gap-1 text-center text-xs text-muted-foreground">
+              {["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"].map((day) => (
+                <div className="h-7 leading-7" key={day}>
+                  {day}
+                </div>
+              ))}
+            </div>
+            <div className="grid grid-cols-7 gap-1 text-center text-sm">
+              {calendarDays.map((day, index) => (
+                <button
+                  className={cn(
+                    "h-8 rounded-md transition-colors hover:bg-accent",
+                    index === 0 || index > 30
+                      ? "text-muted-foreground"
+                      : "text-foreground",
+                  )}
+                  key={`${day}-${index}`}
+                  type="button"
+                >
+                  {day}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      </PopoverContent>
+    </Popover>
   );
 }
 
@@ -168,20 +305,67 @@ function TeamMembersCard() {
                 {member.email}
               </div>
             </div>
-            <Select defaultValue={member.role}>
-              <SelectTrigger className="h-9 w-[126px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="Viewer">Viewer</SelectItem>
-                <SelectItem value="Developer">Developer</SelectItem>
-                <SelectItem value="Admin">Admin</SelectItem>
-              </SelectContent>
-            </Select>
+            <RoleCombobox defaultValue={member.role} />
           </div>
         ))}
       </CardContent>
     </Card>
+  );
+}
+
+function RoleCombobox({
+  defaultValue,
+}: {
+  defaultValue: (typeof roleOptions)[number]["value"];
+}) {
+  const [open, setOpen] = React.useState(false);
+  const [value, setValue] = React.useState(defaultValue);
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          aria-expanded={open}
+          className="h-9 min-w-[102px] justify-between px-3 font-normal data-[state=open]:bg-background"
+          role="combobox"
+          variant="outline"
+        >
+          {value}
+          <ChevronsUpDown className="size-4 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-72 p-0">
+        <Command>
+          <CommandList>
+            <CommandGroup>
+              {roleOptions.map((role) => (
+                <CommandItem
+                  className="items-start gap-3 px-3 py-3"
+                  key={role.value}
+                  onSelect={() => {
+                    setValue(role.value);
+                    setOpen(false);
+                  }}
+                >
+                  <Check
+                    className={cn(
+                      "mt-0.5 size-4",
+                      value === role.value ? "opacity-100" : "opacity-0",
+                    )}
+                  />
+                  <span className="grid gap-1">
+                    <span className="font-medium">{role.value}</span>
+                    <span className="text-xs text-muted-foreground">
+                      {role.description}
+                    </span>
+                  </span>
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
   );
 }
 
@@ -196,25 +380,15 @@ function SubscriptionsCard() {
         <div className="mt-1 text-sm text-muted-foreground">
           <span className="text-emerald-600">+180.1%</span> from last month
         </div>
-        <ChartContainer
-          className="mt-4 h-[112px] w-full"
-          config={subscriptionsChartConfig}
-        >
-          <BarChart accessibilityLayer data={subscriptionBars}>
-            <XAxis dataKey="label" hide />
-            <YAxis hide />
-            <ChartTooltip content={<ChartTooltipContent hideLabel />} />
-            <Bar
-              dataKey="value"
-              fill="var(--color-value)"
-              radius={[4, 4, 4, 4]}
-              barSize={30}
-            />
-          </BarChart>
-        </ChartContainer>
-        <div className="mt-1 grid grid-cols-8 gap-1 text-center text-xs">
+        <div className="mt-7 grid grid-cols-8 items-end gap-2">
           {subscriptionBars.map((bar) => (
-            <span key={bar.label}>{bar.value}</span>
+            <div className="grid justify-items-center gap-2" key={bar.label}>
+              <span className="text-xs">{bar.value}</span>
+              <span
+                className="w-8 rounded-sm bg-primary"
+                style={{ height: `${Math.max(42, bar.value / 3.2)}px` }}
+              />
+            </div>
           ))}
         </div>
       </CardContent>
@@ -327,14 +501,18 @@ function ExerciseCard() {
           </CardDescription>
         </div>
         <CardAction>
-          <Button
-            className="h-9 gap-2"
-            variant="outline"
-            onClick={() => toast.success("Exercise chart exported.")}
-          >
-            <FileDown className="size-4" />
-            Export
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button className="h-9 gap-2" variant="outline">
+                <FileDown className="size-4" />
+                Export
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem>Excel</DropdownMenuItem>
+              <DropdownMenuItem>PDF</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </CardAction>
       </CardHeader>
       <CardContent>
@@ -371,6 +549,7 @@ function PaymentsCard() {
   const [query, setQuery] = React.useState("");
   const [selectedIds, setSelectedIds] = React.useState<Set<string>>(new Set());
   const filteredPayments = filterPayments(payments, query);
+  const visiblePayments = filteredPayments.slice(0, 8);
   const summary = summarizePayments(filteredPayments, selectedIds);
 
   function togglePayment(paymentId: string) {
@@ -388,7 +567,7 @@ function PaymentsCard() {
   function toggleVisiblePayments(checked: boolean) {
     setSelectedIds((current) => {
       const next = new Set(current);
-      filteredPayments.forEach((payment) => {
+      visiblePayments.forEach((payment) => {
         if (checked) {
           next.add(payment.id);
         } else {
@@ -401,7 +580,7 @@ function PaymentsCard() {
 
   const allVisibleSelected =
     filteredPayments.length > 0 &&
-    filteredPayments.every((payment) => selectedIds.has(payment.id));
+    visiblePayments.every((payment) => selectedIds.has(payment.id));
 
   return (
     <Card className="min-h-[600px] gap-0 overflow-hidden lg:col-span-2">
@@ -421,14 +600,14 @@ function PaymentsCard() {
           />
         </CardAction>
       </CardHeader>
-      <CardContent>
+      <CardContent className="pt-4">
         <div className="overflow-x-auto rounded-lg border">
           <Table className="min-w-[640px]">
             <TableHeader>
               <TableRow>
                 <TableHead className="w-10">
                   <Checkbox
-                    aria-label="Select all visible payments"
+                    aria-label="Select all"
                     checked={allVisibleSelected}
                     onCheckedChange={(checked) =>
                       toggleVisiblePayments(checked === true)
@@ -443,7 +622,7 @@ function PaymentsCard() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredPayments.map((payment) => (
+              {visiblePayments.map((payment) => (
                 <PaymentRow
                   isSelected={selectedIds.has(payment.id)}
                   key={payment.id}
@@ -454,14 +633,18 @@ function PaymentsCard() {
             </TableBody>
           </Table>
         </div>
-        <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+        <div className="mt-4 flex items-center gap-3 text-sm text-muted-foreground">
           <span>
-            {summary.selected} of {summary.total} selected
+            {summary.selected} of {summary.total} row(s) selected.
           </span>
-          <span>•</span>
-          <span>Visible total: ${summary.visibleTotal.toLocaleString()}</span>
-          <span>•</span>
-          <span>Selected total: ${summary.selectedTotal.toLocaleString()}</span>
+          <div className="ml-auto flex items-center gap-2">
+            <Button aria-label="Previous page" size="icon-sm" variant="outline">
+              <ChevronLeft className="size-4" />
+            </Button>
+            <Button aria-label="Next page" size="icon-sm" variant="outline">
+              <ChevronRight className="size-4" />
+            </Button>
+          </div>
         </div>
       </CardContent>
     </Card>
@@ -497,14 +680,14 @@ function PaymentRow({
       <TableCell>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button aria-label={`Payment actions for ${payment.customer}`} size="icon" variant="ghost">
+            <Button aria-label="Open menu" size="icon-sm" variant="ghost">
               <Ellipsis className="size-4" />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuItem>Copy payment ID</DropdownMenuItem>
-            <DropdownMenuItem>View customer</DropdownMenuItem>
+            <DropdownMenuItem>View details</DropdownMenuItem>
             <DropdownMenuItem>Download receipt</DropdownMenuItem>
+            <DropdownMenuItem>Contact customer</DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </TableCell>
@@ -516,7 +699,7 @@ function StatusBadge({ status }: { status: Payment["status"] }) {
   const statusClassName: Record<Payment["status"], string> = {
     Success: "border-emerald-300 bg-emerald-50 text-emerald-700",
     Processing: "border-blue-300 bg-blue-50 text-blue-700",
-    Failed: "border-red-300 bg-red-50 text-red-700",
+    Failed: "border-red-600 bg-red-600 text-white",
   };
 
   return (
@@ -530,8 +713,10 @@ function PaymentMethodCard() {
   const [method, setMethod] = React.useState("card");
   const [form, setForm] = React.useState({
     nameOnCard: "",
+    city: "",
     cardNumber: "",
-    expiry: "",
+    month: "",
+    year: "",
     cvc: "",
   });
   const [errors, setErrors] = React.useState<Record<string, string>>({});
@@ -569,17 +754,17 @@ function PaymentMethodCard() {
           Add a new payment method to your account.
         </CardDescription>
       </CardHeader>
-      <CardContent>
-        <form className="grid gap-4" onSubmit={submitPaymentMethod}>
+      <CardContent className="pt-4">
+        <form className="grid gap-6" onSubmit={submitPaymentMethod}>
           <Tabs onValueChange={setMethod} value={method}>
             <TabsList className="grid !h-[94px] w-full grid-cols-3 gap-2 bg-transparent p-0">
               <PaymentMethodTab icon={<CreditCard className="size-6" />} value="card">
                 Card
               </PaymentMethodTab>
-              <PaymentMethodTab icon={<WalletCards className="size-6" />} value="paypal">
+              <PaymentMethodTab icon={<BadgeDollarSign className="size-6" />} value="paypal">
                 Paypal
               </PaymentMethodTab>
-              <PaymentMethodTab icon={<CheckCircle2 className="size-6" />} value="apple">
+              <PaymentMethodTab icon={<Apple className="size-6" />} value="apple">
                 Apple
               </PaymentMethodTab>
             </TabsList>
@@ -594,26 +779,62 @@ function PaymentMethodCard() {
             <FieldError message={errors.nameOnCard} />
           </div>
           <div className="grid gap-2">
+            <Label htmlFor="city">City</Label>
+            <Input
+              id="city"
+              onChange={(event) => updateField("city", event.target.value)}
+              value={form.city}
+            />
+            <FieldError message={errors.city} />
+          </div>
+          <div className="grid gap-2">
             <Label htmlFor="cardNumber">Card number</Label>
             <Input
               id="cardNumber"
               inputMode="numeric"
               onChange={(event) => updateField("cardNumber", event.target.value)}
-              placeholder="4242 4242 4242 4242"
               value={form.cardNumber}
             />
             <FieldError message={errors.cardNumber} />
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-3 gap-3">
             <div className="grid gap-2">
-              <Label htmlFor="expiry">Expires</Label>
-              <Input
-                id="expiry"
-                onChange={(event) => updateField("expiry", event.target.value)}
-                placeholder="MM/YY"
-                value={form.expiry}
-              />
-              <FieldError message={errors.expiry} />
+              <Label htmlFor="month">Expires</Label>
+              <Select
+                onValueChange={(value) => updateField("month", value)}
+                value={form.month}
+              >
+                <SelectTrigger aria-label="Month" id="month" className="h-9 w-full">
+                  <SelectValue placeholder="Month" />
+                </SelectTrigger>
+                <SelectContent>
+                  {monthOptions.map((month) => (
+                    <SelectItem key={month} value={month}>
+                      {month}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <FieldError message={errors.month} />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="year">Year</Label>
+              <Select
+                onValueChange={(value) => updateField("year", value)}
+                value={form.year}
+              >
+                <SelectTrigger aria-label="Year" id="year" className="h-9 w-full">
+                  <SelectValue placeholder="Year" />
+                </SelectTrigger>
+                <SelectContent>
+                  {yearOptions.map((year) => (
+                    <SelectItem key={year} value={year}>
+                      {year}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <FieldError message={errors.year} />
             </div>
             <div className="grid gap-2">
               <Label htmlFor="cvc">CVC</Label>
@@ -621,6 +842,7 @@ function PaymentMethodCard() {
                 id="cvc"
                 inputMode="numeric"
                 onChange={(event) => updateField("cvc", event.target.value)}
+                placeholder="CVC"
                 value={form.cvc}
               />
               <FieldError message={errors.cvc} />

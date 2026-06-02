@@ -10,8 +10,10 @@ describe("payment method validation", () => {
     const result = validatePaymentMethod({
       method: "card",
       nameOnCard: "Toby Belhome",
+      city: "Austin",
       cardNumber: "4242 4242 4242 4242",
-      expiry: "09/29",
+      month: "September",
+      year: "2029",
       cvc: "123",
     });
 
@@ -22,8 +24,10 @@ describe("payment method validation", () => {
     const result = paymentMethodSchema.safeParse({
       method: "paypal",
       nameOnCard: "T",
+      city: "",
       cardNumber: "123",
-      expiry: "13/29",
+      month: "",
+      year: "",
       cvc: "1",
     });
 
@@ -31,8 +35,10 @@ describe("payment method validation", () => {
     if (!result.success) {
       expect(result.error.flatten().fieldErrors).toMatchObject({
         nameOnCard: expect.arrayContaining([expect.any(String)]),
+        city: expect.arrayContaining([expect.any(String)]),
         cardNumber: expect.arrayContaining([expect.any(String)]),
-        expiry: expect.arrayContaining([expect.any(String)]),
+        month: expect.arrayContaining([expect.any(String)]),
+        year: expect.arrayContaining([expect.any(String)]),
         cvc: expect.arrayContaining([expect.any(String)]),
       });
     }

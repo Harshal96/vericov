@@ -10,9 +10,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <SidebarProvider>
       <AppSidebar />
-      <SidebarInset className="min-w-0 overflow-hidden bg-background md:m-2 md:rounded-xl md:border md:shadow-sm">
+      <SidebarInset className="min-w-0 overflow-hidden bg-background md:my-2 md:mr-2 md:ml-0 md:rounded-xl md:border md:shadow-sm">
         <TopBar />
-        <main className="min-w-0 px-4 pb-4 pt-5 sm:px-6">{children}</main>
+        <main className="min-w-0 px-4 pb-4 pt-5">{children}</main>
       </SidebarInset>
     </SidebarProvider>
   );

@@ -21,7 +21,7 @@ test.describe("classic dashboard template", () => {
 
     await page.keyboard.press("Control+K");
     await expect(page.getByRole("dialog", { name: "Command Palette" })).toBeVisible();
-    await page.getByPlaceholder("Type a command or search...").fill("chat");
+    await page.getByPlaceholder("Search for a command to run...").fill("chat");
     await expect(page.getByRole("option", { name: /Chats/ })).toBeVisible();
     await page.keyboard.press("Escape");
 
@@ -30,7 +30,6 @@ test.describe("classic dashboard template", () => {
     await expect(page.getByText("Abraham Lincoln")).toBeHidden();
 
     await page.getByRole("button", { name: "Toggle theme" }).click();
-    await page.getByRole("menuitem", { name: "Dark" }).click();
     await expect(page.locator("html")).toHaveClass(/dark/);
   });
 
