@@ -978,10 +978,13 @@ public class OrganizationApplicationService {
         String branch = validateDefaultBranch(defaultIfBlank(query.branch(), registeredRepository.defaultBranch()));
         String metric = validateBadgeMetric(defaultIfBlank(query.metric(), "line"));
         int limit = validateReadLimit(query.limit(), 100);
-        List<CoverageTrendPointDetails> points = repository.listCoverageReports(registeredRepository.id(), branch, limit)
+        List<CoverageTrendPointDetails> points = repository.listCoverageReports(
+                        registeredRepository.id(),
+                        branch,
+                        query.from(),
+                        query.to(),
+                        limit)
                 .stream()
-                .filter(report -> query.from() == null || !report.createdAt().isBefore(query.from()))
-                .filter(report -> query.to() == null || !report.createdAt().isAfter(query.to()))
                 .map(report -> new CoverageTrendPointDetails(
                         report.id(),
                         report.commitSha(),

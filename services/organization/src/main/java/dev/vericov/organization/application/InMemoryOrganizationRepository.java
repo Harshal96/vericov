@@ -561,10 +561,17 @@ public class InMemoryOrganizationRepository implements OrganizationRepository {
     }
 
     @Override
-    public List<CoverageReportSummary> listCoverageReports(UUID repositoryId, String branch, int limit) {
+    public List<CoverageReportSummary> listCoverageReports(
+            UUID repositoryId,
+            String branch,
+            Instant from,
+            Instant to,
+            int limit) {
         return coverageReportsById.values().stream()
                 .filter(report -> report.repositoryId().equals(repositoryId))
                 .filter(report -> report.branch().equals(branch))
+                .filter(report -> from == null || !report.createdAt().isBefore(from))
+                .filter(report -> to == null || !report.createdAt().isAfter(to))
                 .sorted(Comparator.comparing(CoverageReportSummary::createdAt)
                         .thenComparing(CoverageReportSummary::id))
                 .limit(limit)

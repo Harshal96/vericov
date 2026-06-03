@@ -149,7 +149,12 @@ public interface OrganizationRepository {
 
     Optional<CoverageReportSummary> findLatestPullRequestCoverageReport(UUID repositoryId, int pullRequestNumber);
 
-    List<CoverageReportSummary> listCoverageReports(UUID repositoryId, String branch, int limit);
+    List<CoverageReportSummary> listCoverageReports(
+            UUID repositoryId,
+            String branch,
+            Instant from,
+            Instant to,
+            int limit);
 
     List<CoverageFileSummaryDetails> listCoverageFileSummaries(UUID coverageReportId, int limit);
 

@@ -44,6 +44,7 @@ import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import java.net.URI;
 import java.time.Instant;
+import java.time.format.DateTimeParseException;
 import java.util.List;
 import java.util.UUID;
 
@@ -532,17 +533,21 @@ public class RepositoryControlPlaneResource {
             @PathParam("repository_id") UUID repositoryId,
             @QueryParam("branch") String branch,
             @QueryParam("metric") String metric,
+            @QueryParam("from") String from,
+            @QueryParam("to") String to,
             @QueryParam("limit") int limit) {
         try {
             AuthenticatedUser user = resolveUser(authorizationHeader, userIdHeader);
+            Instant fromInstant = parseOptionalInstant(from, "from");
+            Instant toInstant = parseOptionalInstant(to, "to");
             var trend = organizationService.listCoverageTrends(new ListCoverageTrendsQuery(
                     user.userId(),
                     organizationId,
                     repositoryId,
                     branch,
                     metric,
-                    null,
-                    null,
+                    fromInstant,
+                    toInstant,
                     limit));
             return Response.ok(new ApiResponse<>(CoverageTrendHttpResponse.from(trend))).build();
         } catch (OrganizationException exception) {
@@ -988,6 +993,17 @@ public class RepositoryControlPlaneResource {
         return token != null && !token.isBlank()
                 ? "public, max-age=60"
                 : "private, max-age=30";
+    }
+
+    private static Instant parseOptionalInstant(String value, String fieldName) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        try {
+            return Instant.parse(value.trim());
+        } catch (DateTimeParseException exception) {
+            throw new OrganizationException("validation_error", fieldName + " must be an ISO-8601 instant");
+        }
     }
 
     private AuthenticatedUser resolveUser(String authorizationHeader, String userIdHeader) {

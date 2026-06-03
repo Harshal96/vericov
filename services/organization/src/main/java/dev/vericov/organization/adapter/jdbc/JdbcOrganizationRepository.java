@@ -1539,23 +1539,44 @@ public class JdbcOrganizationRepository implements OrganizationRepository {
     }
 
     @Override
-    public List<CoverageReportSummary> listCoverageReports(UUID repositoryId, String branch, int limit) {
+    public List<CoverageReportSummary> listCoverageReports(
+            UUID repositoryId,
+            String branch,
+            Instant from,
+            Instant to,
+            int limit) {
+        StringBuilder sql = new StringBuilder("""
+                select id, tenant_id, repository_id, upload_id, commit_sha, branch, pull_request_number,
+                       line_covered, line_total, branch_covered, branch_total,
+                       function_covered, function_total, statement_covered, statement_total,
+                       created_at, updated_at
+                from vericov.coverage_reports
+                where repository_id = ?
+                  and branch = ?
+                  and status = 'complete'
+                """);
+        List<Object> params = new ArrayList<>(List.of(repositoryId, branch));
+        if (from != null) {
+            sql.append(" and created_at >= ?");
+            params.add(from);
+        }
+        if (to != null) {
+            sql.append(" and created_at <= ?");
+            params.add(to);
+        }
+        sql.append(" order by created_at, id limit ?");
+        params.add(limit);
+
         try (var connection = dataSource.getConnection();
-                var statement = connection.prepareStatement("""
-                        select id, tenant_id, repository_id, upload_id, commit_sha, branch, pull_request_number,
-                               line_covered, line_total, branch_covered, branch_total,
-                               function_covered, function_total, statement_covered, statement_total,
-                               created_at, updated_at
-                        from vericov.coverage_reports
-                        where repository_id = ?
-                          and branch = ?
-                          and status = 'complete'
-                        order by created_at, id
-                        limit ?
-                        """)) {
-            statement.setObject(1, repositoryId);
-            statement.setString(2, branch);
-            statement.setInt(3, limit);
+                var statement = connection.prepareStatement(sql.toString())) {
+            for (int i = 0; i < params.size(); i++) {
+                Object param = params.get(i);
+                if (param instanceof Instant instant) {
+                    statement.setObject(i + 1, utc(instant));
+                } else {
+                    statement.setObject(i + 1, param);
+                }
+            }
             try (var resultSet = statement.executeQuery()) {
                 List<CoverageReportSummary> reports = new ArrayList<>();
                 while (resultSet.next()) {
