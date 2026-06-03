@@ -6,23 +6,41 @@ import dev.vericov.organization.api.ApiResponse;
 import dev.vericov.organization.api.AuthorizationCheckHttpRequest;
 import dev.vericov.organization.api.AuthorizationDecisionHttpResponse;
 import dev.vericov.organization.api.AuthorizationResource;
+import dev.vericov.organization.api.BadgeTokenHttpResponse;
 import dev.vericov.organization.api.CreateInvitationHttpRequest;
 import dev.vericov.organization.api.CreateMembershipHttpRequest;
 import dev.vericov.organization.api.CreateOrganizationHttpRequest;
 import dev.vericov.organization.api.CreateRepositoryApiKeyHttpRequest;
 import dev.vericov.organization.api.CreateRepositoryHttpRequest;
+import dev.vericov.organization.api.CoverageBadgeHttpResponse;
 import dev.vericov.organization.api.InvitationHttpResponse;
 import dev.vericov.organization.api.MembershipHttpResponse;
 import dev.vericov.organization.api.OrganizationHttpResponse;
 import dev.vericov.organization.api.OrganizationResource;
 import dev.vericov.organization.api.RepositoryApiKeyHttpResponse;
+import dev.vericov.organization.api.CoverageLineHitMapHttpResponse;
+import dev.vericov.organization.api.CoverageReportHttpResponse;
+import dev.vericov.organization.api.CoverageTrendHttpResponse;
+import dev.vericov.organization.api.GateEvaluationHttpResponse;
+import dev.vericov.organization.api.PullRequestCoverageReportHttpResponse;
+import dev.vericov.organization.api.RepositoryBadgeSettingsHttpRequest;
 import dev.vericov.organization.api.RepositoryHttpResponse;
 import dev.vericov.organization.api.RepositoryControlPlaneResource;
 import dev.vericov.organization.api.CreateCoverageDebtHttpRequest;
+import dev.vericov.organization.api.RepositoryGateHttpRequest;
+import dev.vericov.organization.api.RepositoryGateHttpResponse;
 import dev.vericov.organization.api.UpdateCoverageDebtHttpRequest;
 import dev.vericov.organization.api.CoverageDebtHttpResponse;
+import dev.vericov.organization.application.CoverageFileSummaryDetails;
+import dev.vericov.organization.application.CoverageLineHitMapDetails;
+import dev.vericov.organization.application.CoverageMetricDetails;
+import dev.vericov.organization.application.CoverageReportSummary;
+import dev.vericov.organization.application.DiffCoverageFileDetails;
+import dev.vericov.organization.application.DiffCoverageLineDetails;
+import dev.vericov.organization.application.GateEvaluationDetails;
 import dev.vericov.organization.application.InMemoryOrganizationRepository;
 import dev.vericov.organization.application.OrganizationApplicationService;
+import dev.vericov.organization.application.PullRequestDiffCoverageDetails;
 import dev.vericov.organization.application.port.UserPrincipalResolver;
 import dev.vericov.organization.domain.AuthenticatedUser;
 import dev.vericov.organization.domain.UserAuthContext;
@@ -30,11 +48,13 @@ import io.cucumber.java.en.Given;
 import io.cucumber.java.en.Then;
 import io.cucumber.java.en.When;
 import jakarta.ws.rs.core.Response;
+import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -47,8 +67,9 @@ public class OrganizationSteps {
     private static final Instant NOW = Instant.parse("2026-05-22T10:00:00Z");
 
     private final DynamicUserPrincipalResolver resolver = new DynamicUserPrincipalResolver();
+    private final InMemoryOrganizationRepository repositoryStore = new InMemoryOrganizationRepository();
     private final OrganizationApplicationService service = new OrganizationApplicationService(
-            new InMemoryOrganizationRepository(),
+            repositoryStore,
             Clock.fixed(NOW, ZoneOffset.UTC));
     private final OrganizationResource organizationResource = new OrganizationResource(service, resolver);
     private final AuthorizationResource authorizationResource = new AuthorizationResource(service, resolver);
@@ -61,6 +82,13 @@ public class OrganizationSteps {
     private RepositoryHttpResponse repository;
     private RepositoryApiKeyHttpResponse repositoryApiKey;
     private AuthorizationDecisionHttpResponse authorizationDecision;
+    private CoverageTrendHttpResponse coverageTrend;
+    private CoverageReportHttpResponse commitCoverageReport;
+    private PullRequestCoverageReportHttpResponse pullRequestCoverageReport;
+    private CoverageLineHitMapHttpResponse coverageLineHits;
+    private BadgeTokenHttpResponse badgeToken;
+    private CoverageBadgeHttpResponse coverageBadge;
+    private String coverageBadgeSvg;
     private Response latestResponse;
     private String currentEmail;
 
@@ -458,9 +486,455 @@ public class OrganizationSteps {
         );
     }
 
+    @Given("a coverage report {string} on branch {string} created at {string} exists with line {int}\\/{int}, branch {int}\\/{int}, function {int}\\/{int}, and statement {int}\\/{int}")
+    public void coverageReportExistsWithMetrics(
+            String commitSha,
+            String branch,
+            String createdAt,
+            int lineCovered,
+            int lineTotal,
+            int branchCovered,
+            int branchTotal,
+            int functionCovered,
+            int functionTotal,
+            int statementCovered,
+            int statementTotal) {
+        saveCoverageReport(
+                commitSha,
+                branch,
+                null,
+                Instant.parse(createdAt),
+                lineCovered,
+                lineTotal,
+                branchCovered,
+                branchTotal,
+                functionCovered,
+                functionTotal,
+                statementCovered,
+                statementTotal);
+    }
+
+    @Given("a pull request coverage report exists for commit {string} on branch {string}")
+    public void pullRequestCoverageReportExists(String commitSha, String branch) {
+        CoverageReportSummary report = saveCoverageReport(
+                commitSha,
+                branch,
+                42,
+                NOW,
+                33,
+                40,
+                8,
+                10,
+                5,
+                5,
+                20,
+                25);
+        repositoryStore.saveCoverageFileSummary(new CoverageFileSummaryDetails(
+                UUID.randomUUID(),
+                repository.tenantId(),
+                report.id(),
+                repository.id(),
+                commitSha,
+                "src/App.java",
+                10,
+                12,
+                4,
+                5,
+                2,
+                2,
+                9,
+                10,
+                NOW));
+        repositoryStore.savePullRequestDiffCoverage(new PullRequestDiffCoverageDetails(
+                UUID.randomUUID(),
+                report.id(),
+                "abc122",
+                commitSha,
+                "complete",
+                CoverageMetricDetails.of(1, 2),
+                1,
+                1,
+                List.of(new DiffCoverageFileDetails(
+                        "src/App.java",
+                        null,
+                        "modified",
+                        CoverageMetricDetails.of(1, 2),
+                        1,
+                        1,
+                        List.of(
+                                new DiffCoverageLineDetails(
+                                        "src/App.java",
+                                        null,
+                                        null,
+                                        14,
+                                        "added",
+                                        true,
+                                        null,
+                                        0L,
+                                        true,
+                                        false),
+                                new DiffCoverageLineDetails(
+                                        "src/App.java",
+                                        null,
+                                        20,
+                                        20,
+                                        "context",
+                                        true,
+                                        3L,
+                                        0L,
+                                        false,
+                                        true)))),
+                NOW,
+                NOW));
+        repositoryStore.saveCoverageLineHits(new CoverageLineHitMapDetails(
+                repository.id(),
+                report.id(),
+                commitSha,
+                Map.of("src/App.java", Map.of(12, 4L, 14, 0L, 20, 0L))));
+    }
+
+    @When("the current user requests {string} coverage trends for branch {string} from {string} to {string}")
+    public void currentUserRequestsCoverageTrends(String metric, String branch, String from, String to) {
+        latestResponse = repositoryControlPlaneResource.listCoverageTrends(
+                "Bearer test-token",
+                null,
+                organization.id(),
+                repository.id(),
+                branch,
+                metric,
+                from,
+                to,
+                100);
+        if (latestResponse.getStatus() == 200) {
+            coverageTrend = responseBody(latestResponse, CoverageTrendHttpResponse.class);
+        }
+    }
+
+    @Then("the coverage trend contains only commit {string} for metric {string} at {string} percent")
+    public void coverageTrendContainsOnlyCommitForMetricAtPercent(String commitSha, String metric, String percent) {
+        assertEquals(200, latestResponse.getStatus());
+        assertEquals(1, coverageTrend.points().size());
+        CoverageTrendHttpResponse.Point point = coverageTrend.points().getFirst();
+        assertEquals(commitSha, point.commitSha());
+        assertEquals(metric, point.metric());
+        assertEquals(0, new BigDecimal(percent).compareTo(point.percent()));
+    }
+
+    @When("the current user requests commit coverage report for {string} including files")
+    public void currentUserRequestsCommitCoverageReportIncludingFiles(String commitSha) {
+        latestResponse = repositoryControlPlaneResource.getCommitCoverageReport(
+                "Bearer test-token",
+                null,
+                organization.id(),
+                repository.id(),
+                commitSha,
+                true,
+                100);
+        if (latestResponse.getStatus() == 200) {
+            commitCoverageReport = responseBody(latestResponse, CoverageReportHttpResponse.class);
+        }
+    }
+
+    @Then("the commit coverage report exposes line {string}, branch {string}, function {string}, and statement {string} percent")
+    public void commitCoverageReportExposesAllMetricPercents(
+            String line,
+            String branch,
+            String function,
+            String statement) {
+        assertEquals(200, latestResponse.getStatus());
+        assertPercent(line, commitCoverageReport.line().percent());
+        assertPercent(branch, commitCoverageReport.branchCoverage().percent());
+        assertPercent(function, commitCoverageReport.function().percent());
+        assertPercent(statement, commitCoverageReport.statement().percent());
+    }
+
+    @Then("the commit coverage report contains file {string}")
+    public void commitCoverageReportContainsFile(String filePath) {
+        assertTrue(commitCoverageReport.files().stream().anyMatch(file -> file.filePath().equals(filePath)));
+    }
+
+    @When("the current user requests pull request {int} coverage report including diff lines")
+    public void currentUserRequestsPullRequestCoverageReportIncludingDiffLines(int pullRequestNumber) {
+        latestResponse = repositoryControlPlaneResource.getPullRequestCoverageReport(
+                "Bearer test-token",
+                null,
+                organization.id(),
+                repository.id(),
+                pullRequestNumber,
+                true,
+                true,
+                100);
+        if (latestResponse.getStatus() == 200) {
+            pullRequestCoverageReport = responseBody(latestResponse, PullRequestCoverageReportHttpResponse.class);
+        }
+    }
+
+    @Then("the pull request coverage report includes {string} diff coverage with {int} diff lines")
+    public void pullRequestCoverageReportIncludesDiffCoverageWithLines(String status, int lineCount) {
+        assertEquals(200, latestResponse.getStatus());
+        assertEquals(status, pullRequestCoverageReport.diff().status());
+        assertEquals(lineCount, pullRequestCoverageReport.diff().files().getFirst().lines().size());
+    }
+
+    @When("the current user requests coverage line hits for commit {string} file {string}")
+    public void currentUserRequestsCoverageLineHits(String commitSha, String filePath) {
+        latestResponse = repositoryControlPlaneResource.getCoverageLineHits(
+                "Bearer test-token",
+                null,
+                organization.id(),
+                repository.id(),
+                commitSha,
+                filePath);
+        if (latestResponse.getStatus() == 200) {
+            coverageLineHits = responseBody(latestResponse, CoverageLineHitMapHttpResponse.class);
+        }
+    }
+
+    @Then("line hits include file {string} line {int} with {int} hits")
+    public void lineHitsIncludeFileLineWithHits(String filePath, int lineNumber, int hits) {
+        assertEquals(200, latestResponse.getStatus());
+        assertEquals(hits, coverageLineHits.files().get(filePath).get(lineNumber));
+    }
+
+    @When("the current user enables coverage badge metric {string} on branch {string}")
+    public void currentUserEnablesCoverageBadgeMetricOnBranch(String metric, String branch) {
+        latestResponse = repositoryControlPlaneResource.upsertRepositoryBadgeSettings(
+                "Bearer test-token",
+                null,
+                organization.id(),
+                repository.id(),
+                new RepositoryBadgeSettingsHttpRequest(
+                        true,
+                        branch,
+                        metric,
+                        "coverage",
+                        Map.of()));
+        assertEquals(200, latestResponse.getStatus());
+    }
+
+    @When("the current user rotates the coverage badge token")
+    public void currentUserRotatesTheCoverageBadgeToken() {
+        latestResponse = repositoryControlPlaneResource.rotateRepositoryBadgeToken(
+                "Bearer test-token",
+                null,
+                organization.id(),
+                repository.id());
+        if (latestResponse.getStatus() == 200) {
+            badgeToken = responseBody(latestResponse, BadgeTokenHttpResponse.class);
+        }
+    }
+
+    @When("an unauthenticated client requests coverage badge JSON for metric {string} with the token")
+    public void unauthenticatedClientRequestsCoverageBadgeJsonWithToken(String metric) {
+        latestResponse = repositoryControlPlaneResource.getCoverageBadgeJson(
+                null,
+                null,
+                organization.id(),
+                repository.id(),
+                badgeToken.token(),
+                null,
+                metric);
+        if (latestResponse.getStatus() == 200) {
+            coverageBadge = responseBody(latestResponse, CoverageBadgeHttpResponse.class);
+        }
+    }
+
+    @When("an unauthenticated client requests coverage badge SVG for metric {string} with the token")
+    public void unauthenticatedClientRequestsCoverageBadgeSvgWithToken(String metric) {
+        latestResponse = repositoryControlPlaneResource.getCoverageBadgeSvg(
+                null,
+                null,
+                organization.id(),
+                repository.id(),
+                badgeToken.token(),
+                null,
+                metric,
+                null);
+        if (latestResponse.getStatus() == 200) {
+            coverageBadgeSvg = assertInstanceOf(String.class, latestResponse.getEntity());
+        }
+    }
+
+    @When("the current user requests authenticated coverage badge JSON for metric {string}")
+    public void currentUserRequestsAuthenticatedCoverageBadgeJson(String metric) {
+        latestResponse = repositoryControlPlaneResource.getCoverageBadgeJson(
+                "Bearer test-token",
+                null,
+                organization.id(),
+                repository.id(),
+                null,
+                null,
+                metric);
+        if (latestResponse.getStatus() == 200) {
+            coverageBadge = responseBody(latestResponse, CoverageBadgeHttpResponse.class);
+        }
+    }
+
+    @Then("the coverage badge response has message {string} and color {string}")
+    public void coverageBadgeResponseHasMessageAndColor(String message, String color) {
+        assertEquals(200, latestResponse.getStatus());
+        assertEquals(message, coverageBadge.message());
+        assertEquals(color, coverageBadge.color());
+    }
+
+    @Then("the coverage badge SVG contains {string}")
+    public void coverageBadgeSvgContains(String expected) {
+        assertEquals(200, latestResponse.getStatus());
+        assertTrue(coverageBadgeSvg.contains(expected));
+    }
+
+    @When("the current user configures project coverage gates for all coverage metrics")
+    public void currentUserConfiguresProjectCoverageGatesForAllCoverageMetrics() {
+        latestResponse = repositoryControlPlaneResource.replaceRepositoryGates(
+                "Bearer test-token",
+                null,
+                organization.id(),
+                repository.id(),
+                List.of(
+                        gateRequest("Project line coverage", "line", "80"),
+                        gateRequest("Project branch coverage", "branch", "80"),
+                        gateRequest("Project function coverage", "function", "90"),
+                        gateRequest("Project statement coverage", "statement", "80")));
+    }
+
+    @Then("repository gates include metrics line, branch, function, and statement")
+    public void repositoryGatesIncludeAllCoverageMetrics() {
+        assertEquals(200, latestResponse.getStatus());
+        List<?> gates = responseBody(latestResponse, List.class);
+        assertTrue(gates.stream().map(RepositoryGateHttpResponse.class::cast).anyMatch(gate -> gate.metric().equals("line")));
+        assertTrue(gates.stream().map(RepositoryGateHttpResponse.class::cast).anyMatch(gate -> gate.metric().equals("branch")));
+        assertTrue(gates.stream().map(RepositoryGateHttpResponse.class::cast).anyMatch(gate -> gate.metric().equals("function")));
+        assertTrue(gates.stream().map(RepositoryGateHttpResponse.class::cast).anyMatch(gate -> gate.metric().equals("statement")));
+    }
+
+    @Given("gate evaluations exist for passed branch and failed line coverage")
+    public void gateEvaluationsExistForPassedBranchAndFailedLineCoverage() {
+        CoverageReportSummary report = saveCoverageReport(
+                "abc123",
+                "main",
+                42,
+                NOW,
+                33,
+                40,
+                8,
+                10,
+                5,
+                5,
+                20,
+                25);
+        repositoryStore.saveGateEvaluation(new GateEvaluationDetails(
+                UUID.randomUUID(),
+                repository.tenantId(),
+                organization.id(),
+                repository.id(),
+                report.id(),
+                report.commitSha(),
+                "main",
+                42,
+                "Project line coverage",
+                "project_coverage",
+                "line",
+                new BigDecimal("85"),
+                new BigDecimal("82.5"),
+                "failed",
+                true,
+                Map.of("summary", "below threshold"),
+                NOW));
+        repositoryStore.saveGateEvaluation(new GateEvaluationDetails(
+                UUID.randomUUID(),
+                repository.tenantId(),
+                organization.id(),
+                repository.id(),
+                report.id(),
+                report.commitSha(),
+                "main",
+                42,
+                "Project branch coverage",
+                "project_coverage",
+                "branch",
+                new BigDecimal("75"),
+                new BigDecimal("80"),
+                "passed",
+                true,
+                Map.of("summary", "meets threshold"),
+                NOW));
+    }
+
+    @When("the current user lists gate evaluations with status {string}")
+    public void currentUserListsGateEvaluationsWithStatus(String status) {
+        latestResponse = repositoryControlPlaneResource.listGateEvaluations(
+                "Bearer test-token",
+                null,
+                organization.id(),
+                repository.id(),
+                "main",
+                status,
+                100);
+    }
+
+    @Then("gate evaluations include {string} for metric {string} with status {string}")
+    public void gateEvaluationsIncludeForMetricWithStatus(String gateName, String metric, String status) {
+        assertEquals(200, latestResponse.getStatus());
+        List<?> evaluations = responseBody(latestResponse, List.class);
+        assertTrue(evaluations.stream()
+                .map(GateEvaluationHttpResponse.class::cast)
+                .anyMatch(evaluation -> evaluation.gateName().equals(gateName)
+                        && evaluation.metric().equals(metric)
+                        && evaluation.status().equals(status)));
+    }
+
     private void authenticate(String email) {
         currentEmail = email;
         resolver.user = new AuthenticatedUser(userId(email), email);
+    }
+
+    private CoverageReportSummary saveCoverageReport(
+            String commitSha,
+            String branch,
+            Integer pullRequestNumber,
+            Instant createdAt,
+            int lineCovered,
+            int lineTotal,
+            int branchCovered,
+            int branchTotal,
+            int functionCovered,
+            int functionTotal,
+            int statementCovered,
+            int statementTotal) {
+        return repositoryStore.saveCoverageReport(new CoverageReportSummary(
+                UUID.randomUUID(),
+                repository.tenantId(),
+                repository.id(),
+                UUID.randomUUID(),
+                commitSha,
+                branch,
+                pullRequestNumber,
+                lineCovered,
+                lineTotal,
+                branchCovered,
+                branchTotal,
+                functionCovered,
+                functionTotal,
+                statementCovered,
+                statementTotal,
+                createdAt,
+                createdAt));
+    }
+
+    private static void assertPercent(String expected, BigDecimal actual) {
+        assertEquals(0, new BigDecimal(expected).compareTo(actual));
+    }
+
+    private static RepositoryGateHttpRequest gateRequest(String name, String metric, String threshold) {
+        return new RepositoryGateHttpRequest(
+                name,
+                "project_coverage",
+                metric,
+                new BigDecimal(threshold),
+                null,
+                true,
+                Map.of(),
+                "active");
     }
 
     private static <T> T responseBody(Response response, Class<T> type) {

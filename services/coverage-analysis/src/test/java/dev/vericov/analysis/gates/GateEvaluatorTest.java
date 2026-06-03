@@ -35,11 +35,12 @@ class GateEvaluatorTest {
         List<GateEvaluation> evaluations = evaluator.evaluate(report(), List.of(
                 gate("line-minimum", "project_coverage", "line", "80.0", true, "active"),
                 gate("branch-minimum", "project_coverage", "branch", "80.0", true, "active"),
+                gate("function-minimum", "project_coverage", "function", "100.0", true, "active"),
                 gate("statement-advisory", "project_coverage", "statement", "95.0", false, "active"),
                 gate("disabled", "project_coverage", "line", "100.0", true, "disabled"),
                 gate("patch", "patch_coverage", "line", "90.0", true, "active")), NOW);
 
-        assertEquals(3, evaluations.size());
+        assertEquals(4, evaluations.size());
 
         GateEvaluation line = evaluations.get(0);
         assertEquals("line-minimum", line.gateName());
@@ -56,7 +57,12 @@ class GateEvaluatorTest {
         assertEquals("failed", branch.status());
         assertEquals(new BigDecimal("50.0000"), branch.actual());
 
-        GateEvaluation statement = evaluations.get(2);
+        GateEvaluation function = evaluations.get(2);
+        assertEquals("function-minimum", function.gateName());
+        assertEquals("passed", function.status());
+        assertEquals(new BigDecimal("100.0000"), function.actual());
+
+        GateEvaluation statement = evaluations.get(3);
         assertEquals("statement-advisory", statement.gateName());
         assertEquals("warning", statement.status());
         assertEquals(new BigDecimal("85.0000"), statement.actual());

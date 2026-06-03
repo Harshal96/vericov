@@ -977,6 +977,82 @@ class OrganizationApplicationServiceTest {
     }
 
     @Test
+    void filtersCoverageTrendsByDateWindow() {
+        TestFixture fixture = new TestFixture();
+        var organization = fixture.service.createOrganization(new CreateOrganizationCommand(
+                USER_ID,
+                "Acme Engineering",
+                "acme",
+                "team"));
+        RepositoryDetails repository = fixture.service.registerRepository(new CreateRepositoryCommand(
+                USER_ID,
+                organization.id(),
+                "github",
+                "123456789",
+                "acme/payments-api",
+                "main",
+                "private"));
+        fixture.repository.saveCoverageReport(reportSummary(
+                repository, "abc121", "main", NOW.minusSeconds(180), 20, 40, 2, 10, 2, 5, 10, 25));
+        fixture.repository.saveCoverageReport(reportSummary(
+                repository, "abc122", "main", NOW.minusSeconds(120), 30, 40, 6, 10, 4, 5, 18, 25));
+        fixture.repository.saveCoverageReport(reportSummary(
+                repository, "abc123", "main", NOW.minusSeconds(60), 33, 40, 8, 10, 5, 5, 20, 25));
+
+        CoverageTrendDetails trend = fixture.service.listCoverageTrends(new ListCoverageTrendsQuery(
+                USER_ID,
+                organization.id(),
+                repository.id(),
+                "main",
+                "line",
+                NOW.minusSeconds(125),
+                NOW.minusSeconds(55),
+                10));
+
+        assertEquals(2, trend.points().size());
+        assertEquals("abc122", trend.points().get(0).commitSha());
+        assertEquals("abc123", trend.points().get(1).commitSha());
+    }
+
+    @Test
+    void trendsAndBadgesExposeEveryCoverageMetric() {
+        TestFixture fixture = new TestFixture();
+        var organization = fixture.service.createOrganization(new CreateOrganizationCommand(
+                USER_ID,
+                "Acme Engineering",
+                "acme",
+                "team"));
+        RepositoryDetails repository = fixture.service.registerRepository(new CreateRepositoryCommand(
+                USER_ID,
+                organization.id(),
+                "github",
+                "123456789",
+                "acme/payments-api",
+                "main",
+                "private"));
+        fixture.repository.saveCoverageReport(reportSummary(
+                repository, "abc123", "main", NOW, 33, 40, 8, 10, 5, 5, 20, 25));
+        fixture.service.upsertRepositoryBadgeSettings(new UpsertRepositoryBadgeSettingsCommand(
+                USER_ID,
+                organization.id(),
+                repository.id(),
+                true,
+                "main",
+                "line",
+                "coverage",
+                Map.of()));
+        BadgeTokenDetails token = fixture.service.rotateRepositoryBadgeToken(new RotateRepositoryBadgeTokenCommand(
+                USER_ID,
+                organization.id(),
+                repository.id()));
+
+        assertMetricTrendAndBadge(fixture, organization.id(), repository.id(), token.token(), "line", "82.5", "82.5%");
+        assertMetricTrendAndBadge(fixture, organization.id(), repository.id(), token.token(), "branch", "80", "80%");
+        assertMetricTrendAndBadge(fixture, organization.id(), repository.id(), token.token(), "function", "100", "100%");
+        assertMetricTrendAndBadge(fixture, organization.id(), repository.id(), token.token(), "statement", "80", "80%");
+    }
+
+    @Test
     void ownerCanUpdateMembershipRoleAndStatus() {
         TestFixture fixture = new TestFixture();
         var organization = fixture.service.createOrganization(new CreateOrganizationCommand(
@@ -1592,6 +1668,71 @@ class OrganizationApplicationServiceTest {
         private void advanceSeconds(long seconds) {
             instant = instant.plusSeconds(seconds);
         }
+    }
+
+    private static CoverageReportSummary reportSummary(
+            RepositoryDetails repository,
+            String commitSha,
+            String branch,
+            Instant createdAt,
+            int lineCovered,
+            int lineTotal,
+            int branchCovered,
+            int branchTotal,
+            int functionCovered,
+            int functionTotal,
+            int statementCovered,
+            int statementTotal) {
+        return new CoverageReportSummary(
+                UUID.randomUUID(),
+                repository.tenantId(),
+                repository.id(),
+                UUID.randomUUID(),
+                commitSha,
+                branch,
+                null,
+                lineCovered,
+                lineTotal,
+                branchCovered,
+                branchTotal,
+                functionCovered,
+                functionTotal,
+                statementCovered,
+                statementTotal,
+                createdAt,
+                createdAt);
+    }
+
+    private static void assertMetricTrendAndBadge(
+            TestFixture fixture,
+            UUID organizationId,
+            UUID repositoryId,
+            String token,
+            String metric,
+            String expectedPercent,
+            String expectedMessage) {
+        CoverageTrendDetails trend = fixture.service.listCoverageTrends(new ListCoverageTrendsQuery(
+                USER_ID,
+                organizationId,
+                repositoryId,
+                "main",
+                metric,
+                null,
+                null,
+                10));
+        CoverageBadgeDetails badge = fixture.service.getCoverageBadge(new GetCoverageBadgeCommand(
+                null,
+                organizationId,
+                repositoryId,
+                token,
+                null,
+                metric));
+
+        assertEquals(1, trend.points().size());
+        assertEquals(metric, trend.points().getFirst().metric());
+        assertEquals(0, new BigDecimal(expectedPercent).compareTo(trend.points().getFirst().percent()));
+        assertEquals(expectedMessage, badge.message());
+        assertEquals(metric, badge.metric());
     }
 
     private static CoverageGapFindingDetails gap(

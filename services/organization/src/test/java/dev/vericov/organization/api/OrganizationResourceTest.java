@@ -607,6 +607,8 @@ class OrganizationResourceTest {
                 repository.id(),
                 "main",
                 "line",
+                NOW.minusSeconds(60).toString(),
+                NOW.plusSeconds(60).toString(),
                 100);
         Response gatesResponse = controlPlaneResource.listGateEvaluations(
                 "Bearer test-token",
