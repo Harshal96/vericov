@@ -44,7 +44,7 @@ public class InternalCoverageContextResource {
             var context = organizationService.getInternalCoverageContext(repositoryId, commitSha);
             return Response.ok(new ApiResponse<>(RepositoryCoverageContextHttpResponse.from(context))).build();
         } catch (OrganizationException exception) {
-            return OrganizationResource.errorResponse(exception);
+            return ApiError.response(exception);
         }
     }
 }

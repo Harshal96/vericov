@@ -7,8 +7,8 @@ badge settings, coverage-debt workflow, and dashboard-shaped read models.
 It replaces the former `services/organization` module. Self-hosted deployments
 do not require an auth provider; `VERICOV_DEV_AUTH_BYPASS=true` lets a trusted
 private gateway or operator network inject the local development user context.
-Managed deployments should disable the bypass and provide the service-JWT
-public key minted by veriapi.
+Gateway-authenticated deployments should disable the bypass and provide the
+service-JWT public key minted by the operator's gateway.
 
 ## Split Decision Matrix
 

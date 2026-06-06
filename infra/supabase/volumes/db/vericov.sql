@@ -1,8 +1,17 @@
 CREATE SCHEMA IF NOT EXISTS vericov;
+CREATE SCHEMA IF NOT EXISTS extensions;
 
 REVOKE ALL ON SCHEMA vericov FROM PUBLIC;
-REVOKE ALL ON SCHEMA vericov FROM anon;
-REVOKE ALL ON SCHEMA vericov FROM authenticated;
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
+        EXECUTE 'REVOKE ALL ON SCHEMA vericov FROM anon';
+    END IF;
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
+        EXECUTE 'REVOKE ALL ON SCHEMA vericov FROM authenticated';
+    END IF;
+END
+$$;
 
 CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA extensions;
 CREATE EXTENSION IF NOT EXISTS pgmq;
@@ -49,37 +58,6 @@ CREATE TABLE IF NOT EXISTS vericov.organizations (
     CHECK (slug ~ '^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$')
 );
 
-CREATE TABLE IF NOT EXISTS vericov.memberships (
-    id uuid PRIMARY KEY DEFAULT extensions.gen_random_uuid(),
-    tenant_id uuid NOT NULL REFERENCES vericov.tenants (id) ON DELETE CASCADE,
-    org_id uuid NOT NULL REFERENCES vericov.organizations (id) ON DELETE CASCADE,
-    supabase_user_id uuid NOT NULL,
-    role text NOT NULL CHECK (role IN ('owner', 'admin', 'developer', 'viewer', 'auditor')),
-    status text NOT NULL DEFAULT 'active'
-        CHECK (status IN ('active', 'invited', 'disabled')),
-    created_at timestamptz NOT NULL DEFAULT now(),
-    updated_at timestamptz NOT NULL DEFAULT now(),
-    UNIQUE (org_id, supabase_user_id)
-);
-
-CREATE TABLE IF NOT EXISTS vericov.organization_invitations (
-    id uuid PRIMARY KEY DEFAULT extensions.gen_random_uuid(),
-    tenant_id uuid NOT NULL REFERENCES vericov.tenants (id) ON DELETE CASCADE,
-    org_id uuid NOT NULL REFERENCES vericov.organizations (id) ON DELETE CASCADE,
-    email text NOT NULL,
-    role text NOT NULL CHECK (role IN ('owner', 'admin', 'developer', 'viewer', 'auditor')),
-    status text NOT NULL DEFAULT 'pending'
-        CHECK (status IN ('pending', 'accepted', 'expired', 'revoked')),
-    invited_by_user_id uuid NOT NULL,
-    acceptance_token_hash text NOT NULL CHECK (length(acceptance_token_hash) = 64),
-    expires_at timestamptz NOT NULL,
-    accepted_at timestamptz,
-    created_at timestamptz NOT NULL DEFAULT now(),
-    updated_at timestamptz NOT NULL DEFAULT now(),
-    CHECK (email = lower(trim(email))),
-    CHECK (length(email) BETWEEN 3 AND 320)
-);
-
 CREATE TABLE IF NOT EXISTS vericov.repositories (
     id uuid PRIMARY KEY DEFAULT extensions.gen_random_uuid(),
     tenant_id uuid NOT NULL REFERENCES vericov.tenants (id) ON DELETE CASCADE,
@@ -102,6 +80,48 @@ CREATE TABLE IF NOT EXISTS vericov.repositories (
     CHECK (length(trim(default_branch)) BETWEEN 1 AND 255),
     UNIQUE (tenant_id, provider, provider_repository_id)
 );
+
+INSERT INTO vericov.tenants (id, name, slug)
+VALUES (
+    '00000000-0000-0000-0000-000000000001',
+    'Local workspace',
+    'local'
+)
+ON CONFLICT DO NOTHING;
+
+INSERT INTO vericov.organizations (id, tenant_id, name, slug, plan)
+VALUES (
+    '00000000-0000-0000-0000-000000000004',
+    '00000000-0000-0000-0000-000000000001',
+    'Local workspace',
+    'local',
+    'free'
+)
+ON CONFLICT DO NOTHING;
+
+INSERT INTO vericov.repositories (
+    id,
+    tenant_id,
+    org_id,
+    provider,
+    provider_repository_id,
+    full_name,
+    default_branch,
+    visibility,
+    privacy_mode
+)
+VALUES (
+    '00000000-0000-0000-0000-000000000003',
+    '00000000-0000-0000-0000-000000000001',
+    '00000000-0000-0000-0000-000000000004',
+    'github',
+    'local',
+    'local/repository',
+    'main',
+    'private',
+    'self_hosted'
+)
+ON CONFLICT DO NOTHING;
 
 CREATE TABLE IF NOT EXISTS vericov.components (
     id uuid PRIMARY KEY DEFAULT extensions.gen_random_uuid(),
@@ -1163,19 +1183,6 @@ CREATE INDEX IF NOT EXISTS repository_badge_settings_token_prefix_idx
 CREATE INDEX IF NOT EXISTS organizations_tenant_idx
     ON vericov.organizations (tenant_id);
 
-CREATE INDEX IF NOT EXISTS memberships_user_status_idx
-    ON vericov.memberships (supabase_user_id, status);
-
-CREATE INDEX IF NOT EXISTS memberships_org_idx
-    ON vericov.memberships (org_id);
-
-CREATE INDEX IF NOT EXISTS organization_invitations_org_idx
-    ON vericov.organization_invitations (org_id, created_at);
-
-CREATE UNIQUE INDEX IF NOT EXISTS organization_invitations_org_email_pending_idx
-    ON vericov.organization_invitations (org_id, email)
-    WHERE status = 'pending';
-
 CREATE INDEX IF NOT EXISTS repository_api_keys_repository_active_idx
     ON vericov.repository_api_keys (repository_id)
     WHERE revoked_at IS NULL;
@@ -1453,8 +1460,6 @@ SET
 
 ALTER TABLE vericov.tenants ENABLE ROW LEVEL SECURITY;
 ALTER TABLE vericov.organizations ENABLE ROW LEVEL SECURITY;
-ALTER TABLE vericov.memberships ENABLE ROW LEVEL SECURITY;
-ALTER TABLE vericov.organization_invitations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE vericov.repositories ENABLE ROW LEVEL SECURITY;
 ALTER TABLE vericov.organization_policy_defaults ENABLE ROW LEVEL SECURITY;
 ALTER TABLE vericov.repository_configs ENABLE ROW LEVEL SECURITY;
@@ -1503,8 +1508,16 @@ ALTER TABLE vericov.agent_tasks ENABLE ROW LEVEL SECURITY;
 ALTER TABLE vericov.policy_decisions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE vericov.agent_artifacts ENABLE ROW LEVEL SECURITY;
 
-REVOKE ALL ON ALL TABLES IN SCHEMA vericov FROM anon;
-REVOKE ALL ON ALL TABLES IN SCHEMA vericov FROM authenticated;
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
+        EXECUTE 'REVOKE ALL ON ALL TABLES IN SCHEMA vericov FROM anon';
+    END IF;
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
+        EXECUTE 'REVOKE ALL ON ALL TABLES IN SCHEMA vericov FROM authenticated';
+    END IF;
+END
+$$;
 
 CREATE OR REPLACE FUNCTION vericov.enqueue_coverage_analysis_job(p_analysis_job_id uuid)
 RETURNS bigint
@@ -1575,32 +1588,32 @@ END;
 $$;
 
 REVOKE ALL ON FUNCTION vericov.enqueue_coverage_analysis_job(uuid) FROM PUBLIC;
-REVOKE ALL ON FUNCTION vericov.enqueue_coverage_analysis_job(uuid) FROM anon;
-REVOKE ALL ON FUNCTION vericov.enqueue_coverage_analysis_job(uuid) FROM authenticated;
-
-INSERT INTO storage.buckets (id, name)
-VALUES
-    (
-        'coverage-raw',
-        'coverage-raw'
-    ),
-    (
-        'coverage-normalized',
-        'coverage-normalized'
-    ),
-    (
-        'test-results-raw',
-        'test-results-raw'
-    ),
-    (
-        'metadata-raw',
-        'metadata-raw'
-    )
-ON CONFLICT (id) DO UPDATE
-SET name = EXCLUDED.name;
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
+        EXECUTE 'REVOKE ALL ON FUNCTION vericov.enqueue_coverage_analysis_job(uuid) FROM anon';
+    END IF;
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
+        EXECUTE 'REVOKE ALL ON FUNCTION vericov.enqueue_coverage_analysis_job(uuid) FROM authenticated';
+    END IF;
+END
+$$;
 
 DO $$
 BEGIN
+    IF to_regclass('storage.buckets') IS NULL THEN
+        RETURN;
+    END IF;
+
+    INSERT INTO storage.buckets (id, name)
+    VALUES
+        ('coverage-raw', 'coverage-raw'),
+        ('coverage-normalized', 'coverage-normalized'),
+        ('test-results-raw', 'test-results-raw'),
+        ('metadata-raw', 'metadata-raw')
+    ON CONFLICT (id) DO UPDATE
+    SET name = EXCLUDED.name;
+
     IF EXISTS (
         SELECT 1
         FROM information_schema.columns

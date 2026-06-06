@@ -2,7 +2,7 @@
 
 Status: active backend module
 Runtime: Helidon 4
-Public identity: service JWT from veriapi/customer gateway, or dev bypass for
+Public identity: service JWT from the operator gateway, or dev bypass for
 self-host/private deployments
 
 ## Purpose

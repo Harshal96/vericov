@@ -2,7 +2,7 @@
 
 The Coverage Analysis service is Vericov's internal worker for turning raw
 coverage and test-result uploads into normalized reports, gate evaluations,
-diff coverage, and read models consumed by the Organization service.
+diff coverage, and read models consumed by the control-plane service.
 
 The fuller contract lives in
 `docs/backend/services/04-coverage-analysis-service.md`.
@@ -52,7 +52,7 @@ CI client
   -> upload service enqueues upload.received
   -> coverage-analysis polls coverage_analysis_jobs
   -> coverage-analysis stores coverage_reports, line hits, test_runs, gates
-  -> organization service serves report reads and dashboards
+  -> control-plane service serves report reads and dashboards
 
 Pull request upload
   -> coverage-analysis requests true provider diff from git-integration

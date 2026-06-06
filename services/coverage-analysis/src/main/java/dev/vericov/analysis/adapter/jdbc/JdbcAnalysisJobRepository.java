@@ -38,19 +38,28 @@ public class JdbcAnalysisJobRepository implements AnalysisJobRepository {
                 where id = ?
                   and (status = 'queued' or (status = 'running' and lease_expires_at < now()))
                 """;
-        try (var connection = dataSource.getConnection();
-                var statement = connection.prepareStatement(sql)) {
-            OffsetDateTime started = utc(startedAt);
-            statement.setString(1, workerId);
-            statement.setObject(2, started);
-            statement.setObject(3, utc(startedAt.plusSeconds(leaseTimeoutSeconds)));
-            statement.setObject(4, started);
-            statement.setObject(5, jobId);
-            int updated = statement.executeUpdate();
-            if (updated == 1) {
-                markUploadProcessing(connection, jobId);
+        try (var connection = dataSource.getConnection()) {
+            connection.setAutoCommit(false);
+            try {
+                int updated;
+                try (var statement = connection.prepareStatement(sql)) {
+                    OffsetDateTime started = utc(startedAt);
+                    statement.setString(1, workerId);
+                    statement.setObject(2, started);
+                    statement.setObject(3, utc(startedAt.plusSeconds(leaseTimeoutSeconds)));
+                    statement.setObject(4, started);
+                    statement.setObject(5, jobId);
+                    updated = statement.executeUpdate();
+                }
+                if (updated == 1) {
+                    markUploadProcessing(connection, jobId);
+                }
+                connection.commit();
+                return updated == 1 ? AnalysisJobStartResult.started() : readUnclaimableJobStatus(jobId);
+            } catch (SQLException exception) {
+                rollbackQuietly(connection);
+                throw exception;
             }
-            return updated == 1 ? AnalysisJobStartResult.started() : readUnclaimableJobStatus(jobId);
         } catch (SQLException exception) {
             throw new IllegalStateException("Failed to start analysis job " + jobId, exception);
         }

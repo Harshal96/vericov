@@ -11,9 +11,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 public class InMemoryOrganizationRepository implements OrganizationRepository {
     private final Map<UUID, OrganizationDetails> organizationsById = new ConcurrentHashMap<>();
-    private final Map<String, UUID> organizationIdsBySlug = new ConcurrentHashMap<>();
     private final Map<UUID, MembershipDetails> membershipsById = new ConcurrentHashMap<>();
-    private final Map<UUID, OrganizationInvitation> invitationsById = new ConcurrentHashMap<>();
     private final Map<UUID, RepositoryDetails> repositoriesById = new ConcurrentHashMap<>();
     private final Map<UUID, RepositoryComponentDetails> repositoryComponentsById = new ConcurrentHashMap<>();
     private final Map<UUID, RepositoryOwnerRuleDetails> repositoryOwnerRulesById = new ConcurrentHashMap<>();
@@ -38,70 +36,8 @@ public class InMemoryOrganizationRepository implements OrganizationRepository {
     private final Map<UUID, List<CoverageDebtEventDetails>> coverageDebtEventsByDebtItemId = new ConcurrentHashMap<>();
 
     @Override
-    public List<OrganizationDetails> findOrganizationsForUser(UUID userId) {
-        return membershipsById.values().stream()
-                .filter(membership -> membership.supabaseUserId().equals(userId))
-                .filter(membership -> "active".equals(membership.status()))
-                .map(membership -> organizationsById.get(membership.organizationId()))
-                .filter(organization -> organization != null && !"deleted".equals(organization.status()))
-                .sorted(Comparator.comparing(OrganizationDetails::name))
-                .toList();
-    }
-
-    @Override
-    public Optional<OrganizationDetails> findOrganizationForUser(UUID organizationId, UUID userId) {
-        return findMembership(organizationId, userId)
-                .filter(membership -> "active".equals(membership.status()))
-                .map(membership -> organizationsById.get(membership.organizationId()))
-                .filter(organization -> organization != null && !"deleted".equals(organization.status()));
-    }
-
-    @Override
     public Optional<OrganizationDetails> findById(UUID organizationId) {
         return Optional.ofNullable(organizationsById.get(organizationId));
-    }
-
-    @Override
-    public boolean slugExists(String slug) {
-        return organizationIdsBySlug.containsKey(slug);
-    }
-
-    @Override
-    public synchronized OrganizationDetails createOrganizationWithOwner(
-            OrganizationDetails organization,
-            MembershipDetails ownerMembership) {
-        if (organizationIdsBySlug.containsKey(organization.slug())) {
-            throw new OrganizationException("conflict", "Organization slug already exists");
-        }
-        organizationsById.put(organization.id(), organization);
-        organizationIdsBySlug.put(organization.slug(), organization.id());
-        membershipsById.put(ownerMembership.id(), ownerMembership);
-        return organization;
-    }
-
-    @Override
-    public synchronized OrganizationDetails updateOrganization(OrganizationDetails organization) {
-        OrganizationDetails current = organizationsById.get(organization.id());
-        if (current == null) {
-            throw new OrganizationException("not_found", "Organization not found");
-        }
-        if (!current.slug().equals(organization.slug())) {
-            if (organizationIdsBySlug.containsKey(organization.slug())) {
-                throw new OrganizationException("conflict", "Organization slug already exists");
-            }
-            organizationIdsBySlug.remove(current.slug());
-            organizationIdsBySlug.put(organization.slug(), organization.id());
-        }
-        organizationsById.put(organization.id(), organization);
-        return organization;
-    }
-
-    @Override
-    public List<MembershipDetails> listMemberships(UUID organizationId) {
-        return membershipsById.values().stream()
-                .filter(membership -> membership.organizationId().equals(organizationId))
-                .sorted(Comparator.comparing(MembershipDetails::createdAt))
-                .toList();
     }
 
     @Override
@@ -110,74 +46,6 @@ public class InMemoryOrganizationRepository implements OrganizationRepository {
                 .filter(membership -> membership.organizationId().equals(organizationId))
                 .filter(membership -> membership.supabaseUserId().equals(userId))
                 .findFirst();
-    }
-
-    @Override
-    public Optional<MembershipDetails> findMembershipById(UUID organizationId, UUID membershipId) {
-        return Optional.ofNullable(membershipsById.get(membershipId))
-                .filter(membership -> membership.organizationId().equals(organizationId));
-    }
-
-    @Override
-    public synchronized MembershipDetails saveMembership(MembershipDetails membership) {
-        boolean duplicate = membershipsById.values().stream()
-                .anyMatch(existing -> existing.organizationId().equals(membership.organizationId())
-                        && existing.supabaseUserId().equals(membership.supabaseUserId()));
-        if (duplicate) {
-            throw new OrganizationException("conflict", "Membership already exists");
-        }
-        membershipsById.put(membership.id(), membership);
-        return membership;
-    }
-
-    @Override
-    public synchronized MembershipDetails updateMembership(MembershipDetails membership) {
-        if (!membershipsById.containsKey(membership.id())) {
-            throw new OrganizationException("not_found", "Membership not found");
-        }
-        membershipsById.put(membership.id(), membership);
-        return membership;
-    }
-
-    @Override
-    public List<OrganizationInvitation> listInvitations(UUID organizationId) {
-        return invitationsById.values().stream()
-                .filter(invitation -> invitation.organizationId().equals(organizationId))
-                .sorted(Comparator.comparing(OrganizationInvitation::createdAt))
-                .toList();
-    }
-
-    @Override
-    public Optional<OrganizationInvitation> findInvitationById(UUID organizationId, UUID invitationId) {
-        return Optional.ofNullable(invitationsById.get(invitationId))
-                .filter(invitation -> invitation.organizationId().equals(organizationId));
-    }
-
-    @Override
-    public Optional<OrganizationInvitation> findPendingInvitationByEmail(UUID organizationId, String email) {
-        return invitationsById.values().stream()
-                .filter(invitation -> invitation.organizationId().equals(organizationId))
-                .filter(invitation -> invitation.email().equals(email))
-                .filter(invitation -> "pending".equals(invitation.status()))
-                .findFirst();
-    }
-
-    @Override
-    public synchronized OrganizationInvitation saveInvitation(OrganizationInvitation invitation) {
-        findPendingInvitationByEmail(invitation.organizationId(), invitation.email()).ifPresent(existing -> {
-            throw new OrganizationException("conflict", "Invitation already exists for this email");
-        });
-        invitationsById.put(invitation.id(), invitation);
-        return invitation;
-    }
-
-    @Override
-    public synchronized OrganizationInvitation updateInvitation(OrganizationInvitation invitation) {
-        if (!invitationsById.containsKey(invitation.id())) {
-            throw new OrganizationException("not_found", "Invitation not found");
-        }
-        invitationsById.put(invitation.id(), invitation);
-        return invitation;
     }
 
     @Override

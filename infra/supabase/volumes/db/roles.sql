@@ -4,6 +4,8 @@
 SELECT format('ALTER USER %I WITH PASSWORD %L', rolname, :'pgpass')
 FROM pg_roles
 WHERE rolname IN (
+    'postgres',
+    'supabase_admin',
     'authenticator',
     'pgbouncer',
     'supabase_auth_admin',

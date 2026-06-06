@@ -13,10 +13,9 @@ vericov upload
 
 ## Why This Folder Exists
 
-The root Python package reserves the `vericov` distribution name for future
-shared Python APIs. This CLI is intentionally separate because coverage upload is
-a CI-facing tool with its own release cadence, dependencies, tests, and failure
-modes.
+The backend is distributed as containers, while coverage upload is a CI-facing
+Python tool with its own release cadence, dependencies, tests, and failure
+modes. This folder is the only Python distribution published by this repo.
 
 Keeping it under `clis/coverage-upload/` gives us room to add future independent
 CLIs as sibling packages without turning one Python project into a junk drawer:
@@ -24,17 +23,16 @@ CLIs as sibling packages without turning one Python project into a junk drawer:
 ```text
 clis/
   coverage-upload/
-  repository-admin/
-  agent-runner/
   report-export/
 ```
 
-## How Customers Use It
+## Typical Use
 
 The normal CI path is:
 
 ```bash
-export VERICOV_API_KEY=vc_live_...
+export VERICOV_API_URL=https://vericov.example.internal
+export VERICOV_API_KEY=vc_repo_...
 uvx --from vericov-coverage-upload vericov upload --coverage coverage/lcov.info --wait
 ```
 
@@ -44,7 +42,7 @@ explicit repository id when they need to debug or use broader credentials:
 
 ```bash
 uvx --from vericov-coverage-upload vericov upload \
-  --repository-id 4d607f16-1af7-4d3b-ac38-06454cba463c \
+  --repository-id 00000000-0000-0000-0000-000000000003 \
   --coverage coverage/lcov.info \
   --test-results junit.xml
 ```
@@ -52,7 +50,7 @@ uvx --from vericov-coverage-upload vericov upload \
 For local validation without sending data:
 
 ```bash
-VERICOV_API_KEY=vc_live_... uv run vericov upload --coverage coverage/lcov.info --commit-sha abc123 --branch main --dry-run
+VERICOV_API_KEY=vc_repo_... uv run vericov upload --coverage coverage/lcov.info --commit-sha abc123 --branch main --dry-run
 ```
 
 For machine-readable output:
@@ -70,7 +68,7 @@ having both files in the same project is an error.
 version: 1
 
 api:
-  url: https://api.vericov.dev
+  url: https://vericov.example.internal
 
 upload:
   flags:
@@ -170,8 +168,8 @@ Those belong to backend services or separate CLI packages.
 - Following symlinks can leak files outside the repository.
 - Retrying `400`, `401`, or `403` hides real user/configuration problems.
 - Moving business logic into Typer callbacks makes future command growth painful.
-- Importing the root `vericov` package couples this independent CLI to a package
-  that intentionally has a different release path.
+- Adding backend-only concerns couples a small CI tool to the service release
+  lifecycle.
 
 When in doubt, preserve the boring CI contract: deterministic inputs, clear
 errors, no secret leakage, and safe retries.

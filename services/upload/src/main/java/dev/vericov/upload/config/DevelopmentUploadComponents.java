@@ -17,7 +17,9 @@ import dev.vericov.upload.adapter.auth.GithubActionsOidcVerifier;
 import dev.vericov.upload.adapter.auth.HmacRunnerUploadTokenIssuer;
 import dev.vericov.upload.adapter.auth.RepositoryApiKeySecretHasher;
 import dev.vericov.upload.adapter.jdbc.DriverManagerDataSource;
+import dev.vericov.upload.adapter.jdbc.JdbcUploadRepository;
 import dev.vericov.upload.adapter.storage.HttpSupabaseObjectStorageClient;
+import dev.vericov.upload.adapter.storage.FileSystemArtifactStorage;
 import dev.vericov.upload.adapter.storage.RawArtifactBucketMapping;
 import dev.vericov.upload.adapter.storage.SupabaseStorageArtifactStorage;
 import dev.vericov.upload.domain.CreateUploadCommand;
@@ -26,6 +28,7 @@ import dev.vericov.upload.domain.UploadArtifactInput;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.inject.Produces;
 import java.net.URI;
+import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Clock;
@@ -59,6 +62,10 @@ public class DevelopmentUploadComponents {
     @Produces
     @ApplicationScoped
     public UploadRepository uploadRepository() {
+        String jdbcUrl = env("VERICOV_UPLOAD_DB_URL", env("SUPABASE_DB_URL", ""));
+        if (!jdbcUrl.isBlank()) {
+            return new JdbcUploadRepository(dataSource(jdbcUrl));
+        }
         return new InMemoryUploadRepository();
     }
 
@@ -86,7 +93,8 @@ public class DevelopmentUploadComponents {
     @Produces
     @ApplicationScoped
     public ArtifactStorage artifactStorage() {
-        if ("supabase".equalsIgnoreCase(artifactStorageBackend())) {
+        String backend = artifactStorageBackend();
+        if ("supabase".equalsIgnoreCase(backend)) {
             return new SupabaseStorageArtifactStorage(
                     new HttpSupabaseObjectStorageClient(
                             supabaseStorageBaseUri(),
@@ -96,7 +104,18 @@ public class DevelopmentUploadComponents {
                             env("VERICOV_TEST_RESULTS_BUCKET", "test-results-raw"),
                             env("VERICOV_METADATA_BUCKET", "metadata-raw")));
         }
-        return new InMemoryArtifactStorage();
+        if ("memory".equalsIgnoreCase(backend)) {
+            return new InMemoryArtifactStorage();
+        }
+        if ("filesystem".equalsIgnoreCase(backend)) {
+            return new FileSystemArtifactStorage(
+                    Path.of(env("VERICOV_ARTIFACT_STORAGE_ROOT", "/var/lib/vericov/artifacts")),
+                    new RawArtifactBucketMapping(
+                            env("VERICOV_COVERAGE_BUCKET", "coverage-raw"),
+                            env("VERICOV_TEST_RESULTS_BUCKET", "test-results-raw"),
+                            env("VERICOV_METADATA_BUCKET", "metadata-raw")));
+        }
+        throw new IllegalStateException("Unsupported VERICOV_ARTIFACT_STORAGE_BACKEND: " + backend);
     }
 
     @Produces
@@ -129,7 +148,7 @@ public class DevelopmentUploadComponents {
         private final UUID repositoryId = uuidEnv(
                 "VERICOV_DEV_REPOSITORY_ID",
                 "00000000-0000-0000-0000-000000000003");
-        private final UUID apiKeyId = uuidEnv("VERICOV_DEV_API_KEY_ID", "00000000-0000-0000-0000-000000000002");
+        private final UUID apiKeyId = optionalUuidEnv("VERICOV_DEV_API_KEY_ID");
 
         @Override
         public RepositoryApiKeyPrincipal authenticate(CreateUploadCommand command) {
@@ -143,7 +162,7 @@ public class DevelopmentUploadComponents {
             }
             return new RepositoryApiKeyPrincipal(
                     tenantId,
-                    command.repositoryId() == null ? repositoryId : command.repositoryId(),
+                    repositoryId,
                     apiKeyId,
                     Set.of("uploads:create", "uploads:read"),
                     Set.of("*"));
@@ -152,6 +171,11 @@ public class DevelopmentUploadComponents {
         private static UUID uuidEnv(String name, String fallback) {
             String value = System.getenv(name);
             return UUID.fromString(value == null || value.isBlank() ? fallback : value);
+        }
+
+        private static UUID optionalUuidEnv(String name) {
+            String value = System.getenv(name);
+            return value == null || value.isBlank() ? null : UUID.fromString(value);
         }
     }
 

@@ -47,6 +47,11 @@ import java.time.Instant;
 import java.time.format.DateTimeParseException;
 import java.util.List;
 import java.util.UUID;
+import org.eclipse.microprofile.openapi.annotations.Operation;
+import org.eclipse.microprofile.openapi.annotations.enums.SchemaType;
+import org.eclipse.microprofile.openapi.annotations.media.Content;
+import org.eclipse.microprofile.openapi.annotations.media.Schema;
+import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
 
 @ApplicationScoped
 @Path("/api/v1/orgs")
@@ -65,6 +70,95 @@ public class RepositoryControlPlaneResource {
     }
 
     @GET
+    @Path("/{org_id}/repositories")
+    @Operation(summary = "List repositories registered to an organization")
+    @APIResponse(
+            responseCode = "200",
+            description = "Repositories",
+            content = @Content(schema = @Schema(type = SchemaType.ARRAY, implementation = RepositoryHttpResponse.class)))
+    public Response listRepositories(
+            @HeaderParam("Authorization") String authorizationHeader,
+            @HeaderParam("X-Vericov-User-Id") String userIdHeader,
+            @PathParam("org_id") UUID organizationId) {
+        try {
+            AuthenticatedUser user = resolveUser(authorizationHeader, userIdHeader);
+            var repositories = organizationService.listRepositories(user.userId(), organizationId).stream()
+                    .map(RepositoryHttpResponse::from)
+                    .toList();
+            return Response.ok(new ApiResponse<>(repositories)).build();
+        } catch (OrganizationException exception) {
+            return ApiError.response(exception);
+        }
+    }
+
+    @POST
+    @Path("/{org_id}/repositories")
+    @Operation(summary = "Register a repository under an organization")
+    @APIResponse(
+            responseCode = "201",
+            description = "Repository registered",
+            content = @Content(schema = @Schema(implementation = RepositoryHttpResponse.class)))
+    public Response registerRepository(
+            @HeaderParam("Authorization") String authorizationHeader,
+            @HeaderParam("X-Vericov-User-Id") String userIdHeader,
+            @PathParam("org_id") UUID organizationId,
+            CreateRepositoryHttpRequest request) {
+        try {
+            AuthenticatedUser user = resolveUser(authorizationHeader, userIdHeader);
+            var repository = organizationService.registerRepository(request.toCommand(user.userId(), organizationId));
+            return Response.created(URI.create("/api/v1/orgs/" + organizationId + "/repositories/" + repository.id()))
+                    .entity(new ApiResponse<>(RepositoryHttpResponse.from(repository)))
+                    .build();
+        } catch (OrganizationException exception) {
+            return ApiError.response(exception);
+        }
+    }
+
+    @GET
+    @Path("/{org_id}/repositories/{repository_id}")
+    @Operation(summary = "Get an organization repository")
+    @APIResponse(
+            responseCode = "200",
+            description = "Repository",
+            content = @Content(schema = @Schema(implementation = RepositoryHttpResponse.class)))
+    public Response getRepository(
+            @HeaderParam("Authorization") String authorizationHeader,
+            @HeaderParam("X-Vericov-User-Id") String userIdHeader,
+            @PathParam("org_id") UUID organizationId,
+            @PathParam("repository_id") UUID repositoryId) {
+        try {
+            AuthenticatedUser user = resolveUser(authorizationHeader, userIdHeader);
+            var repository = organizationService.getRepository(user.userId(), organizationId, repositoryId);
+            return Response.ok(new ApiResponse<>(RepositoryHttpResponse.from(repository))).build();
+        } catch (OrganizationException exception) {
+            return ApiError.response(exception);
+        }
+    }
+
+    @PATCH
+    @Path("/{org_id}/repositories/{repository_id}")
+    @Operation(summary = "Update an organization repository")
+    @APIResponse(
+            responseCode = "200",
+            description = "Updated repository",
+            content = @Content(schema = @Schema(implementation = RepositoryHttpResponse.class)))
+    public Response updateRepository(
+            @HeaderParam("Authorization") String authorizationHeader,
+            @HeaderParam("X-Vericov-User-Id") String userIdHeader,
+            @PathParam("org_id") UUID organizationId,
+            @PathParam("repository_id") UUID repositoryId,
+            UpdateRepositoryHttpRequest request) {
+        try {
+            AuthenticatedUser user = resolveUser(authorizationHeader, userIdHeader);
+            var repository = organizationService.updateRepository(
+                    request.toCommand(user.userId(), organizationId, repositoryId));
+            return Response.ok(new ApiResponse<>(RepositoryHttpResponse.from(repository))).build();
+        } catch (OrganizationException exception) {
+            return ApiError.response(exception);
+        }
+    }
+
+    @GET
     @Path("/{org_id}/policy-defaults")
     public Response getPolicyDefaults(
             @HeaderParam("Authorization") String authorizationHeader,
@@ -75,7 +169,7 @@ public class RepositoryControlPlaneResource {
             var defaults = organizationService.getPolicyDefaults(user.userId(), organizationId);
             return Response.ok(new ApiResponse<>(PolicyDefaultsHttpResponse.from(defaults))).build();
         } catch (OrganizationException exception) {
-            return OrganizationResource.errorResponse(exception);
+            return ApiError.response(exception);
         }
     }
 
@@ -91,7 +185,7 @@ public class RepositoryControlPlaneResource {
             var defaults = organizationService.upsertPolicyDefaults(request.toCommand(user.userId(), organizationId));
             return Response.ok(new ApiResponse<>(PolicyDefaultsHttpResponse.from(defaults))).build();
         } catch (OrganizationException exception) {
-            return OrganizationResource.errorResponse(exception);
+            return ApiError.response(exception);
         }
     }
 
@@ -107,7 +201,7 @@ public class RepositoryControlPlaneResource {
             var config = organizationService.getEffectiveRepositoryConfig(user.userId(), organizationId, repositoryId);
             return Response.ok(new ApiResponse<>(EffectiveRepositoryConfigHttpResponse.from(config))).build();
         } catch (OrganizationException exception) {
-            return OrganizationResource.errorResponse(exception);
+            return ApiError.response(exception);
         }
     }
 
@@ -125,7 +219,7 @@ public class RepositoryControlPlaneResource {
                     request.toCommand(user.userId(), organizationId, repositoryId));
             return Response.ok(new ApiResponse<>(RepositoryConfigHttpResponse.from(config))).build();
         } catch (OrganizationException exception) {
-            return OrganizationResource.errorResponse(exception);
+            return ApiError.response(exception);
         }
     }
 
@@ -147,7 +241,7 @@ public class RepositoryControlPlaneResource {
                     request.schemaVersion()));
             return Response.ok(new ApiResponse<>(RepositoryConfigValidationHttpResponse.from(config))).build();
         } catch (OrganizationException exception) {
-            return OrganizationResource.errorResponse(exception);
+            return ApiError.response(exception);
         }
     }
 
@@ -166,7 +260,7 @@ public class RepositoryControlPlaneResource {
                     .toList();
             return Response.ok(new ApiResponse<>(apiKeys)).build();
         } catch (OrganizationException exception) {
-            return OrganizationResource.errorResponse(exception);
+            return ApiError.response(exception);
         }
     }
 
@@ -188,7 +282,7 @@ public class RepositoryControlPlaneResource {
                     .entity(new ApiResponse<>(RepositoryApiKeyHttpResponse.from(apiKey)))
                     .build();
         } catch (OrganizationException exception) {
-            return OrganizationResource.errorResponse(exception);
+            return ApiError.response(exception);
         }
     }
 
@@ -209,7 +303,7 @@ public class RepositoryControlPlaneResource {
                     apiKeyId));
             return Response.ok(new ApiResponse<>(RepositoryApiKeyHttpResponse.from(apiKey))).build();
         } catch (OrganizationException exception) {
-            return OrganizationResource.errorResponse(exception);
+            return ApiError.response(exception);
         }
     }
 
@@ -228,7 +322,7 @@ public class RepositoryControlPlaneResource {
                     .toList();
             return Response.ok(new ApiResponse<>(components)).build();
         } catch (OrganizationException exception) {
-            return OrganizationResource.errorResponse(exception);
+            return ApiError.response(exception);
         }
     }
 
@@ -250,7 +344,7 @@ public class RepositoryControlPlaneResource {
                     .entity(new ApiResponse<>(RepositoryComponentHttpResponse.from(component)))
                     .build();
         } catch (OrganizationException exception) {
-            return OrganizationResource.errorResponse(exception);
+            return ApiError.response(exception);
         }
     }
 
@@ -269,7 +363,7 @@ public class RepositoryControlPlaneResource {
                     request.toUpdateCommand(user.userId(), organizationId, repositoryId, componentId));
             return Response.ok(new ApiResponse<>(RepositoryComponentHttpResponse.from(component))).build();
         } catch (OrganizationException exception) {
-            return OrganizationResource.errorResponse(exception);
+            return ApiError.response(exception);
         }
     }
 
@@ -290,7 +384,7 @@ public class RepositoryControlPlaneResource {
                     .toList();
             return Response.ok(new ApiResponse<>(resolutions)).build();
         } catch (OrganizationException exception) {
-            return OrganizationResource.errorResponse(exception);
+            return ApiError.response(exception);
         }
     }
 
@@ -309,7 +403,7 @@ public class RepositoryControlPlaneResource {
                     .toList();
             return Response.ok(new ApiResponse<>(policies)).build();
         } catch (OrganizationException exception) {
-            return OrganizationResource.errorResponse(exception);
+            return ApiError.response(exception);
         }
     }
 
@@ -331,7 +425,7 @@ public class RepositoryControlPlaneResource {
                     .entity(new ApiResponse<>(RepositoryPolicyHttpResponse.from(policy)))
                     .build();
         } catch (OrganizationException exception) {
-            return OrganizationResource.errorResponse(exception);
+            return ApiError.response(exception);
         }
     }
 
@@ -350,7 +444,7 @@ public class RepositoryControlPlaneResource {
                     request.toUpdateCommand(user.userId(), organizationId, repositoryId, policyId));
             return Response.ok(new ApiResponse<>(RepositoryPolicyHttpResponse.from(policy))).build();
         } catch (OrganizationException exception) {
-            return OrganizationResource.errorResponse(exception);
+            return ApiError.response(exception);
         }
     }
 
@@ -369,7 +463,7 @@ public class RepositoryControlPlaneResource {
                     .toList();
             return Response.ok(new ApiResponse<>(gates)).build();
         } catch (OrganizationException exception) {
-            return OrganizationResource.errorResponse(exception);
+            return ApiError.response(exception);
         }
     }
 
@@ -394,7 +488,7 @@ public class RepositoryControlPlaneResource {
                             .toList()));
             return Response.ok(new ApiResponse<>(gates.stream().map(RepositoryGateHttpResponse::from).toList())).build();
         } catch (OrganizationException exception) {
-            return OrganizationResource.errorResponse(exception);
+            return ApiError.response(exception);
         }
     }
 
@@ -419,7 +513,7 @@ public class RepositoryControlPlaneResource {
                             .toList()));
             return Response.ok(new ApiResponse<>(gates.stream().map(RepositoryGateHttpResponse::from).toList())).build();
         } catch (OrganizationException exception) {
-            return OrganizationResource.errorResponse(exception);
+            return ApiError.response(exception);
         }
     }
 
@@ -444,7 +538,7 @@ public class RepositoryControlPlaneResource {
                     limit));
             return Response.ok(new ApiResponse<>(CoverageReportHttpResponse.from(report))).build();
         } catch (OrganizationException exception) {
-            return OrganizationResource.errorResponse(exception);
+            return ApiError.response(exception);
         }
     }
 
@@ -471,7 +565,7 @@ public class RepositoryControlPlaneResource {
                     includeDiffLines));
             return Response.ok(new ApiResponse<>(PullRequestCoverageReportHttpResponse.from(report))).build();
         } catch (OrganizationException exception) {
-            return OrganizationResource.errorResponse(exception);
+            return ApiError.response(exception);
         }
     }
 
@@ -494,7 +588,7 @@ public class RepositoryControlPlaneResource {
                     filePath));
             return Response.ok(new ApiResponse<>(CoverageLineHitMapHttpResponse.from(lineHits))).build();
         } catch (OrganizationException exception) {
-            return OrganizationResource.errorResponse(exception);
+            return ApiError.response(exception);
         }
     }
 
@@ -520,7 +614,7 @@ public class RepositoryControlPlaneResource {
                     .toList();
             return Response.ok(new ApiResponse<>(runs)).build();
         } catch (OrganizationException exception) {
-            return OrganizationResource.errorResponse(exception);
+            return ApiError.response(exception);
         }
     }
 
@@ -551,7 +645,7 @@ public class RepositoryControlPlaneResource {
                     limit));
             return Response.ok(new ApiResponse<>(CoverageTrendHttpResponse.from(trend))).build();
         } catch (OrganizationException exception) {
-            return OrganizationResource.errorResponse(exception);
+            return ApiError.response(exception);
         }
     }
 
@@ -593,7 +687,7 @@ public class RepositoryControlPlaneResource {
                     .toList();
             return Response.ok(new ApiResponse<>(gaps)).build();
         } catch (OrganizationException exception) {
-            return OrganizationResource.errorResponse(exception);
+            return ApiError.response(exception);
         }
     }
 
@@ -623,7 +717,7 @@ public class RepositoryControlPlaneResource {
                     .toList();
             return Response.ok(new ApiResponse<>(gaps)).build();
         } catch (OrganizationException exception) {
-            return OrganizationResource.errorResponse(exception);
+            return ApiError.response(exception);
         }
     }
 
@@ -640,7 +734,7 @@ public class RepositoryControlPlaneResource {
             var gap = organizationService.getCoverageGap(user.userId(), organizationId, repositoryId, gapId);
             return Response.ok(new ApiResponse<>(CoverageGapFindingHttpResponse.from(gap))).build();
         } catch (OrganizationException exception) {
-            return OrganizationResource.errorResponse(exception);
+            return ApiError.response(exception);
         }
     }
 
@@ -668,7 +762,7 @@ public class RepositoryControlPlaneResource {
                     .toList();
             return Response.ok(new ApiResponse<>(evaluations)).build();
         } catch (OrganizationException exception) {
-            return OrganizationResource.errorResponse(exception);
+            return ApiError.response(exception);
         }
     }
 
@@ -689,7 +783,7 @@ public class RepositoryControlPlaneResource {
                     branch));
             return Response.ok(new ApiResponse<>(RepositoryDashboardHttpResponse.from(dashboard))).build();
         } catch (OrganizationException exception) {
-            return OrganizationResource.errorResponse(exception);
+            return ApiError.response(exception);
         }
     }
 
@@ -708,7 +802,7 @@ public class RepositoryControlPlaneResource {
                     branch));
             return Response.ok(new ApiResponse<>(OrganizationDashboardHttpResponse.from(dashboard))).build();
         } catch (OrganizationException exception) {
-            return OrganizationResource.errorResponse(exception);
+            return ApiError.response(exception);
         }
     }
 
@@ -730,7 +824,7 @@ public class RepositoryControlPlaneResource {
                     .toList();
             return Response.ok(new ApiResponse<>(dashboards)).build();
         } catch (OrganizationException exception) {
-            return OrganizationResource.errorResponse(exception);
+            return ApiError.response(exception);
         }
     }
 
@@ -749,7 +843,7 @@ public class RepositoryControlPlaneResource {
                     repositoryId);
             return Response.ok(new ApiResponse<>(RepositoryBadgeSettingsHttpResponse.from(settings))).build();
         } catch (OrganizationException exception) {
-            return OrganizationResource.errorResponse(exception);
+            return ApiError.response(exception);
         }
     }
 
@@ -767,7 +861,7 @@ public class RepositoryControlPlaneResource {
                     request.toCommand(user.userId(), organizationId, repositoryId));
             return Response.ok(new ApiResponse<>(RepositoryBadgeSettingsHttpResponse.from(settings))).build();
         } catch (OrganizationException exception) {
-            return OrganizationResource.errorResponse(exception);
+            return ApiError.response(exception);
         }
     }
 
@@ -786,7 +880,7 @@ public class RepositoryControlPlaneResource {
                     repositoryId));
             return Response.ok(new ApiResponse<>(BadgeTokenHttpResponse.from(token))).build();
         } catch (OrganizationException exception) {
-            return OrganizationResource.errorResponse(exception);
+            return ApiError.response(exception);
         }
     }
 
@@ -815,7 +909,7 @@ public class RepositoryControlPlaneResource {
                     .header("Cache-Control", cacheControl(token))
                     .build();
         } catch (OrganizationException exception) {
-            return OrganizationResource.errorResponse(exception);
+            return ApiError.response(exception);
         }
     }
 
@@ -842,7 +936,7 @@ public class RepositoryControlPlaneResource {
                     .header("Cache-Control", cacheControl(token))
                     .build();
         } catch (OrganizationException exception) {
-            return OrganizationResource.errorResponse(exception);
+            return ApiError.response(exception);
         }
     }
 
@@ -863,7 +957,7 @@ public class RepositoryControlPlaneResource {
                     .entity(new ApiResponse<>(CoverageDebtHttpResponse.from(debt)))
                     .build();
         } catch (OrganizationException exception) {
-            return OrganizationResource.errorResponse(exception);
+            return ApiError.response(exception);
         }
     }
 
@@ -906,7 +1000,7 @@ public class RepositoryControlPlaneResource {
                     .toList();
             return Response.ok(new ApiResponse<>(debts)).build();
         } catch (OrganizationException exception) {
-            return OrganizationResource.errorResponse(exception);
+            return ApiError.response(exception);
         }
     }
 
@@ -924,7 +1018,7 @@ public class RepositoryControlPlaneResource {
             var debt = organizationService.getCoverageDebt(query);
             return Response.ok(new ApiResponse<>(CoverageDebtHttpResponse.from(debt))).build();
         } catch (OrganizationException exception) {
-            return OrganizationResource.errorResponse(exception);
+            return ApiError.response(exception);
         }
     }
 
@@ -942,7 +1036,7 @@ public class RepositoryControlPlaneResource {
             var updated = organizationService.updateCoverageDebt(request.toCommand(user.userId(), organizationId, repositoryId, debtId));
             return Response.ok(new ApiResponse<>(CoverageDebtHttpResponse.from(updated))).build();
         } catch (OrganizationException exception) {
-            return OrganizationResource.errorResponse(exception);
+            return ApiError.response(exception);
         }
     }
 
@@ -960,7 +1054,7 @@ public class RepositoryControlPlaneResource {
             var resolved = organizationService.resolveCoverageDebt(command);
             return Response.ok(new ApiResponse<>(CoverageDebtHttpResponse.from(resolved))).build();
         } catch (OrganizationException exception) {
-            return OrganizationResource.errorResponse(exception);
+            return ApiError.response(exception);
         }
     }
 
@@ -978,7 +1072,7 @@ public class RepositoryControlPlaneResource {
             var revoked = organizationService.revokeCoverageDebt(command);
             return Response.ok(new ApiResponse<>(CoverageDebtHttpResponse.from(revoked))).build();
         } catch (OrganizationException exception) {
-            return OrganizationResource.errorResponse(exception);
+            return ApiError.response(exception);
         }
     }
 

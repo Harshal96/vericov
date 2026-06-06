@@ -24,16 +24,4 @@ public record OrganizationDetails(
         Objects.requireNonNull(createdAt, "createdAt");
         Objects.requireNonNull(updatedAt, "updatedAt");
     }
-
-    public OrganizationDetails withValues(String nextName, String nextSlug, String nextStatus, Instant updatedAt) {
-        return new OrganizationDetails(
-                id,
-                tenantId,
-                nextName,
-                nextSlug,
-                plan,
-                nextStatus,
-                createdAt,
-                updatedAt);
-    }
 }

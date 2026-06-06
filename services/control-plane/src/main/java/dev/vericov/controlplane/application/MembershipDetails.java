@@ -24,16 +24,4 @@ public record MembershipDetails(
         Objects.requireNonNull(createdAt, "createdAt");
         Objects.requireNonNull(updatedAt, "updatedAt");
     }
-
-    public MembershipDetails withValues(String nextRole, String nextStatus, Instant updatedAt) {
-        return new MembershipDetails(
-                id,
-                tenantId,
-                organizationId,
-                supabaseUserId,
-                nextRole,
-                nextStatus,
-                createdAt,
-                updatedAt);
-    }
 }

@@ -1,49 +1,104 @@
 # Vericov
 
-Vericov is an agentic coverage backend for coverage reporting, merge
-confidence, policy gates, and autonomous test-remediation workflows. It ships as
-a self-hostable backend stack and as a managed module that can sit behind
-veriapi alongside other services.
+Vericov is an open-source, self-hosted coverage backend for coverage uploads,
+normalized reports, policy gates, merge confidence, and test-remediation
+workflows.
+
+> **Project status:** pre-1.0. The core services and upload CLI are usable, but
+> APIs and database schemas may still change between releases.
+
+## Features
+
+- Upload coverage and test-result artifacts from CI.
+- Parse LCOV, JaCoCo, Cobertura, Clover, Go cover, gcov, and llvm-cov output.
+- Store normalized reports, line hits, test runs, coverage gaps, and gates.
+- Run with an integrated PostgreSQL database or bring your own compatible
+  PostgreSQL instance.
+- Start without an external auth provider on a trusted private network.
+- Use shared filesystem storage by default or Supabase Storage when preferred.
 
 ## Quick Start
 
+Prerequisites: Git, Docker, and Docker Compose.
+
 ```bash
-cp .env.example .env
+git clone https://github.com/Harshal96/vericov.git
+cd vericov
+./vericov init
 ./vericov doctor
 ./vericov up
 ```
 
-Self-hosting has no required auth-provider setup. The default `.env.example`
-uses `VERICOV_DEV_AUTH_BYPASS=true` for trusted private deployments. Disable the
-bypass and configure a service-JWT key when a gateway such as veriapi is minting
-delegated identities.
+The bundled database initializes the tracked Vericov schema and PGMQ queues on
+first boot. Services bind to `127.0.0.1` by default.
 
-## Guides
+Verify the stack:
 
-- [Self-hosting](docs/SELF_HOSTING.md)
-- [Managed integration](docs/MANAGED_INTEGRATION.md)
-- [Coverage upload CLI](clis/coverage-upload/README.md)
+```bash
+./scripts/smoke-test.sh
+```
 
-## Services
+Submit a report from the checkout:
+
+```bash
+python -m pip install -e clis/coverage-upload
+set -a
+. ./.env
+set +a
+VERICOV_API_URL=http://localhost:8080 \
+VERICOV_API_KEY="$VERICOV_DEV_API_KEY" \
+vericov upload --coverage coverage/lcov.info --wait
+```
+
+Stop it without deleting data:
+
+```bash
+./vericov down
+```
+
+See [Self-hosting](docs/SELF_HOSTING.md) for configuration and
+[Operations](docs/OPERATIONS.md) for backups, upgrades, recovery, and security.
+
+## Architecture
 
 | Service | Purpose | Port |
 | --- | --- | --- |
 | upload | CI coverage artifact ingestion | 8080 |
 | coverage-analysis | Coverage parsing, normalization, reports, gates | 8081 |
 | control-plane | Repositories, config, policies, badges, debt, dashboards | 8082 |
-| git-integration | Provider webhooks and git actions | 8083 |
-| integrations | Provider connections, credentials, bindings | 8084 |
-| agent-runner | Agent task control plane and runner protocol | 8085 |
 
-The repo no longer bundles a product Kong gateway. Put your own gateway or
-private network boundary in front of the direct service ports.
+Provider integrations are currently optional and are not part of the default
+three-service startup.
 
-## Coverage Upload CLI
+Vericov does not expose a bundled public gateway. Keep direct service ports on
+a private network or put your own TLS, authentication, and rate-limiting proxy
+in front of them.
 
-The coverage upload CLI remains an independent Python package under
-`clis/coverage-upload`:
+## Upload CLI
+
+The Python upload CLI is independently packaged as `vericov-coverage-upload`:
 
 ```bash
-cd clis/coverage-upload
-VERICOV_API_KEY=vc_live_... uv run vericov upload --coverage coverage/lcov.info --dry-run
+uvx --from vericov-coverage-upload vericov upload \
+  --coverage coverage/lcov.info \
+  --dry-run
 ```
+
+See the [CLI guide](clis/coverage-upload/README.md) for configuration and CI
+usage.
+
+## Development
+
+```bash
+mvn test
+python -m pytest -q
+python -m pip install -e clis/coverage-upload pytest
+(cd clis/coverage-upload && python -m pytest -q)
+```
+
+Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request. Report
+security issues through the private process in [SECURITY.md](SECURITY.md).
+
+## License
+
+Vericov is available under the [MIT License](LICENSE).

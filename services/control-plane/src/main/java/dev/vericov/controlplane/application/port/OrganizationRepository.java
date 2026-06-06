@@ -1,17 +1,19 @@
 package dev.vericov.controlplane.application.port;
 
+import dev.vericov.controlplane.application.CoverageBadgeCacheEntry;
+import dev.vericov.controlplane.application.CoverageDebtDetails;
+import dev.vericov.controlplane.application.CoverageDebtEventDetails;
+import dev.vericov.controlplane.application.CoverageFileSummaryDetails;
+import dev.vericov.controlplane.application.CoverageGapFindingDetails;
+import dev.vericov.controlplane.application.CoverageLineHitMapDetails;
+import dev.vericov.controlplane.application.CoverageReportSummary;
+import dev.vericov.controlplane.application.GateEvaluationDetails;
 import dev.vericov.controlplane.application.MembershipDetails;
-import dev.vericov.controlplane.application.OrganizationInvitation;
 import dev.vericov.controlplane.application.OrganizationDetails;
 import dev.vericov.controlplane.application.PolicyDefaultsDetails;
-import dev.vericov.controlplane.application.CoverageBadgeCacheEntry;
-import dev.vericov.controlplane.application.CoverageReportSummary;
-import dev.vericov.controlplane.application.CoverageFileSummaryDetails;
-import dev.vericov.controlplane.application.CoverageLineHitMapDetails;
-import dev.vericov.controlplane.application.GateEvaluationDetails;
 import dev.vericov.controlplane.application.PullRequestDiffCoverageDetails;
-import dev.vericov.controlplane.application.RepositoryBadgeSettingsDetails;
 import dev.vericov.controlplane.application.RepositoryApiKeyDetails;
+import dev.vericov.controlplane.application.RepositoryBadgeSettingsDetails;
 import dev.vericov.controlplane.application.RepositoryConfigDetails;
 import dev.vericov.controlplane.application.RepositoryComponentDetails;
 import dev.vericov.controlplane.application.RepositoryDetails;
@@ -19,9 +21,6 @@ import dev.vericov.controlplane.application.RepositoryGateDetails;
 import dev.vericov.controlplane.application.RepositoryOwnerRuleDetails;
 import dev.vericov.controlplane.application.RepositoryPackageNodeDetails;
 import dev.vericov.controlplane.application.RepositoryPolicyDetails;
-import dev.vericov.controlplane.application.CoverageDebtDetails;
-import dev.vericov.controlplane.application.CoverageDebtEventDetails;
-import dev.vericov.controlplane.application.CoverageGapFindingDetails;
 import dev.vericov.controlplane.application.TestRunDetails;
 import java.time.Instant;
 import java.util.List;
@@ -29,37 +28,9 @@ import java.util.Optional;
 import java.util.UUID;
 
 public interface OrganizationRepository {
-    List<OrganizationDetails> findOrganizationsForUser(UUID userId);
-
-    Optional<OrganizationDetails> findOrganizationForUser(UUID organizationId, UUID userId);
-
     Optional<OrganizationDetails> findById(UUID organizationId);
 
-    boolean slugExists(String slug);
-
-    OrganizationDetails createOrganizationWithOwner(OrganizationDetails organization, MembershipDetails ownerMembership);
-
-    OrganizationDetails updateOrganization(OrganizationDetails organization);
-
-    List<MembershipDetails> listMemberships(UUID organizationId);
-
     Optional<MembershipDetails> findMembership(UUID organizationId, UUID userId);
-
-    Optional<MembershipDetails> findMembershipById(UUID organizationId, UUID membershipId);
-
-    MembershipDetails saveMembership(MembershipDetails membership);
-
-    MembershipDetails updateMembership(MembershipDetails membership);
-
-    List<OrganizationInvitation> listInvitations(UUID organizationId);
-
-    Optional<OrganizationInvitation> findInvitationById(UUID organizationId, UUID invitationId);
-
-    Optional<OrganizationInvitation> findPendingInvitationByEmail(UUID organizationId, String email);
-
-    OrganizationInvitation saveInvitation(OrganizationInvitation invitation);
-
-    OrganizationInvitation updateInvitation(OrganizationInvitation invitation);
 
     List<RepositoryDetails> listRepositories(UUID organizationId);
 

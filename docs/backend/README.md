@@ -17,7 +17,7 @@ Implementation: Self-hostable Helidon services behind an external/customer gatew
 - Every Helidon service exposes metrics at `/observe/metrics`.
 - Vericov no longer bundles a product Kong gateway.
 - Self-hosting can run without an auth provider by using `VERICOV_DEV_AUTH_BYPASS=true`.
-- Managed deployments receive short-lived service JWTs from veriapi or another customer gateway.
+- Gateway-authenticated deployments receive short-lived service JWTs from the operator gateway.
 - Supabase is optional and is used only when the operator chooses it for storage or platform services.
 
 ## Storage and Auth
@@ -25,7 +25,7 @@ Implementation: Self-hostable Helidon services behind an external/customer gatew
 Postgres is required for durable self-hosting. Supabase storage remains a
 supported object-storage option, but Supabase Auth is not required by Vericov
 services. Authentication, if enabled, is pushed to the gateway and delegated to
-services through the service-JWT contract in `docs/MANAGED_INTEGRATION.md`.
+services through the service-JWT contract in `docs/GATEWAY_AUTH.md`.
 
 ## Backend Services
 
@@ -85,7 +85,7 @@ Common headers:
 
 | Header | Required | Purpose |
 | --- | --- | --- |
-| `Authorization: Bearer <jwt>` | Managed service APIs | Service JWT from gateway/veriapi |
+| `Authorization: Bearer <jwt>` | Gateway-authenticated APIs | Service JWT from the operator gateway |
 | `X-Vericov-User-Id` | Dev bypass only | Local/self-host identity when bypass is enabled |
 | `X-Vericov-Tenant-Id` | Managed service APIs | Tenant claim propagation |
 | `Idempotency-Key` | Mutating APIs | Safe retries for uploads, comments, tasks |
@@ -97,7 +97,7 @@ Common headers:
 | Mode | Used by | Credential | Primary verifier |
 | --- | --- | --- | --- |
 | Self-host/no-auth | Private gateway or trusted network | `VERICOV_DEV_AUTH_BYPASS=true` | Operator boundary |
-| Managed user delegation | veriapi/customer gateway | Short-lived service JWT | Receiving Helidon service |
+| Gateway user delegation | Operator gateway | Short-lived service JWT | Receiving Helidon service |
 | Repository API key | CI coverage uploads | Repo-scoped Vericov API key, stored hashed | Upload / Ingestion Service |
 | Tokenless CI | GitHub Actions in v1 | OIDC/provider identity token | Upload / Ingestion Service |
 | Runner | Self-hosted runners | Short-lived runner upload JWT | Upload / Ingestion Service |

@@ -1,0 +1,95 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  java:
+    name: Java services
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "25"
+          cache: maven
+
+      - name: Run service tests
+        run: mvn --batch-mode test
+
+  python:
+    name: Python tooling
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install test dependencies
+        run: python -m pip install --upgrade pytest build -e clis/coverage-upload
+
+      - name: Run repository checks
+        run: python -m pytest -q
+
+      - name: Run upload CLI tests
+        working-directory: clis/coverage-upload
+        run: python -m pytest -q
+
+      - name: Build upload CLI package
+        run: python -m build clis/coverage-upload
+
+  self-host-config:
+    name: Self-host configuration
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Validate shell scripts
+        run: sh -n vericov scripts/*.sh
+
+      - name: Validate default configuration
+        run: |
+          ./vericov init
+          ./vericov doctor
+          docker compose --env-file .env -f infra/local/docker-compose.yml --profile bundled-db config --quiet
+
+  self-host-integration:
+    name: Self-host upload flow
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Generate local configuration
+        run: ./vericov init
+
+      - name: Start core stack
+        run: ./vericov up
+
+      - name: Exercise upload-to-report flow
+        run: ./scripts/smoke-test.sh
+
+      - name: Show container logs after failure
+        if: failure()
+        run: docker compose --env-file .env -f infra/local/docker-compose.yml --profile bundled-db logs --no-color
+
+      - name: Stop stack
+        if: always()
+        run: ./vericov down

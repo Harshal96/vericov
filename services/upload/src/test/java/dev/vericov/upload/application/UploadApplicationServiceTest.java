@@ -104,6 +104,19 @@ class UploadApplicationServiceTest {
     }
 
     @Test
+    void returnsConcurrentWinnerWhenDatabaseIdempotencyConstraintWinsRace() {
+        TestFixture fixture = new TestFixture();
+        fixture.uploadRepository.simulateConcurrentWinner = true;
+
+        var accepted = fixture.service.acceptUpload(command("raced-key"));
+
+        assertEquals(FakeUploadRepository.CONCURRENT_UPLOAD_ID, accepted.uploadId());
+        assertEquals(FakeUploadRepository.CONCURRENT_JOB_ID, accepted.analysisJobId());
+        assertEquals(0, fixture.eventPublisher.events.size());
+        assertEquals(1, fixture.workQueue.jobs.size());
+    }
+
+    @Test
     void authenticatesIdempotentRetriesBeforeReturningExistingUpload() {
         TestFixture fixture = new TestFixture();
         CreateUploadCommand command = command("same-key-auth");
@@ -254,6 +267,39 @@ class UploadApplicationServiceTest {
     }
 
     private static final class FakeUploadRepository extends InMemoryUploadRepository {
+        private static final UUID CONCURRENT_UPLOAD_ID =
+                UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
+        private static final UUID CONCURRENT_JOB_ID =
+                UUID.fromString("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
+        private boolean simulateConcurrentWinner;
+
+        @Override
+        public void save(QueuedUpload upload, List<StoredArtifact> artifacts) {
+            if (!simulateConcurrentWinner) {
+                super.save(upload, artifacts);
+                return;
+            }
+            simulateConcurrentWinner = false;
+            super.save(new QueuedUpload(
+                    CONCURRENT_UPLOAD_ID,
+                    upload.tenantId(),
+                    upload.repositoryId(),
+                    upload.apiKeyId(),
+                    upload.commitSha(),
+                    upload.branch(),
+                    upload.pullRequestNumber(),
+                    upload.ciProvider(),
+                    upload.ciBuildId(),
+                    upload.ciBuildUrl(),
+                    upload.flags(),
+                    upload.component(),
+                    upload.packageName(),
+                    upload.status(),
+                    upload.idempotencyKey(),
+                    upload.acceptedAt(),
+                    Optional.of(CONCURRENT_JOB_ID)), artifacts);
+            throw new DuplicateUploadException(new IllegalStateException("duplicate"));
+        }
     }
 
     private static final class FakeArtifactStorage implements ArtifactStorage {

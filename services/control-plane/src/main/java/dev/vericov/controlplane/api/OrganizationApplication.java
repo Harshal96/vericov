@@ -11,11 +11,8 @@ public class OrganizationApplication extends Application {
     @Override
     public Set<Class<?>> getClasses() {
         return Set.of(
-                AuthResource.class,
-                AuthorizationResource.class,
                 InternalCoverageContextResource.class,
                 InternalRepositoryConfigResource.class,
-                RepositoryControlPlaneResource.class,
-                OrganizationResource.class);
+                RepositoryControlPlaneResource.class);
     }
 }

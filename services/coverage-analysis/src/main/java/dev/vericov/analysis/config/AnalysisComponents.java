@@ -12,6 +12,8 @@ import dev.vericov.analysis.adapter.jdbc.JdbcGateConfigurationRepository;
 import dev.vericov.analysis.adapter.jdbc.JdbcPrDiffCoverageRepository;
 import dev.vericov.analysis.adapter.jdbc.JdbcTestRunRepository;
 import dev.vericov.analysis.adapter.storage.HttpSupabaseArtifactContentStore;
+import dev.vericov.analysis.adapter.storage.FileSystemArtifactContentStore;
+import dev.vericov.analysis.adapter.storage.FileSystemNormalizedCoverageStore;
 import dev.vericov.analysis.adapter.storage.SupabaseNormalizedCoverageStore;
 import dev.vericov.analysis.application.AnalysisMessageHandler;
 import dev.vericov.analysis.application.AnalysisWorker;
@@ -21,7 +23,9 @@ import dev.vericov.analysis.application.PrDiffCoverageProcessor;
 import dev.vericov.analysis.application.UploadAnalysisEventHandler;
 import dev.vericov.analysis.application.port.AnalysisJobQueue;
 import dev.vericov.analysis.application.port.AnalysisJobRepository;
+import dev.vericov.analysis.application.port.ArtifactContentStore;
 import dev.vericov.analysis.application.port.CoverageAnalysisProcessor;
+import dev.vericov.analysis.application.port.NormalizedCoverageStore;
 import dev.vericov.analysis.application.port.RepositoryContextRepository;
 import dev.vericov.analysis.coverage.CloverCoverageParser;
 import dev.vericov.analysis.coverage.CoberturaCoverageParser;
@@ -42,6 +46,7 @@ import dev.vericov.analysis.testresults.TestResultParserRegistry;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.inject.Produces;
 import java.net.URI;
+import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
@@ -105,19 +110,13 @@ public class AnalysisComponents {
         DataSource dataSource = dataSource(jdbcUrl);
         SecureXmlCoverageDocumentReader xmlReader = new SecureXmlCoverageDocumentReader();
         JdbcCoverageReportRepository reportRepository = new JdbcCoverageReportRepository(dataSource);
-        URI storageBaseUri = supabaseStorageBaseUri();
-        String serviceRoleKey = requiredEnv("SUPABASE_SERVICE_ROLE_KEY");
         return new DefaultCoverageAnalysisProcessor(
                 new JdbcCoverageAnalysisInputRepository(dataSource),
-                new HttpSupabaseArtifactContentStore(storageBaseUri, serviceRoleKey),
+                artifactContentStore(),
                 reportRepository,
                 new JdbcGateConfigurationRepository(dataSource),
                 repositoryContextRepository,
-                new SupabaseNormalizedCoverageStore(
-                        storageBaseUri,
-                        serviceRoleKey,
-                        normalizedCoverageBucket(),
-                        new NormalizedCoverageMapSerializer()),
+                normalizedCoverageStore(),
                 new CoverageParserRegistry(List.of(
                         new LcovCoverageParser(),
                         new CoberturaCoverageParser(xmlReader),
@@ -130,6 +129,38 @@ public class AnalysisComponents {
                 new JdbcTestRunRepository(dataSource),
                 prDiffCoverageProcessor(dataSource, reportRepository),
                 Clock.systemUTC());
+    }
+
+    private static ArtifactContentStore artifactContentStore() {
+        String backend = artifactStorageBackend();
+        if ("supabase".equalsIgnoreCase(backend)) {
+            return new HttpSupabaseArtifactContentStore(
+                    supabaseStorageBaseUri(),
+                    requiredEnv("SUPABASE_SERVICE_ROLE_KEY"));
+        }
+        if ("filesystem".equalsIgnoreCase(backend)) {
+            return new FileSystemArtifactContentStore(artifactStorageRoot());
+        }
+        throw new IllegalStateException("Unsupported VERICOV_ARTIFACT_STORAGE_BACKEND: " + backend);
+    }
+
+    private static NormalizedCoverageStore normalizedCoverageStore() {
+        String backend = artifactStorageBackend();
+        NormalizedCoverageMapSerializer serializer = new NormalizedCoverageMapSerializer();
+        if ("supabase".equalsIgnoreCase(backend)) {
+            return new SupabaseNormalizedCoverageStore(
+                    supabaseStorageBaseUri(),
+                    requiredEnv("SUPABASE_SERVICE_ROLE_KEY"),
+                    normalizedCoverageBucket(),
+                    serializer);
+        }
+        if ("filesystem".equalsIgnoreCase(backend)) {
+            return new FileSystemNormalizedCoverageStore(
+                    artifactStorageRoot(),
+                    normalizedCoverageBucket(),
+                    serializer);
+        }
+        throw new IllegalStateException("Unsupported VERICOV_ARTIFACT_STORAGE_BACKEND: " + backend);
     }
 
     @Produces
@@ -184,6 +215,14 @@ public class AnalysisComponents {
 
     private static String normalizedCoverageBucket() {
         return env("VERICOV_NORMALIZED_COVERAGE_BUCKET", "coverage-normalized");
+    }
+
+    private static String artifactStorageBackend() {
+        return env("VERICOV_ARTIFACT_STORAGE_BACKEND", "filesystem");
+    }
+
+    private static Path artifactStorageRoot() {
+        return Path.of(env("VERICOV_ARTIFACT_STORAGE_ROOT", "/var/lib/vericov/artifacts"));
     }
 
     private static URI supabaseStorageBaseUri() {

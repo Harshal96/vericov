@@ -12,8 +12,8 @@ this service currently implements the internal task API first.
 ## Why This Service Exists
 
 Coverage analysis can discover high-risk uncovered code, but source-bearing
-repair work should be isolated from the coverage worker and, in enterprise
-deployments, often needs to run inside a customer's network. This service gives
+repair work should be isolated from the coverage worker and may need to run
+inside an operator-controlled network. This service gives
 Vericov a durable boundary for:
 
 - creating an agent task from another service event;

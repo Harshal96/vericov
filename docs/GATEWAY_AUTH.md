@@ -1,13 +1,13 @@
-# Managed Integration
+# Gateway Authentication
 
-This document describes how veriapi or a customer gateway should call Vericov as
-a backend module.
+This document describes how an operator-provided gateway can authenticate users
+before calling Vericov services.
 
 ## Architecture
 
 ```mermaid
 flowchart LR
-  user["User or CI caller"] --> gateway["veriapi / customer gateway"]
+  user["User or CI caller"] --> gateway["Operator gateway"]
   gateway -->|"gRPC + service JWT"| control["vericov-control-plane :50082"]
   gateway -->|"REST upload credential"| upload["vericov-upload :8080"]
   control --> analysis["coverage-analysis"]
@@ -29,13 +29,12 @@ Payload:
 
 ```json
 {
-  "iss": "veriapi",
+  "iss": "vericov-gateway",
   "aud": "vericov",
   "sub": "user:<verified-user-id>",
   "exp": 1770000000,
   "iat": 1769999700,
   "jti": "<uuid>",
-  "vericov_tenant_id": "<tenant-uuid>",
   "vericov_user_id": "<user-uuid>",
   "vericov_scopes": ["repos:read", "reports:write"]
 }
@@ -45,23 +44,23 @@ Rules:
 
 - `exp - iat` must be at most five minutes.
 - `aud` must include `vericov`.
-- `iss` defaults to `veriapi` and is configurable with `VERICOV_SERVICE_JWT_ISSUER`.
+- `iss` defaults to `vericov-gateway` and is configurable with `VERICOV_SERVICE_JWT_ISSUER`.
 - RS256 public-key verification is preferred through `VERICOV_SERVICE_JWT_PUBLIC_KEY`.
-- Single-tenant self-host deployments may use `VERICOV_SERVICE_JWT_SECRET` for HS256.
+- Private self-hosted deployments may use `VERICOV_SERVICE_JWT_SECRET` for HS256.
 - Self-host deployments with no auth setup may set `VERICOV_DEV_AUTH_BYPASS=true` and rely on their private network/gateway boundary.
 
 ## Key Rotation
 
-Managed deployments should publish a new public key, roll veriapi to mint with
-the new private key, then remove the old key after the maximum token lifetime
-plus clock skew. The current implementation reads one configured public key per
-service process; rotate by updating env and restarting services.
+Publish a new public key, update the gateway to mint with the new private key,
+then remove the old key after the maximum token lifetime plus clock skew. The
+current implementation reads one configured public key per service process;
+rotate by updating the environment and restarting services.
 
 ## Propagation
 
 Service-to-service calls should propagate the original service JWT rather than
-minting a new token. This preserves delegated user, tenant, and scope context
-across control-plane, coverage-analysis, git-integration, integrations, and
+minting a new token. This preserves delegated user and scope context across
+control-plane, coverage-analysis, git-integration, integrations, and
 agent-runner.
 
 ## Service Catalog

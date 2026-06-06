@@ -149,7 +149,13 @@ public class UploadApplicationService {
 
         AnalysisJob job = workQueue.enqueueAnalysis(uploadWithoutJob);
         QueuedUpload upload = uploadWithoutJob.withAnalysisJobId(job.jobId());
-        uploadRepository.save(upload, storedArtifacts);
+        try {
+            uploadRepository.save(upload, storedArtifacts);
+        } catch (DuplicateUploadException exception) {
+            return uploadRepository.findByIdempotencyKey(command.repositoryId(), command.idempotencyKey())
+                    .map(this::toAccepted)
+                    .orElseThrow(() -> exception);
+        }
         eventPublisher.publish(new UploadEvent(
                 UUID.randomUUID(),
                 upload.tenantId(),

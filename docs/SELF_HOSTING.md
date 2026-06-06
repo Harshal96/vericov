@@ -1,23 +1,30 @@
 # Self-Hosting Vericov
 
-Vericov self-hosts as a backend-only stack: five Helidon services plus optional
+Vericov self-hosts as a backend-only stack: three core Helidon services plus optional
 bundled Postgres and optional bundled Supabase storage. There is no required
 auth-provider setup for self-hosting.
+
+## Prerequisites
+
+- Docker with Docker Compose
+- Git
+- `psql` only when migrating a bring-your-own database
 
 ## Quick Start
 
 ```bash
 git clone <your-vericov-repo>
 cd vericov
-cp .env.example .env
+./vericov init
 ./vericov doctor
 ./vericov up
 ```
 
-The default `.env.example` uses `VERICOV_DEV_AUTH_BYPASS=true`. Put the services
+The generated `.env` uses `VERICOV_DEV_AUTH_BYPASS=true`. Put the services
 behind your own private gateway, VPN, or internal network boundary. When you are
 ready to delegate identity from a gateway, set `VERICOV_DEV_AUTH_BYPASS=false`
-and configure the service-JWT key described in `docs/MANAGED_INTEGRATION.md`.
+and configure the service-JWT key described in
+[Gateway authentication](GATEWAY_AUTH.md).
 
 ## What Starts
 
@@ -28,13 +35,14 @@ and configure the service-JWT key described in `docs/MANAGED_INTEGRATION.md`.
 | upload | 8080 |
 | coverage-analysis | 8081 |
 | control-plane | 8082 |
-| git-integration | 8083 |
-| integrations | 8084 |
-| agent-runner | 8085 |
 
-If `BYO_POSTGRES=0`, the command also starts a bundled Postgres container. If
-`BYO_SUPABASE=0`, it starts the existing `infra/supabase` stack for local
-Supabase storage. `BYO_SUPABASE=skip` is the no-auth/no-Supabase default.
+The `integrations` and `agents` Compose profiles are excluded from the public
+quick start while those optional surfaces are simplified.
+
+If `BYO_POSTGRES=0`, the command also starts a pinned Supabase Postgres
+container with the Vericov schema and PGMQ queues initialized. If
+`BYO_SUPABASE=0`, it starts the full `infra/supabase` stack for local Supabase
+storage. `BYO_SUPABASE=skip` is the no-auth/no-Supabase default.
 
 ## Bring Your Own Postgres
 
@@ -43,21 +51,23 @@ Set:
 ```env
 BYO_POSTGRES=1
 VERICOV_DB_URL=jdbc:postgresql://postgres.example.internal:5432/vericov
-VERICOV_DB_USER=vericov
+VERICOV_DB_USER=your_database_user
 VERICOV_DB_PASSWORD=...
 ```
 
-Then run:
+The database must provide the `pgcrypto` and `pgmq` extensions. Apply the
+tracked schema before starting the services:
 
 ```bash
 ./vericov doctor
+./vericov migrate
 ./vericov up
 ```
 
 ## Storage
 
-For first boot, `VERICOV_ARTIFACT_STORAGE_BACKEND=memory` avoids external
-storage setup. For durable uploads, configure Supabase storage:
+The default `filesystem` backend stores raw and normalized artifacts in a
+Docker volume shared by upload and analysis. To use Supabase Storage instead:
 
 ```env
 BYO_SUPABASE=1
@@ -74,7 +84,8 @@ Supabase Auth is not required by Vericov services in the self-host flow.
 Vericov no longer bundles a product Kong gateway. Put your own gateway or
 reverse proxy in front if you expose services outside a private network. The
 gateway should handle TLS, rate limits, request size limits, and optional
-service-JWT minting. See `docs/MANAGED_INTEGRATION.md` for that token format.
+service-JWT minting. See [Gateway authentication](GATEWAY_AUTH.md) for that
+token format.
 
 ## Operations
 
@@ -84,6 +95,9 @@ service-JWT minting. See `docs/MANAGED_INTEGRATION.md` for that token format.
 ./vericov migrate
 ./vericov down
 ```
+
+See the [operations runbook](OPERATIONS.md) for functional smoke checks,
+backups, restore, upgrades, and failure recovery.
 
 For upgrades:
 

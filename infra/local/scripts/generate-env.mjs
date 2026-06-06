@@ -41,7 +41,7 @@ const values = {
   VERICOV_RUNNER_JWT_AUDIENCE: "vericov-runner-upload",
   VERICOV_SERVICE_JWT_PUBLIC_KEY: "",
   VERICOV_SERVICE_JWT_SECRET: randomBase64Url(48),
-  VERICOV_SERVICE_JWT_ISSUER: "veriapi",
+  VERICOV_SERVICE_JWT_ISSUER: "vericov-gateway",
   VERICOV_SERVICE_JWT_AUDIENCE: "vericov",
   VERICOV_DEV_AUTH_BYPASS: "true",
   VERICOV_DEV_USER_ID: randomUUID(),

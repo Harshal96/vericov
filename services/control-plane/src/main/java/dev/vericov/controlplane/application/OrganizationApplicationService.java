@@ -23,11 +23,8 @@ import java.util.UUID;
 import java.util.regex.Pattern;
 
 public class OrganizationApplicationService {
-    private static final Pattern SLUG_PATTERN = Pattern.compile("^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$");
-    private static final Pattern EMAIL_PATTERN = Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
     private static final Pattern FULL_REPOSITORY_NAME_PATTERN = Pattern.compile("^[^\\s/]+/[^\\s/]+$");
     private static final Pattern CONFIG_KEY_PATTERN = Pattern.compile("^[a-z0-9_.-]+$");
-    private static final int INVITATION_TOKEN_BYTES = 32;
     private static final int BADGE_TOKEN_BYTES = 24;
     private static final int REPOSITORY_API_KEY_BYTES = 32;
     private static final String BADGE_TOKEN_PREFIX = "vc_badge_";
@@ -36,11 +33,6 @@ public class OrganizationApplicationService {
     private static final String BADGE_CACHE_SCOPE_AUTHENTICATED = "authenticated";
     private static final long TOKEN_BADGE_CACHE_TTL_SECONDS = 60;
     private static final long AUTHENTICATED_BADGE_CACHE_TTL_SECONDS = 30;
-    private static final long INVITATION_TTL_SECONDS = 7 * 24 * 60 * 60;
-    private static final Set<String> PLANS = Set.of("free", "team", "enterprise");
-    private static final Set<String> ORGANIZATION_STATUSES = Set.of("active", "suspended", "deleted");
-    private static final Set<String> MEMBERSHIP_ROLES = Set.of("owner", "admin", "developer", "viewer", "auditor");
-    private static final Set<String> MEMBERSHIP_STATUSES = Set.of("active", "invited", "disabled");
     private static final Set<String> REPOSITORY_PROVIDERS = Set.of("github", "gitlab", "bitbucket");
     private static final Set<String> REPOSITORY_VISIBILITIES = Set.of("public", "private", "internal");
     private static final Set<String> REPOSITORY_STATUSES = Set.of("active", "disabled", "archived");
@@ -70,21 +62,6 @@ public class OrganizationApplicationService {
     private static final Set<String> OWNER_RULE_SOURCES = Set.of("manual", "codeowners", "component");
     private static final Set<String> PACKAGE_ECOSYSTEMS = Set.of("npm", "maven", "gradle", "python", "go", "rust", "unknown");
     private static final Set<String> ADMIN_ROLES = Set.of("owner", "admin");
-    private static final Set<String> MEMBER_READ_ACTIONS = Set.of(
-            "org.read",
-            "org.members.read",
-            "repositories.read");
-    private static final Set<String> ADMIN_ACTIONS = Set.of(
-            "org.update",
-            "org.members.invite",
-            "org.members.update",
-            "org.members.disable",
-            "repositories.register",
-            "repositories.update",
-            "repositories.config.update",
-            "repositories.policies.update",
-            "repositories.gates.update",
-            "org.policy_defaults.update");
 
     private final OrganizationRepository repository;
     private final Clock clock;
@@ -98,220 +75,6 @@ public class OrganizationApplicationService {
         this.apiKeyHasher = new RepositoryApiKeySecretHasher(env(
                 "VERICOV_REPO_API_KEY_PEPPER",
                 "local-development-repository-api-key-pepper"));
-    }
-
-    public List<OrganizationDetails> listOrganizations(UUID requesterUserId) {
-        requireUser(requesterUserId);
-        return repository.findOrganizationsForUser(requesterUserId);
-    }
-
-    public OrganizationDetails createOrganization(CreateOrganizationCommand command) {
-        requireUser(command.requesterUserId());
-        String name = validateName(command.name());
-        String slug = validateSlug(command.slug());
-        String plan = validatePlan(command.plan() == null || command.plan().isBlank() ? "free" : command.plan());
-        if (repository.slugExists(slug)) {
-            throw new OrganizationException("conflict", "Organization slug already exists");
-        }
-
-        Instant now = clock.instant();
-        UUID tenantId = UUID.randomUUID();
-        OrganizationDetails organization = new OrganizationDetails(
-                UUID.randomUUID(),
-                tenantId,
-                name,
-                slug,
-                plan,
-                "active",
-                now,
-                now);
-        MembershipDetails owner = new MembershipDetails(
-                UUID.randomUUID(),
-                tenantId,
-                organization.id(),
-                command.requesterUserId(),
-                "owner",
-                "active",
-                now,
-                now);
-        return repository.createOrganizationWithOwner(organization, owner);
-    }
-
-    public OrganizationDetails getOrganization(UUID requesterUserId, UUID organizationId) {
-        requireUser(requesterUserId);
-        requireId(organizationId, "organization_id is required");
-        return repository.findOrganizationForUser(organizationId, requesterUserId)
-                .orElseThrow(() -> new OrganizationException("not_found", "Organization not found"));
-    }
-
-    public OrganizationDetails updateOrganization(UpdateOrganizationCommand command) {
-        requireUser(command.requesterUserId());
-        requireId(command.organizationId(), "organization_id is required");
-        requireAdmin(command.requesterUserId(), command.organizationId());
-        OrganizationDetails current = repository.findById(command.organizationId())
-                .orElseThrow(() -> new OrganizationException("not_found", "Organization not found"));
-
-        String nextName = command.name() == null ? current.name() : validateName(command.name());
-        String nextSlug = command.slug() == null ? current.slug() : validateSlug(command.slug());
-        String nextStatus = command.status() == null ? current.status() : validateOrganizationStatus(command.status());
-        if (!nextSlug.equals(current.slug()) && repository.slugExists(nextSlug)) {
-            throw new OrganizationException("conflict", "Organization slug already exists");
-        }
-        return repository.updateOrganization(current.withValues(nextName, nextSlug, nextStatus, clock.instant()));
-    }
-
-    public List<MembershipDetails> listMemberships(UUID requesterUserId, UUID organizationId) {
-        requireUser(requesterUserId);
-        requireActiveMembership(requesterUserId, organizationId);
-        return repository.listMemberships(organizationId);
-    }
-
-    public MembershipDetails addMembership(CreateMembershipCommand command) {
-        requireUser(command.requesterUserId());
-        requireId(command.organizationId(), "organization_id is required");
-        requireId(command.supabaseUserId(), "supabase_user_id is required");
-        MembershipDetails requesterMembership = requireAdmin(command.requesterUserId(), command.organizationId());
-        OrganizationDetails organization = repository.findById(command.organizationId())
-                .orElseThrow(() -> new OrganizationException("not_found", "Organization not found"));
-
-        String role = validateRole(command.role());
-        requireOwnerForOwnerRole(requesterMembership, role);
-        String status = validateMembershipStatus(command.status() == null || command.status().isBlank()
-                ? "active"
-                : command.status());
-        Instant now = clock.instant();
-        return repository.saveMembership(new MembershipDetails(
-                UUID.randomUUID(),
-                organization.tenantId(),
-                organization.id(),
-                command.supabaseUserId(),
-                role,
-                status,
-                now,
-                now));
-    }
-
-    public MembershipDetails updateMembership(UpdateMembershipCommand command) {
-        requireUser(command.requesterUserId());
-        requireId(command.organizationId(), "organization_id is required");
-        requireId(command.membershipId(), "membership_id is required");
-        MembershipDetails requesterMembership = requireAdmin(command.requesterUserId(), command.organizationId());
-        MembershipDetails current = repository.findMembershipById(command.organizationId(), command.membershipId())
-                .orElseThrow(() -> new OrganizationException("not_found", "Membership not found"));
-
-        String nextRole = command.role() == null ? current.role() : validateRole(command.role());
-        String nextStatus = command.status() == null ? current.status() : validateMembershipStatus(command.status());
-        requireOwnerForOwnerChange(requesterMembership, current.role(), nextRole);
-        if (removesActiveOwner(current, nextRole, nextStatus)
-                && !hasAnotherActiveOwner(command.organizationId(), command.membershipId())) {
-            throw new OrganizationException("last_owner", "Organization must keep at least one active owner");
-        }
-        return repository.updateMembership(current.withValues(nextRole, nextStatus, clock.instant()));
-    }
-
-    public OrganizationInvitationDetails inviteMember(CreateInvitationCommand command) {
-        requireUser(command.requesterUserId());
-        requireId(command.organizationId(), "organization_id is required");
-        MembershipDetails requesterMembership = requireAdmin(command.requesterUserId(), command.organizationId());
-        OrganizationDetails organization = repository.findById(command.organizationId())
-                .orElseThrow(() -> new OrganizationException("not_found", "Organization not found"));
-        String email = validateEmail(command.email());
-        String role = validateRole(command.role());
-        requireOwnerForOwnerRole(requesterMembership, role);
-
-        Instant now = clock.instant();
-        String token = generateInvitationToken();
-        OrganizationInvitation invitation = new OrganizationInvitation(
-                UUID.randomUUID(),
-                organization.tenantId(),
-                organization.id(),
-                email,
-                role,
-                "pending",
-                command.requesterUserId(),
-                hashToken(token),
-                now.plusSeconds(INVITATION_TTL_SECONDS),
-                null,
-                now,
-                now);
-        return repository.saveInvitation(invitation).toDetails(token);
-    }
-
-    public List<OrganizationInvitationDetails> listInvitations(UUID requesterUserId, UUID organizationId) {
-        requireUser(requesterUserId);
-        requireAdmin(requesterUserId, organizationId);
-        return repository.listInvitations(organizationId).stream()
-                .map(invitation -> invitation.toDetails(null))
-                .toList();
-    }
-
-    public MembershipDetails acceptInvitation(AcceptInvitationCommand command) {
-        requireUser(command.acceptingUserId());
-        requireId(command.organizationId(), "organization_id is required");
-        requireId(command.invitationId(), "invitation_id is required");
-        String acceptingEmail = validateEmail(command.acceptingEmail());
-        String token = trim(command.acceptanceToken());
-        if (token == null) {
-            throw new OrganizationException("validation_error", "acceptance_token is required");
-        }
-
-        OrganizationInvitation invitation = repository.findInvitationById(command.organizationId(), command.invitationId())
-                .orElseThrow(() -> new OrganizationException("not_found", "Invitation not found"));
-        if (!"pending".equals(invitation.status())) {
-            throw new OrganizationException("conflict", "Invitation is not pending");
-        }
-        Instant now = clock.instant();
-        if (!invitation.expiresAt().isAfter(now)) {
-            throw new OrganizationException("conflict", "Invitation has expired");
-        }
-        if (!invitation.email().equals(acceptingEmail)) {
-            throw new OrganizationException("forbidden", "Invitation email does not match authenticated user");
-        }
-        if (!MessageDigest.isEqual(invitation.acceptanceTokenHash().getBytes(java.nio.charset.StandardCharsets.UTF_8),
-                hashToken(token).getBytes(java.nio.charset.StandardCharsets.UTF_8))) {
-            throw new OrganizationException("forbidden", "Invitation token is invalid");
-        }
-
-        MembershipDetails membership = repository.saveMembership(new MembershipDetails(
-                UUID.randomUUID(),
-                invitation.tenantId(),
-                invitation.organizationId(),
-                command.acceptingUserId(),
-                invitation.role(),
-                "active",
-                now,
-                now));
-        repository.updateInvitation(invitation.accept(now));
-        return membership;
-    }
-
-    public AuthorizationDecision checkAuthorization(AuthorizationCheckCommand command) {
-        requireUser(command.requesterUserId());
-        requireId(command.organizationId(), "organization_id is required");
-        String action = trim(command.action());
-        if (action == null) {
-            throw new OrganizationException("validation_error", "action is required");
-        }
-
-        MembershipDetails membership = repository.findMembership(command.organizationId(), command.requesterUserId())
-                .orElse(null);
-        if (membership == null || !"active".equals(membership.status())) {
-            return AuthorizationDecision.deny("not_found", "Organization not found");
-        }
-        if (MEMBER_READ_ACTIONS.contains(action)) {
-            return AuthorizationDecision.allow();
-        }
-        if (ADMIN_ACTIONS.contains(action)) {
-            return ADMIN_ROLES.contains(membership.role())
-                    ? AuthorizationDecision.allow()
-                    : AuthorizationDecision.deny("forbidden", "Admin or owner role is required");
-        }
-        if ("org.members.assign_owner".equals(action)) {
-            return "owner".equals(membership.role())
-                    ? AuthorizationDecision.allow()
-                    : AuthorizationDecision.deny("forbidden", "Owner role is required");
-        }
-        return AuthorizationDecision.deny("unknown_action", "Action is not recognized");
     }
 
     public List<RepositoryDetails> listRepositories(UUID requesterUserId, UUID organizationId) {
@@ -1866,31 +1629,6 @@ public class OrganizationApplicationService {
                 .orElseThrow(() -> new OrganizationException("not_found", "Repository not found"));
     }
 
-    private static void requireOwnerForOwnerRole(MembershipDetails requesterMembership, String role) {
-        if ("owner".equals(role) && !"owner".equals(requesterMembership.role())) {
-            throw new OrganizationException("forbidden", "Owner role is required");
-        }
-    }
-
-    private static void requireOwnerForOwnerChange(MembershipDetails requesterMembership, String currentRole, String nextRole) {
-        if (("owner".equals(currentRole) || "owner".equals(nextRole)) && !"owner".equals(requesterMembership.role())) {
-            throw new OrganizationException("forbidden", "Owner role is required");
-        }
-    }
-
-    private boolean hasAnotherActiveOwner(UUID organizationId, UUID membershipId) {
-        return repository.listMemberships(organizationId).stream()
-                .anyMatch(membership -> !membership.id().equals(membershipId)
-                        && "owner".equals(membership.role())
-                        && "active".equals(membership.status()));
-    }
-
-    private static boolean removesActiveOwner(MembershipDetails current, String nextRole, String nextStatus) {
-        return "owner".equals(current.role())
-                && "active".equals(current.status())
-                && (!"owner".equals(nextRole) || !"active".equals(nextStatus));
-    }
-
     private static void requireUser(UUID requesterUserId) {
         requireId(requesterUserId, "authenticated user is required");
     }
@@ -1899,36 +1637,6 @@ public class OrganizationApplicationService {
         if (id == null) {
             throw new OrganizationException("validation_error", message);
         }
-    }
-
-    private static String validateName(String name) {
-        String normalized = trim(name);
-        if (normalized == null || normalized.length() > 120) {
-            throw new OrganizationException("validation_error", "Organization name must be 1 to 120 characters");
-        }
-        return normalized;
-    }
-
-    private static String validateSlug(String slug) {
-        String normalized = trim(slug);
-        if (normalized == null || !SLUG_PATTERN.matcher(normalized).matches()) {
-            throw new OrganizationException(
-                    "validation_error",
-                    "Organization slug must use lowercase letters, numbers, and hyphens");
-        }
-        return normalized;
-    }
-
-    private static String validatePlan(String plan) {
-        return validateAllowed("plan", plan, PLANS);
-    }
-
-    private static String validateOrganizationStatus(String status) {
-        return validateAllowed("status", status, ORGANIZATION_STATUSES);
-    }
-
-    private static String validateRole(String role) {
-        return validateAllowed("role", role, MEMBERSHIP_ROLES);
     }
 
     private static Map<String, Object> validateConfig(Map<String, Object> config) {
@@ -2537,18 +2245,6 @@ public class OrganizationApplicationService {
         return normalized;
     }
 
-    private static String validateEmail(String email) {
-        String normalized = trim(email);
-        if (normalized == null) {
-            throw new OrganizationException("validation_error", "email is required");
-        }
-        normalized = normalized.toLowerCase(Locale.ROOT);
-        if (normalized.length() > 320 || !EMAIL_PATTERN.matcher(normalized).matches()) {
-            throw new OrganizationException("validation_error", "email is invalid");
-        }
-        return normalized;
-    }
-
     private static String validateCommitSha(String commitSha) {
         String normalized = trim(commitSha);
         if (normalized == null || normalized.length() > 128 || normalized.chars().anyMatch(Character::isWhitespace)) {
@@ -2659,10 +2355,6 @@ public class OrganizationApplicationService {
         return normalized;
     }
 
-    private static String validateMembershipStatus(String status) {
-        return validateAllowed("status", status, MEMBERSHIP_STATUSES);
-    }
-
     private static String validateAllowed(String field, String value, Set<String> allowedValues) {
         String normalized = trim(value);
         if (normalized == null) {
@@ -2686,12 +2378,6 @@ public class OrganizationApplicationService {
     private static String defaultIfBlank(String value, String fallback) {
         String trimmed = trim(value);
         return trimmed == null ? fallback : trimmed;
-    }
-
-    private String generateInvitationToken() {
-        byte[] tokenBytes = new byte[INVITATION_TOKEN_BYTES];
-        secureRandom.nextBytes(tokenBytes);
-        return Base64.getUrlEncoder().withoutPadding().encodeToString(tokenBytes);
     }
 
     private String generateBadgeToken() {
@@ -2723,4 +2409,5 @@ public class OrganizationApplicationService {
             throw new IllegalStateException("SHA-256 is not available", exception);
         }
     }
+
 }

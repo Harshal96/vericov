@@ -53,7 +53,7 @@ vericov CLI in CI
   -> upload service queues analysis job and emits upload.received
   -> CLI polls GET /api/v1/uploads/{upload_id}
 
-Enterprise/self-hosted runner
+Self-hosted runner
   -> POST /api/v1/uploads/auth/runner-token
   -> receives short-lived runner upload token
   -> uploads generated artifacts for the assigned task
@@ -124,7 +124,7 @@ Authentication modes:
 | --- | --- |
 | CI job | Repo-scoped Vericov API key |
 | Runner | Short-lived runner upload JWT |
-| Gateway/manual | Service JWT from veriapi/customer gateway |
+| Gateway/manual | Service JWT from the operator gateway |
 | Trusted CI | GitHub Actions OIDC after trust config exists |
 
 ## Source Map

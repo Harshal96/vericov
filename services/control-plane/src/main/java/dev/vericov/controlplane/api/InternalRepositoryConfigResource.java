@@ -48,7 +48,7 @@ public class InternalRepositoryConfigResource {
                     repositoryId);
             return Response.ok(new ApiResponse<>(EffectiveRepositoryConfigHttpResponse.from(config))).build();
         } catch (OrganizationException exception) {
-            return OrganizationResource.errorResponse(exception);
+            return ApiError.response(exception);
         }
     }
 

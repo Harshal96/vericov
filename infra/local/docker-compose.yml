@@ -2,19 +2,29 @@ name: vericov-local
 
 services:
   postgres-bundled:
-    image: postgres:17-alpine
+    image: supabase/postgres:15.8.1.085
     profiles:
       - bundled-db
     environment:
-      POSTGRES_DB: ${VERICOV_DB_NAME:-vericov}
-      POSTGRES_USER: ${VERICOV_DB_USER:-vericov}
+      POSTGRES_HOST: /var/run/postgresql
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${VERICOV_DB_NAME:-postgres}
+      POSTGRES_USER: supabase_admin
       POSTGRES_PASSWORD: ${VERICOV_DB_PASSWORD:-vericov}
+      PGPASSWORD: ${VERICOV_DB_PASSWORD:-vericov}
+      PGPORT: 5432
+      PGDATABASE: ${VERICOV_DB_NAME:-postgres}
+      JWT_SECRET: ${VERICOV_DB_JWT_SECRET:?set VERICOV_DB_JWT_SECRET in .env}
+      JWT_EXP: ${VERICOV_DB_JWT_EXPIRY:-3600}
     ports:
       - "127.0.0.1:${VERICOV_POSTGRES_PORT:-54329}:5432"
     volumes:
+      - ../../infra/supabase/volumes/db/vericov.sql:/docker-entrypoint-initdb.d/init-scripts/900-vericov.sql:ro
+      - ../../infra/supabase/volumes/db/roles.sql:/docker-entrypoint-initdb.d/init-scripts/910-roles.sql:ro
+      - ../../infra/supabase/volumes/db/jwt.sql:/docker-entrypoint-initdb.d/init-scripts/920-jwt.sql:ro
       - postgres-bundled-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      test: ["CMD", "pg_isready", "-U", "postgres", "-h", "localhost"]
       interval: 10s
       timeout: 5s
       retries: 12
@@ -32,15 +42,18 @@ services:
     env_file:
       - ${VERICOV_COMPOSE_ENV_FILE:-.env}
     environment:
-      VERICOV_UPLOAD_DB_URL: ${VERICOV_DB_URL:-jdbc:postgresql://postgres-bundled:5432/vericov}
-      VERICOV_UPLOAD_DB_USER: ${VERICOV_DB_USER:-vericov}
+      VERICOV_UPLOAD_DB_URL: ${VERICOV_DB_URL:-jdbc:postgresql://postgres-bundled:5432/postgres}
+      VERICOV_UPLOAD_DB_USER: ${VERICOV_RUNTIME_DB_USER:-postgres}
       VERICOV_UPLOAD_DB_PASSWORD: ${VERICOV_DB_PASSWORD:-vericov}
-      VERICOV_ARTIFACT_STORAGE_BACKEND: ${VERICOV_ARTIFACT_STORAGE_BACKEND:-supabase}
+      VERICOV_ARTIFACT_STORAGE_BACKEND: ${VERICOV_ARTIFACT_STORAGE_BACKEND:-filesystem}
+      VERICOV_ARTIFACT_STORAGE_ROOT: /var/lib/vericov/artifacts
       VERICOV_SERVICE_HOST: 0.0.0.0
     ports:
       - "127.0.0.1:${VERICOV_UPLOAD_HTTP_PORT:-8080}:8080"
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    volumes:
+      - vericov-artifacts:/var/lib/vericov/artifacts
     networks:
       - product
 
@@ -54,9 +67,11 @@ services:
     env_file:
       - ${VERICOV_COMPOSE_ENV_FILE:-.env}
     environment:
-      VERICOV_ANALYSIS_DB_URL: ${VERICOV_DB_URL:-jdbc:postgresql://postgres-bundled:5432/vericov}
-      VERICOV_ANALYSIS_DB_USER: ${VERICOV_DB_USER:-vericov}
+      VERICOV_ANALYSIS_DB_URL: ${VERICOV_DB_URL:-jdbc:postgresql://postgres-bundled:5432/postgres}
+      VERICOV_ANALYSIS_DB_USER: ${VERICOV_RUNTIME_DB_USER:-postgres}
       VERICOV_ANALYSIS_DB_PASSWORD: ${VERICOV_DB_PASSWORD:-vericov}
+      VERICOV_ARTIFACT_STORAGE_BACKEND: ${VERICOV_ARTIFACT_STORAGE_BACKEND:-filesystem}
+      VERICOV_ARTIFACT_STORAGE_ROOT: /var/lib/vericov/artifacts
       VERICOV_CONTROL_PLANE_BASE_URL: http://control-plane:8082
       VERICOV_GIT_BASE_URL: http://git-integration:8083
       VERICOV_SERVICE_HOST: 0.0.0.0
@@ -64,6 +79,8 @@ services:
       - "127.0.0.1:${VERICOV_ANALYSIS_HTTP_PORT:-8081}:8081"
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    volumes:
+      - vericov-artifacts:/var/lib/vericov/artifacts
     networks:
       - product
 
@@ -77,8 +94,8 @@ services:
     env_file:
       - ${VERICOV_COMPOSE_ENV_FILE:-.env}
     environment:
-      VERICOV_CONTROL_PLANE_DB_URL: ${VERICOV_DB_URL:-jdbc:postgresql://postgres-bundled:5432/vericov}
-      VERICOV_CONTROL_PLANE_DB_USER: ${VERICOV_DB_USER:-vericov}
+      VERICOV_CONTROL_PLANE_DB_URL: ${VERICOV_DB_URL:-jdbc:postgresql://postgres-bundled:5432/postgres}
+      VERICOV_CONTROL_PLANE_DB_USER: ${VERICOV_RUNTIME_DB_USER:-postgres}
       VERICOV_CONTROL_PLANE_DB_PASSWORD: ${VERICOV_DB_PASSWORD:-vericov}
       VERICOV_SERVICE_HOST: 0.0.0.0
     ports:
@@ -90,6 +107,8 @@ services:
       - product
 
   git-integration:
+    profiles:
+      - integrations
     build:
       context: ../..
       dockerfile: infra/docker/helidon-service.Dockerfile
@@ -99,8 +118,8 @@ services:
     env_file:
       - ${VERICOV_COMPOSE_ENV_FILE:-.env}
     environment:
-      VERICOV_DATABASE_URL: ${VERICOV_DB_URL:-jdbc:postgresql://postgres-bundled:5432/vericov}
-      VERICOV_DATABASE_USER: ${VERICOV_DB_USER:-vericov}
+      VERICOV_DATABASE_URL: ${VERICOV_DB_URL:-jdbc:postgresql://postgres-bundled:5432/postgres}
+      VERICOV_DATABASE_USER: ${VERICOV_RUNTIME_DB_USER:-postgres}
       VERICOV_DATABASE_PASSWORD: ${VERICOV_DB_PASSWORD:-vericov}
       VERICOV_INTEGRATIONS_BASE_URL: http://integrations:8084
       VERICOV_SERVICE_HOST: 0.0.0.0
@@ -112,6 +131,8 @@ services:
       - product
 
   integrations:
+    profiles:
+      - integrations
     build:
       context: ../..
       dockerfile: infra/docker/helidon-service.Dockerfile
@@ -121,8 +142,8 @@ services:
     env_file:
       - ${VERICOV_COMPOSE_ENV_FILE:-.env}
     environment:
-      VERICOV_DATABASE_URL: ${VERICOV_DB_URL:-jdbc:postgresql://postgres-bundled:5432/vericov}
-      VERICOV_DATABASE_USER: ${VERICOV_DB_USER:-vericov}
+      VERICOV_DATABASE_URL: ${VERICOV_DB_URL:-jdbc:postgresql://postgres-bundled:5432/postgres}
+      VERICOV_DATABASE_USER: ${VERICOV_RUNTIME_DB_USER:-postgres}
       VERICOV_DATABASE_PASSWORD: ${VERICOV_DB_PASSWORD:-vericov}
       VERICOV_SERVICE_HOST: 0.0.0.0
     ports:
@@ -133,6 +154,8 @@ services:
       - product
 
   agent-runner:
+    profiles:
+      - agents
     build:
       context: ../..
       dockerfile: infra/docker/helidon-service.Dockerfile
@@ -142,8 +165,8 @@ services:
     env_file:
       - ${VERICOV_COMPOSE_ENV_FILE:-.env}
     environment:
-      VERICOV_DATABASE_URL: ${VERICOV_DB_URL:-jdbc:postgresql://postgres-bundled:5432/vericov}
-      VERICOV_DATABASE_USER: ${VERICOV_DB_USER:-vericov}
+      VERICOV_DATABASE_URL: ${VERICOV_DB_URL:-jdbc:postgresql://postgres-bundled:5432/postgres}
+      VERICOV_DATABASE_USER: ${VERICOV_RUNTIME_DB_USER:-postgres}
       VERICOV_DATABASE_PASSWORD: ${VERICOV_DB_PASSWORD:-vericov}
       VERICOV_SERVICE_HOST: 0.0.0.0
     ports:
@@ -158,3 +181,4 @@ networks:
 
 volumes:
   postgres-bundled-data:
+  vericov-artifacts:

@@ -92,11 +92,9 @@ public final class ServiceJwtVerifier implements UserPrincipalResolver {
         String subject = claims.getSubject();
         String userIdClaim = stringClaim(claims, "vericov_user_id");
         UUID userId = uuidOrNull(firstPresent(userIdClaim, stripSubjectPrefix(subject, "user:")));
-        UUID tenantId = uuidOrNull(stringClaim(claims, "vericov_tenant_id"));
         return new ServiceJwtPrincipal(
                 subject,
                 userId,
-                tenantId,
                 scopesClaim(claims));
     }
 
@@ -211,7 +209,6 @@ public final class ServiceJwtVerifier implements UserPrincipalResolver {
     public record ServiceJwtPrincipal(
             String subject,
             UUID userId,
-            UUID tenantId,
             Set<String> scopes) {
         public ServiceJwtPrincipal {
             scopes = Set.copyOf(scopes == null ? Set.of() : scopes);

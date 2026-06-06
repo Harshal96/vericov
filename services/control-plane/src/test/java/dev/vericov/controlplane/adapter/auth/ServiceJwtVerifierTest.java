@@ -15,13 +15,12 @@ import java.util.Base64;
 import java.util.Date;
 import java.util.List;
 import java.util.UUID;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 
 class ServiceJwtVerifierTest {
     private static final Instant NOW = Instant.parse("2026-06-03T12:00:00Z");
     private static final UUID USER_ID = UUID.fromString("11111111-1111-1111-1111-111111111111");
-    private static final UUID TENANT_ID = UUID.fromString("22222222-2222-2222-2222-222222222222");
-
     @Test
     void acceptsValidRs256ServiceJwt() throws Exception {
         KeyPair keyPair = rsaKeyPair();
@@ -30,9 +29,13 @@ class ServiceJwtVerifierTest {
         var principal = verifier.verify("Bearer " + token(keyPair, "vericov", NOW.plusSeconds(300)));
 
         assertEquals(USER_ID, principal.userId());
-        assertEquals(TENANT_ID, principal.tenantId());
         assertEquals("user:" + USER_ID, principal.subject());
         assertEquals(java.util.Set.of("repos:read", "reports:write"), principal.scopes());
+        assertEquals(
+                List.of("subject", "userId", "scopes"),
+                Stream.of(ServiceJwtVerifier.ServiceJwtPrincipal.class.getRecordComponents())
+                        .map(component -> component.getName())
+                        .toList());
     }
 
     @Test
@@ -70,20 +73,19 @@ class ServiceJwtVerifierTest {
         return new ServiceJwtVerifier(
                 pem(publicKey),
                 "",
-                "veriapi",
+                "vericov-gateway",
                 "vericov",
                 Clock.fixed(NOW, ZoneOffset.UTC));
     }
 
     private static String token(KeyPair keyPair, String audience, Instant expiresAt) {
         return Jwts.builder()
-                .issuer("veriapi")
+                .issuer("vericov-gateway")
                 .audience().add(audience).and()
                 .subject("user:" + USER_ID)
                 .issuedAt(Date.from(NOW))
                 .expiration(Date.from(expiresAt))
                 .id(UUID.randomUUID().toString())
-                .claim("vericov_tenant_id", TENANT_ID.toString())
                 .claim("vericov_user_id", USER_ID.toString())
                 .claim("vericov_scopes", List.of("repos:read", "reports:write"))
                 .signWith(keyPair.getPrivate(), Jwts.SIG.RS256)
