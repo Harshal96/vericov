@@ -46,7 +46,7 @@ def test_parses_upload_config(tmp_path: Path) -> None:
         """
 version: 1
 api:
-  url: http://localhost:9000
+  url: http://localhost:8080
 upload:
   repository_id: 4d607f16-1af7-4d3b-ac38-06454cba463c
   flags: [unit]
@@ -58,6 +58,6 @@ upload:
 
     resolved = load_config(tmp_path)
 
-    assert resolved.upload.api_url == "http://localhost:9000"
+    assert resolved.upload.api_url == "http://localhost:8080"
     assert resolved.upload.flags == ("unit",)
     assert resolved.upload.coverage == ("coverage/lcov.info",)

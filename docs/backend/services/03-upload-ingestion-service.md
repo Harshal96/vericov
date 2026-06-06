@@ -18,7 +18,7 @@ Upload authentication is separate from human login.
 
 | Caller | Credential | Allowed actions |
 | --- | --- | --- |
-| Web app / local authenticated user | Supabase Auth JWT | Create manual uploads only for repositories where the user has permission |
+| Gateway/manual upload | Service JWT | Create manual uploads after gateway authorization |
 | CI job | Repo-scoped Vericov API key, sent as `Authorization: Bearer vc_repo_...` | Create uploads and poll upload status within key scope |
 | Trusted CI provider | GitHub Actions OIDC token | Tokenless upload after repository trust is configured |
 | Enterprise runner | Short-lived Vericov runner upload JWT | Upload runner-produced artifacts for assigned tasks |
@@ -48,7 +48,7 @@ vericov upload --coverage coverage/lcov.info --test-results junit.xml
 
 Rules:
 
-- The request is authenticated by repository API key, Supabase Auth JWT, runner upload JWT, GitHub Actions OIDC identity, or service JWT.
+- The request is authenticated by repository API key, runner upload JWT, GitHub Actions OIDC identity, or service JWT.
 - Polling upload status and artifact metadata requires `uploads:read` for the upload repository.
 - The service validates repository, branch, commit, artifact metadata, request size, and key scope before accepting the upload. Repo-scoped API key uploads may omit `repository_id`; the service resolves it from the authenticated key and still rejects explicit repository mismatches.
 - The service stores raw artifacts in Supabase Storage before returning success. In production, Supabase Storage must use an S3-compatible backend so raw coverage files live in remote object storage rather than service-local disk.

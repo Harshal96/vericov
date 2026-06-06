@@ -1,8 +1,8 @@
 # Vericov Backend Service Contracts
 
-Status: Draft for review
+Status: Backend contracts
 Scope: Backend service boundaries, endpoints, request/response models, and database models only
-Implementation: Organization, upload, and coverage-analysis slices are started
+Implementation: Self-hostable Helidon services behind an external/customer gateway
 
 ## Technology Decisions
 
@@ -15,30 +15,24 @@ Implementation: Organization, upload, and coverage-analysis slices are started
   - `GET /health/ready`
   - `GET /health/started`
 - Every Helidon service exposes metrics at `/observe/metrics`.
-- Kong is the external API gateway.
-- Self-hosted Supabase is the platform substrate before adding other managed services.
+- Vericov no longer bundles a product Kong gateway.
+- Self-hosting can run without an auth provider by using `VERICOV_DEV_AUTH_BYPASS=true`.
+- Managed deployments receive short-lived service JWTs from veriapi or another customer gateway.
+- Supabase is optional and is used only when the operator chooses it for storage or platform services.
 
-## Supabase Usage
+## Storage and Auth
 
-Use self-hosted Supabase components first:
-
-- Supabase Postgres: source-of-truth relational database.
-- Supabase Auth: user identity, sessions, JWT issuance, OAuth/SAML integration where available.
-- Supabase Storage: raw coverage reports, normalized coverage blobs, test artifacts, agent dry-run artifacts.
-- Supabase Realtime: dashboard updates for gate evaluations, agent runs, runner fleet status, and PR report changes.
-- Supabase Studio: admin/database visibility during development.
-- Supabase Kong: Supabase's own gateway for Supabase APIs; Vericov still uses a dedicated Kong layer for product APIs.
-- Supavisor: connection pooling for service-to-Postgres access.
-- Edge Functions: reserved for thin platform glue only; core backend remains Helidon.
-
-Authorization rule: do not rely on user-editable Supabase `user_metadata` for authorization. Vericov authorization lives in app tables such as memberships, roles, policies, and service permissions.
+Postgres is required for durable self-hosting. Supabase storage remains a
+supported object-storage option, but Supabase Auth is not required by Vericov
+services. Authentication, if enabled, is pushed to the gateway and delegated to
+services through the service-JWT contract in `docs/MANAGED_INTEGRATION.md`.
 
 ## Backend Services
 
-The first backend slice has seven reviewable service contracts:
+Backend service contracts:
 
-1. [Kong API Gateway](services/01-kong-api-gateway.md)
-2. [Organization Service and API / Control Plane](services/02-api-control-plane-service.md)
+1. [Historical Kong API Gateway](services/01-kong-api-gateway.md)
+2. [Control Plane Service](services/02-control-plane-service.md)
 3. [Upload / Ingestion Service](services/03-upload-ingestion-service.md)
 4. [Coverage Analysis Service](services/04-coverage-analysis-service.md)
 5. [Integrations Config Service](services/07-integrations-config-service.md)
@@ -91,8 +85,9 @@ Common headers:
 
 | Header | Required | Purpose |
 | --- | --- | --- |
-| `Authorization: Bearer <jwt>` | User APIs | Supabase Auth JWT or service JWT |
-| `X-Vericov-Tenant-Id` | Service APIs | Tenant routing and isolation |
+| `Authorization: Bearer <jwt>` | Managed service APIs | Service JWT from gateway/veriapi |
+| `X-Vericov-User-Id` | Dev bypass only | Local/self-host identity when bypass is enabled |
+| `X-Vericov-Tenant-Id` | Managed service APIs | Tenant claim propagation |
 | `Idempotency-Key` | Mutating APIs | Safe retries for uploads, comments, tasks |
 | `X-Request-Id` | All APIs | Trace correlation |
 | `X-Git-Provider-Delivery` | Webhooks | Provider delivery ID |
@@ -101,20 +96,20 @@ Common headers:
 
 | Mode | Used by | Credential | Primary verifier |
 | --- | --- | --- | --- |
-| User session | Web app, CLI user commands | Supabase Auth JWT | Organization service validates token; Helidon validates membership and permissions |
+| Self-host/no-auth | Private gateway or trusted network | `VERICOV_DEV_AUTH_BYPASS=true` | Operator boundary |
+| Managed user delegation | veriapi/customer gateway | Short-lived service JWT | Receiving Helidon service |
 | Repository API key | CI coverage uploads | Repo-scoped Vericov API key, stored hashed | Upload / Ingestion Service |
 | Tokenless CI | GitHub Actions in v1 | OIDC/provider identity token | Upload / Ingestion Service |
 | Runner | Self-hosted runners | Short-lived runner upload JWT | Upload / Ingestion Service |
-| Service | Internal service calls | Service JWT or mTLS-bound token | Receiving Helidon service |
 | Webhook | Git providers | Provider signature header | Git Integration Service |
 
-Supabase Auth is the source of human identity. Vericov service tokens, repository API keys, and runner tokens are application credentials stored and authorized through Vericov tables in Supabase Postgres.
+Services do not validate Supabase Auth JWTs.
 
 ## Shared Database Principles
 
 - Use Supabase Postgres as the source of truth.
 - Use UUID primary keys.
-- Include `tenant_id` on every tenant-owned table.
+- Managed tenant identity is a service-JWT claim. Self-host deployments can be single-tenant.
 - Include `created_at` and `updated_at` on mutable tables.
 - Enable RLS for exposed schemas.
 - Prefer private schemas for service-only tables.

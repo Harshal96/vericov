@@ -1,0 +1,23 @@
+syntax = "proto3";
+
+package vericov.integrations.v1;
+
+option java_multiple_files = true;
+option java_package = "dev.vericov.integrations.grpc.v1";
+
+service ConnectionService {
+  rpc ResolveRepositoryIntegration (ResolveRepositoryIntegrationRequest) returns (ResolvedIntegration);
+}
+
+message ResolveRepositoryIntegrationRequest {
+  string repository_id = 1;
+  string provider_key = 2;
+  string capability = 3;
+}
+
+message ResolvedIntegration {
+  string connection_id = 1;
+  string provider_key = 2;
+  string credential_kind = 3;
+  string status = 4;
+}

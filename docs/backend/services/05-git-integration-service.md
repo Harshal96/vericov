@@ -13,7 +13,8 @@ The Git Integration Service owns Git provider actions: webhook normalization, PR
 
 This service translates Vericov events into Git provider actions. It does not calculate coverage or decide policy.
 
-Integration lifecycle, credentials metadata, provider capability configuration, and repository bindings are owned by the Integrations Config Service. This service resolves active provider configuration through `GET /internal/v1/integrations/resolve?tenant_id={tenant_id}&org_id={org_id}&provider_key={provider_key}&scope_type={scope_type}&scope_id={scope_id}&capability={capability}` before executing provider actions, then leases the returned `credential_kind` for that connection. Calls to Integrations Config internal endpoints include `X-Vericov-Service-Name: git-integration` plus `X-Vericov-Service-Token`; the token is verified there against SHA-256 hashes configured in `VERICOV_INTERNAL_SERVICE_TOKEN_SHA256`.
+Integration lifecycle, credentials metadata, provider capability configuration, and repository bindings are owned by the Integrations Config Service. This service resolves active provider configuration through `GET /internal/v1/integrations/resolve?tenant_id={tenant_id}&org_id={org_id}&provider_key={provider_key}&scope_type={scope_type}&scope_id={scope_id}&capability={capability}` before executing provider actions, then leases the returned `credential_kind` for that connection. Managed service-to-service calls should use propagated service JWT metadata. The legacy REST bridge still exists during migration and is being retired in favor of the gRPC contracts.
+
 
 Resolved Git integration data carries the credential kind required for provider actions plus non-secret connection/binding config such as GitHub `installation_id`. GitHub App actions lease `github_app_private_key`, exchange it for an installation token, and use that token for Checks, Issues, Refs, and Pulls APIs. Dev or already-exchanged flows may lease `github_installation_token`, `oauth_access_token`, or `api_token`. Provider action execution receives only short-lived lease material, never stored secret refs or raw persistent credentials.
 
@@ -46,7 +47,7 @@ The Git service may parse provider-specific webhook or app callback payloads, bu
 | `POST` | `/internal/v1/git/pull-requests` | Open PR |
 | `GET` | `/internal/v1/git/repositories/{repository_id}/pull-requests/{number}/diff` | Fetch the true provider base/head PR diff |
 
-Internal endpoints require `X-Vericov-Service-Name` and `X-Vericov-Service-Token`; the service verifies token hashes from `VERICOV_INTERNAL_SERVICE_TOKEN_SHA256`.
+Internal endpoints should be reached through the service-JWT gateway or the new gRPC contracts; the legacy static-token REST bridge is transitional.
 
 The PR diff endpoint validates the requested head SHA against the stored provider PR metadata, resolves the repository binding with the `git.repository_sync` capability, and for GitHub reads the Compare API for `{base}...{head}`. It returns parsed diff line metadata only: file paths, provider status, old path for renames, line numbers, and line change types. Source line text is intentionally not persisted or returned.
 
@@ -312,8 +313,8 @@ Git-owned tables track provider action and webhook artifacts only. Installation 
 | --- | --- |
 | `VERICOV_DATABASE_URL` or `SUPABASE_DB_URL` | Enables JDBC persistence; otherwise in-memory storage is used |
 | `VERICOV_INTEGRATIONS_BASE_URL` | Integrations Config internal API base URL, default `http://127.0.0.1:8084` |
-| `VERICOV_INTERNAL_SERVICE_TOKEN` | Service proof token sent to Integrations Config |
-| `VERICOV_INTERNAL_SERVICE_TOKEN_SHA256` | Service token hash map used to authorize inbound internal calls |
+| `VERICOV_SERVICE_JWT_PUBLIC_KEY` | Public key for propagated service JWT validation |
+| `VERICOV_SERVICE_JWT_SECRET` | Symmetric fallback for single-tenant self-host deployments |
 | `VERICOV_GITHUB_WEBHOOK_SECRET` | GitHub webhook HMAC secret |
 | `VERICOV_GITHUB_API_BASE_URL` | GitHub API base URL, default `https://api.github.com` |
 | `VERICOV_GITHUB_APP_ID` | Fallback GitHub App ID when connection config does not include `app_id` |

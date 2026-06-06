@@ -76,14 +76,13 @@ The Java upload service uses these values to store raw artifacts in Supabase Sto
 SUPABASE_URL=http://localhost:8000
 SUPABASE_SERVICE_ROLE_KEY=<from infra/supabase/.env>
 VERICOV_ARTIFACT_STORAGE_BACKEND=supabase
-SUPABASE_DB_URL=jdbc:postgresql://localhost:54322/postgres
-SUPABASE_DB_USER=postgres
-SUPABASE_DB_PASSWORD=<POSTGRES_PASSWORD from infra/supabase/.env>
+VERICOV_DB_URL=jdbc:postgresql://localhost:54322/postgres
+VERICOV_DB_USER=postgres
+VERICOV_DB_PASSWORD=<POSTGRES_PASSWORD from infra/supabase/.env>
 VERICOV_UPLOAD_DB_URL=jdbc:postgresql://localhost:54322/postgres
 VERICOV_UPLOAD_DB_USER=postgres
 VERICOV_UPLOAD_DB_PASSWORD=<POSTGRES_PASSWORD from infra/supabase/.env>
 VERICOV_REPO_API_KEY_PEPPER=<long random secret distinct from JWT_SECRET>
-SUPABASE_JWT_SECRET=<JWT_SECRET from infra/supabase/.env>
 VERICOV_RUNNER_JWT_SECRET=<long random secret for short-lived upload tokens>
 VERICOV_RUNNER_JWT_ISSUER=vericov-upload
 VERICOV_RUNNER_JWT_AUDIENCE=vericov-runner-upload
@@ -95,18 +94,21 @@ VERICOV_METADATA_BUCKET=metadata-raw
 
 When `VERICOV_UPLOAD_DB_URL` is present, upload authentication uses Supabase Postgres-backed repository API keys and repository trust records. `VERICOV_DEV_API_KEY` is only a local bypass when `VERICOV_DEV_AUTH_BYPASS=true`.
 
-## Organization Service Env Shape
+## Control Plane Service Env Shape
 
-The organization service uses JDBC for persistent organization and membership data. Without these values it runs with in-memory storage for local smoke tests.
+The control-plane service uses JDBC for persistent repository/config/policy data.
+Without these values it runs with in-memory storage for local smoke tests.
 
 ```bash
-VERICOV_ORGANIZATION_DB_URL=jdbc:postgresql://localhost:54322/postgres
-VERICOV_ORGANIZATION_DB_USER=postgres
-VERICOV_ORGANIZATION_DB_PASSWORD=<POSTGRES_PASSWORD from infra/supabase/.env>
-VERICOV_DEV_USER_ID=<supabase auth user uuid for local requests>
+VERICOV_CONTROL_PLANE_DB_URL=jdbc:postgresql://localhost:54322/postgres
+VERICOV_CONTROL_PLANE_DB_USER=postgres
+VERICOV_CONTROL_PLANE_DB_PASSWORD=<POSTGRES_PASSWORD from infra/supabase/.env>
+VERICOV_DEV_AUTH_BYPASS=true
+VERICOV_DEV_USER_ID=<local user uuid for bypassed requests>
 ```
 
-For compatibility with the local Supabase naming above, `SUPABASE_DB_URL`, `SUPABASE_DB_USER`, and `SUPABASE_DB_PASSWORD` are also accepted.
+Self-hosting does not require Supabase Auth. Managed deployments should disable
+the bypass and configure `VERICOV_SERVICE_JWT_PUBLIC_KEY`.
 
 ## Coverage Analysis Worker Env Shape
 

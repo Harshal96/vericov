@@ -1,0 +1,227 @@
+#!/usr/bin/env sh
+set -eu
+
+ROOT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+ENV_FILE="$ROOT_DIR/.env"
+COMPOSE_FILE="$ROOT_DIR/infra/local/docker-compose.yml"
+MODE="${1:-up}"
+
+usage() {
+  cat >&2 <<'USAGE'
+Usage: ./vericov <command>
+
+Commands:
+  up          Validate config and start Vericov
+  down        Stop Vericov containers; preserve volumes
+  status      Show service container status
+  logs <svc>  Follow logs for a service
+  migrate     Apply SQL migrations with psql when available
+  doctor      Validate .env
+  version     Print the Vericov backend version
+USAGE
+}
+
+load_env() {
+  if [ ! -f "$ENV_FILE" ]; then
+    echo ".env is missing. Start with: cp .env.example .env" >&2
+    exit 2
+  fi
+  set -a
+  . "$ENV_FILE"
+  set +a
+}
+
+env_value() {
+  eval "printf '%s' \"\${$1:-}\""
+}
+
+require_env() {
+  name="$1"
+  value="$(env_value "$name")"
+  if [ "$value" = "" ]; then
+    echo "Missing required env: $name" >&2
+    return 1
+  fi
+  return 0
+}
+
+compose() {
+  VERICOV_COMPOSE_ENV_FILE="../../.env" docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" "$@"
+}
+
+ensure_supabase_env() {
+  if [ ! -f "$ROOT_DIR/infra/supabase/.env" ]; then
+    node "$ROOT_DIR/infra/supabase/scripts/generate-env.mjs"
+  fi
+}
+
+doctor() {
+  load_env
+  failed=0
+
+  case "${BYO_POSTGRES:-0}" in
+    0)
+      if [ "${VERICOV_DB_PASSWORD:-}" = "" ]; then
+        echo "Missing required env: VERICOV_DB_PASSWORD" >&2
+        failed=1
+      fi
+      ;;
+    1)
+      require_env VERICOV_DB_URL || failed=1
+      require_env VERICOV_DB_USER || failed=1
+      require_env VERICOV_DB_PASSWORD || failed=1
+      ;;
+    *)
+      echo "BYO_POSTGRES must be 0 or 1" >&2
+      failed=1
+      ;;
+  esac
+
+  case "${BYO_SUPABASE:-skip}" in
+    0|skip)
+      ;;
+    1)
+      require_env SUPABASE_URL || failed=1
+      require_env SUPABASE_SERVICE_ROLE_KEY || failed=1
+      ;;
+    *)
+      echo "BYO_SUPABASE must be 0, 1, or skip" >&2
+      failed=1
+      ;;
+  esac
+
+  if [ "${VERICOV_ARTIFACT_STORAGE_BACKEND:-memory}" = "supabase" ]; then
+    if [ "${BYO_SUPABASE:-skip}" = "skip" ] && [ "${SUPABASE_URL:-}" = "" ]; then
+      echo "VERICOV_ARTIFACT_STORAGE_BACKEND=supabase requires BYO_SUPABASE=0/1 or SUPABASE_URL" >&2
+      failed=1
+    fi
+  fi
+
+  if [ "${VERICOV_DEV_AUTH_BYPASS:-false}" = "true" ]; then
+    echo "auth: dev bypass enabled for self-host/no-auth setup"
+  else
+    if [ "${VERICOV_SERVICE_JWT_PUBLIC_KEY:-}" = "" ] && [ "${VERICOV_SERVICE_JWT_SECRET:-}" = "" ]; then
+      echo "Managed auth requires VERICOV_SERVICE_JWT_PUBLIC_KEY or VERICOV_SERVICE_JWT_SECRET" >&2
+      failed=1
+    fi
+  fi
+
+  if [ "${VERICOV_SERVICE_JWT_PUBLIC_KEY:-}" != "" ] && [ "${VERICOV_SERVICE_JWT_SECRET:-}" != "" ]; then
+    echo "warning: both service JWT public key and secret are set; services prefer the public key" >&2
+  fi
+
+  if [ "$failed" -ne 0 ]; then
+    exit 1
+  fi
+  echo "doctor: configuration looks usable"
+}
+
+up() {
+  doctor
+  load_env
+
+  if [ "${BYO_SUPABASE:-skip}" = "0" ]; then
+    ensure_supabase_env
+    (cd "$ROOT_DIR/infra/supabase" && docker compose up -d)
+  fi
+
+  if [ "${BYO_POSTGRES:-0}" = "0" ]; then
+    compose --profile bundled-db up -d --build
+  else
+    compose up -d --build
+  fi
+
+  echo "Vericov is starting on direct service ports:"
+  echo "  upload:            http://localhost:${VERICOV_UPLOAD_HTTP_PORT:-8080}"
+  echo "  coverage-analysis: http://localhost:${VERICOV_ANALYSIS_HTTP_PORT:-8081}"
+  echo "  control-plane:     http://localhost:${VERICOV_CONTROL_PLANE_HTTP_PORT:-8082}"
+  echo "  git-integration:   http://localhost:${VERICOV_GIT_HTTP_PORT:-8083}"
+  echo "  integrations:      http://localhost:${VERICOV_INTEGRATIONS_HTTP_PORT:-8084}"
+  echo "  agent-runner:      http://localhost:${VERICOV_AGENT_HTTP_PORT:-8085}"
+}
+
+down() {
+  if [ -f "$ENV_FILE" ]; then
+    load_env
+    compose down
+    if [ "${BYO_SUPABASE:-skip}" = "0" ]; then
+      (cd "$ROOT_DIR/infra/supabase" && docker compose down)
+    fi
+  else
+    VERICOV_COMPOSE_ENV_FILE="../../.env.example" \
+      docker compose --env-file "$ROOT_DIR/.env.example" -f "$COMPOSE_FILE" down
+  fi
+  echo "Vericov containers stopped."
+}
+
+status() {
+  load_env
+  compose ps
+  if [ "${BYO_SUPABASE:-skip}" = "0" ]; then
+    (cd "$ROOT_DIR/infra/supabase" && docker compose ps)
+  fi
+}
+
+logs() {
+  load_env
+  service="${1:-}"
+  if [ "$service" = "" ]; then
+    echo "Usage: ./vericov logs <service>" >&2
+    exit 2
+  fi
+  compose logs -f "$service"
+}
+
+migrate() {
+  load_env
+  command -v psql >/dev/null 2>&1 || {
+    echo "psql is required for ./vericov migrate" >&2
+    exit 2
+  }
+
+  db_url="${VERICOV_DB_URL:-}"
+  if [ "$db_url" = "" ]; then
+    db_name="${VERICOV_DB_NAME:-vericov}"
+    db_url="postgresql://localhost:${VERICOV_POSTGRES_PORT:-54329}/$db_name"
+  else
+    db_url="${db_url#jdbc:}"
+  fi
+
+  for migration in "$ROOT_DIR"/services/*/src/main/resources/db/migration/V*.sql; do
+    [ -f "$migration" ] || continue
+    echo "applying $(basename "$migration")"
+    PGPASSWORD="${VERICOV_DB_PASSWORD:-}" psql "$db_url" -U "${VERICOV_DB_USER:-vericov}" -v ON_ERROR_STOP=1 -f "$migration"
+  done
+}
+
+case "$MODE" in
+  up)
+    up
+    ;;
+  down)
+    down
+    ;;
+  status)
+    status
+    ;;
+  logs)
+    shift
+    logs "${1:-}"
+    ;;
+  migrate)
+    migrate
+    ;;
+  doctor)
+    doctor
+    ;;
+  version)
+    echo "0.1.0-SNAPSHOT"
+    ;;
+  -h|--help|help)
+    usage
+    ;;
+  *)
+    usage
+    exit 2
+    ;;
+esac

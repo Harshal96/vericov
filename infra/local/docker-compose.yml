@@ -1,6 +1,27 @@
 name: vericov-local
 
 services:
+  postgres-bundled:
+    image: postgres:17-alpine
+    profiles:
+      - bundled-db
+    environment:
+      POSTGRES_DB: ${VERICOV_DB_NAME:-vericov}
+      POSTGRES_USER: ${VERICOV_DB_USER:-vericov}
+      POSTGRES_PASSWORD: ${VERICOV_DB_PASSWORD:-vericov}
+    ports:
+      - "127.0.0.1:${VERICOV_POSTGRES_PORT:-54329}:5432"
+    volumes:
+      - postgres-bundled-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    networks:
+      - product
+
   upload:
     build:
       context: ../..
@@ -9,16 +30,19 @@ services:
         SERVICE_DIR: services/upload
         SERVICE_JAR: upload.jar
     env_file:
-      - .env
+      - ${VERICOV_COMPOSE_ENV_FILE:-.env}
     environment:
-      VERICOV_UPLOAD_DB_URL: ${SUPABASE_DB_URL}
-      VERICOV_UPLOAD_DB_USER: ${SUPABASE_DB_USER}
-      VERICOV_UPLOAD_DB_PASSWORD: ${SUPABASE_DB_PASSWORD}
-      VERICOV_ARTIFACT_STORAGE_BACKEND: supabase
+      VERICOV_UPLOAD_DB_URL: ${VERICOV_DB_URL:-jdbc:postgresql://postgres-bundled:5432/vericov}
+      VERICOV_UPLOAD_DB_USER: ${VERICOV_DB_USER:-vericov}
+      VERICOV_UPLOAD_DB_PASSWORD: ${VERICOV_DB_PASSWORD:-vericov}
+      VERICOV_ARTIFACT_STORAGE_BACKEND: ${VERICOV_ARTIFACT_STORAGE_BACKEND:-supabase}
       VERICOV_SERVICE_HOST: 0.0.0.0
+    ports:
+      - "127.0.0.1:${VERICOV_UPLOAD_HTTP_PORT:-8080}:8080"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     networks:
       - product
-      - supabase
 
   coverage-analysis:
     build:
@@ -28,70 +52,42 @@ services:
         SERVICE_DIR: services/coverage-analysis
         SERVICE_JAR: coverage-analysis.jar
     env_file:
-      - .env
+      - ${VERICOV_COMPOSE_ENV_FILE:-.env}
     environment:
-      VERICOV_ANALYSIS_DB_URL: ${SUPABASE_DB_URL}
-      VERICOV_ANALYSIS_DB_USER: ${SUPABASE_DB_USER}
-      VERICOV_ANALYSIS_DB_PASSWORD: ${SUPABASE_DB_PASSWORD}
+      VERICOV_ANALYSIS_DB_URL: ${VERICOV_DB_URL:-jdbc:postgresql://postgres-bundled:5432/vericov}
+      VERICOV_ANALYSIS_DB_USER: ${VERICOV_DB_USER:-vericov}
+      VERICOV_ANALYSIS_DB_PASSWORD: ${VERICOV_DB_PASSWORD:-vericov}
+      VERICOV_CONTROL_PLANE_BASE_URL: http://control-plane:8082
       VERICOV_GIT_BASE_URL: http://git-integration:8083
       VERICOV_SERVICE_HOST: 0.0.0.0
+    ports:
+      - "127.0.0.1:${VERICOV_ANALYSIS_HTTP_PORT:-8081}:8081"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     networks:
       - product
-      - supabase
 
-  agent-runner:
+  control-plane:
     build:
       context: ../..
       dockerfile: infra/docker/helidon-service.Dockerfile
       args:
-        SERVICE_DIR: services/agent-runner
-        SERVICE_JAR: agent-runner.jar
+        SERVICE_DIR: services/control-plane
+        SERVICE_JAR: control-plane.jar
     env_file:
-      - .env
+      - ${VERICOV_COMPOSE_ENV_FILE:-.env}
     environment:
-      VERICOV_DATABASE_URL: ${SUPABASE_DB_URL}
-      VERICOV_DATABASE_USER: ${SUPABASE_DB_USER}
-      VERICOV_DATABASE_PASSWORD: ${SUPABASE_DB_PASSWORD}
+      VERICOV_CONTROL_PLANE_DB_URL: ${VERICOV_DB_URL:-jdbc:postgresql://postgres-bundled:5432/vericov}
+      VERICOV_CONTROL_PLANE_DB_USER: ${VERICOV_DB_USER:-vericov}
+      VERICOV_CONTROL_PLANE_DB_PASSWORD: ${VERICOV_DB_PASSWORD:-vericov}
       VERICOV_SERVICE_HOST: 0.0.0.0
+    ports:
+      - "127.0.0.1:${VERICOV_CONTROL_PLANE_HTTP_PORT:-8082}:8082"
+      - "127.0.0.1:${VERICOV_CONTROL_PLANE_GRPC_PORT:-50082}:50082"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     networks:
       - product
-      - supabase
-
-  organization:
-    build:
-      context: ../..
-      dockerfile: infra/docker/helidon-service.Dockerfile
-      args:
-        SERVICE_DIR: services/organization
-        SERVICE_JAR: organization.jar
-    env_file:
-      - .env
-    environment:
-      VERICOV_ORGANIZATION_DB_URL: ${SUPABASE_DB_URL}
-      VERICOV_ORGANIZATION_DB_USER: ${SUPABASE_DB_USER}
-      VERICOV_ORGANIZATION_DB_PASSWORD: ${SUPABASE_DB_PASSWORD}
-      VERICOV_SERVICE_HOST: 0.0.0.0
-    networks:
-      - product
-      - supabase
-
-  integrations:
-    build:
-      context: ../..
-      dockerfile: infra/docker/helidon-service.Dockerfile
-      args:
-        SERVICE_DIR: services/integrations
-        SERVICE_JAR: integrations.jar
-    env_file:
-      - .env
-    environment:
-      VERICOV_DATABASE_URL: ${SUPABASE_DB_URL}
-      VERICOV_DATABASE_USER: ${SUPABASE_DB_USER}
-      VERICOV_DATABASE_PASSWORD: ${SUPABASE_DB_PASSWORD}
-      VERICOV_SERVICE_HOST: 0.0.0.0
-    networks:
-      - product
-      - supabase
 
   git-integration:
     build:
@@ -101,59 +97,64 @@ services:
         SERVICE_DIR: services/git-integration
         SERVICE_JAR: git-integration.jar
     env_file:
-      - .env
+      - ${VERICOV_COMPOSE_ENV_FILE:-.env}
     environment:
-      VERICOV_DATABASE_URL: ${SUPABASE_DB_URL}
-      VERICOV_DATABASE_USER: ${SUPABASE_DB_USER}
-      VERICOV_DATABASE_PASSWORD: ${SUPABASE_DB_PASSWORD}
+      VERICOV_DATABASE_URL: ${VERICOV_DB_URL:-jdbc:postgresql://postgres-bundled:5432/vericov}
+      VERICOV_DATABASE_USER: ${VERICOV_DB_USER:-vericov}
+      VERICOV_DATABASE_PASSWORD: ${VERICOV_DB_PASSWORD:-vericov}
       VERICOV_INTEGRATIONS_BASE_URL: http://integrations:8084
       VERICOV_SERVICE_HOST: 0.0.0.0
-    networks:
-      - product
-      - supabase
-
-  product-gateway:
-    image: kong/kong:3.9.1
-    restart: unless-stopped
     ports:
-      - "127.0.0.1:${VERICOV_KONG_HTTP_PORT:-9000}:8000"
-      - "127.0.0.1:${VERICOV_KONG_ADMIN_PORT:-9001}:8001"
-    env_file:
-      - .env
-    environment:
-      KONG_DATABASE: "off"
-      KONG_DECLARATIVE_CONFIG: /tmp/vericov-kong/kong.yml
-      KONG_PROXY_ACCESS_LOG: /dev/stdout
-      KONG_ADMIN_ACCESS_LOG: /dev/stdout
-      KONG_PROXY_ERROR_LOG: /dev/stderr
-      KONG_ADMIN_ERROR_LOG: /dev/stderr
-      KONG_PROXY_LISTEN: 0.0.0.0:8000
-      KONG_ADMIN_LISTEN: 0.0.0.0:8001
-      KONG_PLUGINS: bundled
-      KONG_NGINX_PROXY_CLIENT_MAX_BODY_SIZE: 120m
-      ORGANIZATION_SERVICE_URL: ${ORGANIZATION_SERVICE_URL:-http://organization:8082}
-      UPLOAD_SERVICE_URL: ${UPLOAD_SERVICE_URL:-http://upload:8080}
-      COVERAGE_ANALYSIS_SERVICE_URL: ${COVERAGE_ANALYSIS_SERVICE_URL:-http://coverage-analysis:8081}
-      AGENT_RUNNER_SERVICE_URL: ${AGENT_RUNNER_SERVICE_URL:-http://agent-runner:8085}
-      INTEGRATIONS_SERVICE_URL: ${INTEGRATIONS_SERVICE_URL:-http://integrations:8084}
-      GIT_INTEGRATION_SERVICE_URL: ${GIT_INTEGRATION_SERVICE_URL:-http://git-integration:8083}
-    volumes:
-      - ../kong/kong.yml:/home/kong/kong.yml.template:ro
-      - ../kong/kong-entrypoint.sh:/home/kong/kong-entrypoint.sh:ro
+      - "127.0.0.1:${VERICOV_GIT_HTTP_PORT:-8083}:8083"
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    entrypoint: ["/home/kong/kong-entrypoint.sh"]
-    healthcheck:
-      test: ["CMD", "kong", "health"]
-      interval: 10s
-      timeout: 5s
-      retries: 12
-      start_period: 20s
+    networks:
+      - product
+
+  integrations:
+    build:
+      context: ../..
+      dockerfile: infra/docker/helidon-service.Dockerfile
+      args:
+        SERVICE_DIR: services/integrations
+        SERVICE_JAR: integrations.jar
+    env_file:
+      - ${VERICOV_COMPOSE_ENV_FILE:-.env}
+    environment:
+      VERICOV_DATABASE_URL: ${VERICOV_DB_URL:-jdbc:postgresql://postgres-bundled:5432/vericov}
+      VERICOV_DATABASE_USER: ${VERICOV_DB_USER:-vericov}
+      VERICOV_DATABASE_PASSWORD: ${VERICOV_DB_PASSWORD:-vericov}
+      VERICOV_SERVICE_HOST: 0.0.0.0
+    ports:
+      - "127.0.0.1:${VERICOV_INTEGRATIONS_HTTP_PORT:-8084}:8084"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - product
+
+  agent-runner:
+    build:
+      context: ../..
+      dockerfile: infra/docker/helidon-service.Dockerfile
+      args:
+        SERVICE_DIR: services/agent-runner
+        SERVICE_JAR: agent-runner.jar
+    env_file:
+      - ${VERICOV_COMPOSE_ENV_FILE:-.env}
+    environment:
+      VERICOV_DATABASE_URL: ${VERICOV_DB_URL:-jdbc:postgresql://postgres-bundled:5432/vericov}
+      VERICOV_DATABASE_USER: ${VERICOV_DB_USER:-vericov}
+      VERICOV_DATABASE_PASSWORD: ${VERICOV_DB_PASSWORD:-vericov}
+      VERICOV_SERVICE_HOST: 0.0.0.0
+    ports:
+      - "127.0.0.1:${VERICOV_AGENT_HTTP_PORT:-8085}:8085"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     networks:
       - product
 
 networks:
   product:
-  supabase:
-    external: true
-    name: vericov-supabase_default
+
+volumes:
+  postgres-bundled-data:

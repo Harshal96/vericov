@@ -38,7 +38,7 @@ Service-owned JSON maps are metadata only. Connection config, binding config, pr
 
 ## Internal Endpoints
 
-Internal endpoints require both `X-Vericov-Service-Name` and `X-Vericov-Service-Token`. The service verifies `X-Vericov-Service-Token` by hashing the presented token with SHA-256 and comparing it against `VERICOV_INTERNAL_SERVICE_TOKEN_SHA256`, a comma- or whitespace-separated list of `service_name=sha256_hex` entries. Raw internal service tokens must never be hardcoded or stored in env; only hashes are configured. Missing or invalid proof returns `401 unauthorized`.
+Internal endpoints should be reached through propagated service JWTs or the new gRPC contracts. The legacy static-token REST bridge remains transitional during the gRPC migration and must not be exposed publicly.
 
 | Method | Path | Purpose |
 | --- | --- | --- |
@@ -576,7 +576,7 @@ Only internal callers with service identity receive lease material. Normal logs 
 
 - Every tenant-owned table includes `tenant_id`; public APIs also require `org_id` where organization isolation is needed.
 - Public endpoints require requester user identity plus exact tenant and organization authorization before reading or mutating integration configuration. Caller-supplied `tenant_id` is not trusted by itself, and tenant/org mismatches are rejected.
-- Internal endpoints require service identity plus a proof token in `X-Vericov-Service-Token`; only SHA-256 token hashes are configured through `VERICOV_INTERNAL_SERVICE_TOKEN_SHA256`.
+- Internal endpoints should use propagated service JWTs; legacy static-token REST calls are transitional.
 - Raw provider secrets are never stored in Postgres. The service stores `secret_ref` metadata and grants short-lived credential leases only to authorized internal callers.
 - Public responses never include raw secrets. Credential lease responses are internal-only, expire quickly, and must be redacted from logs and errors.
 - Service-owned JSON maps reject secret-bearing keys recursively before persistence so secrets cannot be echoed through public/internal metadata responses.

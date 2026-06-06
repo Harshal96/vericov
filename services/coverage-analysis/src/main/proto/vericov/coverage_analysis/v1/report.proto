@@ -1,0 +1,42 @@
+syntax = "proto3";
+
+package vericov.coverage_analysis.v1;
+
+option java_multiple_files = true;
+option java_package = "dev.vericov.analysis.grpc.v1";
+
+service ReportService {
+  rpc GetCommitReport (GetCommitReportRequest) returns (CoverageReport);
+  rpc ListGateEvaluations (ListGateEvaluationsRequest) returns (ListGateEvaluationsResponse);
+}
+
+message GetCommitReportRequest {
+  string repository_id = 1;
+  string commit_sha = 2;
+}
+
+message ListGateEvaluationsRequest {
+  string repository_id = 1;
+  string commit_sha = 2;
+}
+
+message ListGateEvaluationsResponse {
+  repeated GateEvaluation gate_evaluations = 1;
+}
+
+message CoverageReport {
+  string id = 1;
+  string repository_id = 2;
+  string commit_sha = 3;
+  string branch = 4;
+  string status = 5;
+  double line_percent = 6;
+  double branch_percent = 7;
+}
+
+message GateEvaluation {
+  string id = 1;
+  string gate_name = 2;
+  string status = 3;
+  bool blocking = 4;
+}

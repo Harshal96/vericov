@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { createHash, randomBytes } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -22,28 +22,30 @@ if (existsSync(localEnvPath) && !force) {
 }
 
 const supabase = readEnvFile(supabaseEnvPath);
-const serviceToken = randomBase64Url(36);
-const serviceTokenHash = sha256(serviceToken);
 const postgresHostPort = supabase.POSTGRES_HOST_PORT || "54322";
 
 const values = {
+  BYO_POSTGRES: "1",
+  BYO_SUPABASE: "0",
   POSTGRES_PASSWORD: required(supabase, "POSTGRES_PASSWORD"),
   POSTGRES_HOST_PORT: postgresHostPort,
+  VERICOV_DB_URL: `jdbc:postgresql://host.docker.internal:${postgresHostPort}/postgres`,
+  VERICOV_DB_USER: "postgres",
+  VERICOV_DB_PASSWORD: required(supabase, "POSTGRES_PASSWORD"),
   SUPABASE_SERVICE_ROLE_KEY: required(supabase, "SERVICE_ROLE_KEY"),
-  SUPABASE_JWT_SECRET: required(supabase, "JWT_SECRET"),
-  SUPABASE_JWT_ISSUER: `${supabase.API_EXTERNAL_URL || "http://localhost:8000"}/auth/v1`,
-  SUPABASE_JWT_AUDIENCE: supabase.GOTRUE_JWT_AUD || "authenticated",
-  SUPABASE_URL: "http://kong:8000",
-  SUPABASE_STORAGE_URL: "http://kong:8000/storage/v1",
-  SUPABASE_DB_URL: "jdbc:postgresql://db:5432/postgres",
-  SUPABASE_DB_USER: "postgres",
-  SUPABASE_DB_PASSWORD: required(supabase, "POSTGRES_PASSWORD"),
+  SUPABASE_URL: "http://host.docker.internal:8000",
+  SUPABASE_STORAGE_URL: "http://host.docker.internal:8000/storage/v1",
   VERICOV_REPO_API_KEY_PEPPER: randomHex(32),
   VERICOV_RUNNER_JWT_SECRET: randomHex(32),
   VERICOV_RUNNER_JWT_ISSUER: "vericov-upload",
   VERICOV_RUNNER_JWT_AUDIENCE: "vericov-runner-upload",
-  VERICOV_INTERNAL_SERVICE_TOKEN: serviceToken,
-  VERICOV_INTERNAL_SERVICE_TOKEN_SHA256: `git-integration=${serviceTokenHash},coverage-analysis=${serviceTokenHash},organization=${serviceTokenHash}`,
+  VERICOV_SERVICE_JWT_PUBLIC_KEY: "",
+  VERICOV_SERVICE_JWT_SECRET: randomBase64Url(48),
+  VERICOV_SERVICE_JWT_ISSUER: "veriapi",
+  VERICOV_SERVICE_JWT_AUDIENCE: "vericov",
+  VERICOV_DEV_AUTH_BYPASS: "true",
+  VERICOV_DEV_USER_ID: randomUUID(),
+  VERICOV_DEV_USER_EMAIL: "dev@vericov.local",
   VERICOV_GITHUB_WEBHOOK_SECRET: randomBase64Url(36),
   VERICOV_CORS_ORIGIN: "*",
   VERICOV_USER_RATE_LIMIT_MINUTE: "120",
@@ -94,8 +96,4 @@ function randomHex(bytes) {
 
 function randomBase64Url(bytes) {
   return randomBytes(bytes).toString("base64url");
-}
-
-function sha256(value) {
-  return createHash("sha256").update(value).digest("hex");
 }

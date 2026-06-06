@@ -1,0 +1,49 @@
+syntax = "proto3";
+
+package vericov.control_plane.v1;
+
+option java_multiple_files = true;
+option java_package = "dev.vericov.controlplane.grpc.v1";
+
+service RepositoryService {
+  rpc ListRepositories (ListRepositoriesRequest) returns (ListRepositoriesResponse);
+  rpc GetRepository (GetRepositoryRequest) returns (Repository);
+}
+
+service ConfigService {
+  rpc GetEffectiveConfig (GetEffectiveConfigRequest) returns (RepositoryConfig);
+}
+
+message ListRepositoriesRequest {
+  string page_token = 1;
+  int32 page_size = 2;
+}
+
+message ListRepositoriesResponse {
+  repeated Repository repositories = 1;
+  string next_page_token = 2;
+}
+
+message GetRepositoryRequest {
+  string repository_id = 1;
+}
+
+message GetEffectiveConfigRequest {
+  string repository_id = 1;
+}
+
+message Repository {
+  string id = 1;
+  string provider = 2;
+  string full_name = 3;
+  string default_branch = 4;
+  string visibility = 5;
+  string status = 6;
+}
+
+message RepositoryConfig {
+  string repository_id = 1;
+  int32 schema_version = 2;
+  string config_json = 3;
+  string validation_status = 4;
+}

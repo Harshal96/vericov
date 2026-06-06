@@ -74,9 +74,6 @@ public class DevelopmentUploadComponents {
                     env("VERICOV_RUNNER_JWT_SECRET", ""),
                     env("VERICOV_RUNNER_JWT_ISSUER", "vericov-upload"),
                     env("VERICOV_RUNNER_JWT_AUDIENCE", "vericov-runner-upload"),
-                    env("SUPABASE_JWT_SECRET", env("JWT_SECRET", "")),
-                    env("SUPABASE_JWT_ISSUER", env("GOTRUE_JWT_ISSUER", "http://localhost:8000/auth/v1")),
-                    env("SUPABASE_JWT_AUDIENCE", env("GOTRUE_JWT_AUD", "authenticated")),
                     new GithubActionsOidcVerifier(
                             URI.create(env(
                                     "VERICOV_GITHUB_ACTIONS_OIDC_JWKS_URL",

@@ -1,0 +1,21 @@
+syntax = "proto3";
+
+package vericov.upload.v1;
+
+option java_multiple_files = true;
+option java_package = "dev.vericov.upload.grpc.v1";
+
+service UploadControlService {
+  rpc GetUploadStatus (GetUploadStatusRequest) returns (UploadStatus);
+}
+
+message GetUploadStatusRequest {
+  string upload_id = 1;
+}
+
+message UploadStatus {
+  string upload_id = 1;
+  string repository_id = 2;
+  string status = 3;
+  string analysis_job_id = 4;
+}

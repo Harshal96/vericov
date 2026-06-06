@@ -27,9 +27,6 @@ public class JdbcRepositoryApiKeyAuthenticator implements RepositoryApiKeyAuthen
     private final String runnerJwtSecret;
     private final String runnerJwtIssuer;
     private final String runnerJwtAudience;
-    private final String supabaseJwtSecret;
-    private final String supabaseJwtIssuer;
-    private final String supabaseJwtAudience;
     private final GithubActionsOidcVerifier githubActionsOidcVerifier;
 
     public JdbcRepositoryApiKeyAuthenticator(
@@ -39,9 +36,6 @@ public class JdbcRepositoryApiKeyAuthenticator implements RepositoryApiKeyAuthen
             String runnerJwtSecret,
             String runnerJwtIssuer,
             String runnerJwtAudience,
-            String supabaseJwtSecret,
-            String supabaseJwtIssuer,
-            String supabaseJwtAudience,
             GithubActionsOidcVerifier githubActionsOidcVerifier) {
         this.dataSource = Objects.requireNonNull(dataSource, "dataSource");
         this.hasher = Objects.requireNonNull(hasher, "hasher");
@@ -49,9 +43,6 @@ public class JdbcRepositoryApiKeyAuthenticator implements RepositoryApiKeyAuthen
         this.runnerJwtSecret = blankToNull(runnerJwtSecret);
         this.runnerJwtIssuer = blankToNull(runnerJwtIssuer);
         this.runnerJwtAudience = blankToNull(runnerJwtAudience);
-        this.supabaseJwtSecret = blankToNull(supabaseJwtSecret);
-        this.supabaseJwtIssuer = blankToNull(supabaseJwtIssuer);
-        this.supabaseJwtAudience = blankToNull(supabaseJwtAudience);
         this.githubActionsOidcVerifier = Objects.requireNonNull(githubActionsOidcVerifier, "githubActionsOidcVerifier");
     }
 
@@ -81,7 +72,7 @@ public class JdbcRepositoryApiKeyAuthenticator implements RepositoryApiKeyAuthen
             if (GITHUB_ACTIONS_ISSUER.equals(issuer)) {
                 return authenticateGithubActionsOidc(token, payload, repositoryId, branch);
             }
-            return authenticateSupabaseUserJwt(token, repositoryId);
+            throw unauthorized();
         }
         throw unauthorized();
     }
@@ -175,44 +166,6 @@ public class JdbcRepositoryApiKeyAuthenticator implements RepositoryApiKeyAuthen
                 apiKeyId,
                 Set.copyOf(UploadJwtSupport.stringArrayClaim(payload, "scopes", List.of("uploads:create"))),
                 Set.copyOf(UploadJwtSupport.stringArrayClaim(payload, "branch_allow_patterns", List.of("*"))));
-    }
-
-    private RepositoryApiKeyPrincipal authenticateSupabaseUserJwt(String token, UUID repositoryId) {
-        JsonObject payload = UploadJwtSupport.verifiedHs256Payload(
-                token,
-                supabaseJwtSecret,
-                supabaseJwtIssuer,
-                supabaseJwtAudience,
-                clock);
-        UUID userId = UploadJwtSupport.uuidClaim(payload, "sub");
-        try (var connection = dataSource.getConnection();
-                var statement = connection.prepareStatement("""
-                        select repositories.tenant_id, repositories.id
-                        from vericov.repositories repositories
-                        join vericov.memberships memberships
-                          on memberships.org_id = repositories.org_id
-                         and memberships.tenant_id = repositories.tenant_id
-                        where repositories.id = ?
-                          and repositories.status = 'active'
-                          and memberships.supabase_user_id = ?
-                          and memberships.status = 'active'
-                        """)) {
-            statement.setObject(1, repositoryId);
-            statement.setObject(2, userId);
-            try (var resultSet = statement.executeQuery()) {
-                if (!resultSet.next()) {
-                    throw unauthorized();
-                }
-                return new RepositoryApiKeyPrincipal(
-                        resultSet.getObject("tenant_id", UUID.class),
-                        resultSet.getObject("id", UUID.class),
-                        null,
-                        Set.of("uploads:create", "uploads:read"),
-                        Set.of("*"));
-            }
-        } catch (SQLException exception) {
-            throw new InvalidUploadException("unauthorized", "Upload credential lookup failed");
-        }
     }
 
     private RepositoryApiKeyPrincipal authenticateGithubActionsOidc(

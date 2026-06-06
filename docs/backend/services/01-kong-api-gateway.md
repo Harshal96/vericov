@@ -1,5 +1,9 @@
 # Kong API Gateway Contract
 
+> **Historical reference** — Vericov no longer bundles a product gateway.
+> See `docs/MANAGED_INTEGRATION.md` for the current trust model and
+> `docs/SELF_HOSTING.md` for putting your own gateway in front.
+
 Status: Implemented scaffold with gateway-heavy local guardrails
 Runtime: Kong Gateway
 Backend services: Helidon 4

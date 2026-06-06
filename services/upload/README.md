@@ -21,7 +21,7 @@ input, makes it durable, and hands the slower work to Coverage Analysis.
        |
        v
 +------+-------------------+
-| Kong /api/v1/uploads     |
+| Gateway / direct REST    |
 +------+-------------------+
        |
        v
@@ -124,7 +124,7 @@ Authentication modes:
 | --- | --- |
 | CI job | Repo-scoped Vericov API key |
 | Runner | Short-lived runner upload JWT |
-| Web app/manual | Supabase Auth JWT, routed through control-plane authorization |
+| Gateway/manual | Service JWT from veriapi/customer gateway |
 | Trusted CI | GitHub Actions OIDC after trust config exists |
 
 ## Source Map

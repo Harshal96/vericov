@@ -17,6 +17,16 @@ SUPABASE_ENV="$ROOT_DIR/infra/supabase/.env"
 LOCAL_ENV="$ROOT_DIR/infra/local/.env"
 RUNTIME_DIR="$ROOT_DIR/.vericov/dev"
 
+print_urls() {
+  echo "Vericov local stack is starting on direct service ports:"
+  echo "  upload:            http://localhost:8080"
+  echo "  coverage-analysis: http://localhost:8081"
+  echo "  control-plane:     http://localhost:8082"
+  echo "  git-integration:   http://localhost:8083"
+  echo "  integrations:      http://localhost:8084"
+  echo "  agent-runner:      http://localhost:8085"
+}
+
 if [ ! -f "$SUPABASE_ENV" ]; then
   node "$ROOT_DIR/infra/supabase/scripts/generate-env.mjs"
 fi
@@ -27,20 +37,12 @@ node "$ROOT_DIR/infra/local/scripts/generate-env.mjs"
 
 if [ "$MODE" = "container" ]; then
   docker compose --env-file "$LOCAL_ENV" -f "$ROOT_DIR/infra/local/docker-compose.yml" up -d --build
-  echo "Vericov local stack is starting at http://localhost:9000"
+  print_urls
   exit 0
 fi
 
 mvn -q -DskipTests package
 mkdir -p "$RUNTIME_DIR/logs" "$RUNTIME_DIR/pids"
-
-ORGANIZATION_SERVICE_URL=http://host.docker.internal:8082 \
-UPLOAD_SERVICE_URL=http://host.docker.internal:8080 \
-COVERAGE_ANALYSIS_SERVICE_URL=http://host.docker.internal:8081 \
-AGENT_RUNNER_SERVICE_URL=http://host.docker.internal:8085 \
-INTEGRATIONS_SERVICE_URL=http://host.docker.internal:8084 \
-GIT_INTEGRATION_SERVICE_URL=http://host.docker.internal:8083 \
-docker compose --env-file "$LOCAL_ENV" -f "$ROOT_DIR/infra/local/docker-compose.yml" up -d product-gateway
 
 set -a
 . "$LOCAL_ENV"
@@ -48,14 +50,15 @@ set +a
 
 SUPABASE_URL="$VERICOV_HOST_SUPABASE_URL"
 SUPABASE_STORAGE_URL="$VERICOV_HOST_SUPABASE_STORAGE_URL"
-SUPABASE_DB_URL="$VERICOV_HOST_SUPABASE_DB_URL"
+VERICOV_DB_URL="$VERICOV_HOST_SUPABASE_DB_URL"
 
-export SUPABASE_URL SUPABASE_STORAGE_URL SUPABASE_DB_URL
-export SUPABASE_DB_USER SUPABASE_DB_PASSWORD SUPABASE_SERVICE_ROLE_KEY
-export SUPABASE_JWT_SECRET SUPABASE_JWT_ISSUER SUPABASE_JWT_AUDIENCE
+export SUPABASE_URL SUPABASE_STORAGE_URL VERICOV_DB_URL
+export VERICOV_DB_USER VERICOV_DB_PASSWORD SUPABASE_SERVICE_ROLE_KEY
 export VERICOV_REPO_API_KEY_PEPPER VERICOV_RUNNER_JWT_SECRET
 export VERICOV_RUNNER_JWT_ISSUER VERICOV_RUNNER_JWT_AUDIENCE
-export VERICOV_INTERNAL_SERVICE_TOKEN VERICOV_INTERNAL_SERVICE_TOKEN_SHA256
+export VERICOV_SERVICE_JWT_PUBLIC_KEY VERICOV_SERVICE_JWT_SECRET
+export VERICOV_SERVICE_JWT_ISSUER VERICOV_SERVICE_JWT_AUDIENCE
+export VERICOV_DEV_AUTH_BYPASS VERICOV_DEV_USER_ID VERICOV_DEV_USER_EMAIL
 export VERICOV_GITHUB_WEBHOOK_SECRET
 
 start_service() {
@@ -78,37 +81,38 @@ start_service() {
 }
 
 start_service upload services/upload/target/upload.jar 8080 \
-  VERICOV_UPLOAD_DB_URL="$SUPABASE_DB_URL" \
-  VERICOV_UPLOAD_DB_USER="$SUPABASE_DB_USER" \
-  VERICOV_UPLOAD_DB_PASSWORD="$SUPABASE_DB_PASSWORD" \
+  VERICOV_UPLOAD_DB_URL="$VERICOV_DB_URL" \
+  VERICOV_UPLOAD_DB_USER="$VERICOV_DB_USER" \
+  VERICOV_UPLOAD_DB_PASSWORD="$VERICOV_DB_PASSWORD" \
   VERICOV_ARTIFACT_STORAGE_BACKEND=supabase
 
 start_service coverage-analysis services/coverage-analysis/target/coverage-analysis.jar 8081 \
-  VERICOV_ANALYSIS_DB_URL="$SUPABASE_DB_URL" \
-  VERICOV_ANALYSIS_DB_USER="$SUPABASE_DB_USER" \
-  VERICOV_ANALYSIS_DB_PASSWORD="$SUPABASE_DB_PASSWORD" \
+  VERICOV_ANALYSIS_DB_URL="$VERICOV_DB_URL" \
+  VERICOV_ANALYSIS_DB_USER="$VERICOV_DB_USER" \
+  VERICOV_ANALYSIS_DB_PASSWORD="$VERICOV_DB_PASSWORD" \
+  VERICOV_CONTROL_PLANE_BASE_URL=http://127.0.0.1:8082 \
   VERICOV_GIT_BASE_URL=http://127.0.0.1:8083
 
 start_service agent-runner services/agent-runner/target/agent-runner.jar 8085 \
-  VERICOV_DATABASE_URL="$SUPABASE_DB_URL" \
-  VERICOV_DATABASE_USER="$SUPABASE_DB_USER" \
-  VERICOV_DATABASE_PASSWORD="$SUPABASE_DB_PASSWORD"
+  VERICOV_DATABASE_URL="$VERICOV_DB_URL" \
+  VERICOV_DATABASE_USER="$VERICOV_DB_USER" \
+  VERICOV_DATABASE_PASSWORD="$VERICOV_DB_PASSWORD"
 
-start_service organization services/organization/target/organization.jar 8082 \
-  VERICOV_ORGANIZATION_DB_URL="$SUPABASE_DB_URL" \
-  VERICOV_ORGANIZATION_DB_USER="$SUPABASE_DB_USER" \
-  VERICOV_ORGANIZATION_DB_PASSWORD="$SUPABASE_DB_PASSWORD"
+start_service control-plane services/control-plane/target/control-plane.jar 8082 \
+  VERICOV_CONTROL_PLANE_DB_URL="$VERICOV_DB_URL" \
+  VERICOV_CONTROL_PLANE_DB_USER="$VERICOV_DB_USER" \
+  VERICOV_CONTROL_PLANE_DB_PASSWORD="$VERICOV_DB_PASSWORD"
 
 start_service integrations services/integrations/target/integrations.jar 8084 \
-  VERICOV_DATABASE_URL="$SUPABASE_DB_URL" \
-  VERICOV_DATABASE_USER="$SUPABASE_DB_USER" \
-  VERICOV_DATABASE_PASSWORD="$SUPABASE_DB_PASSWORD"
+  VERICOV_DATABASE_URL="$VERICOV_DB_URL" \
+  VERICOV_DATABASE_USER="$VERICOV_DB_USER" \
+  VERICOV_DATABASE_PASSWORD="$VERICOV_DB_PASSWORD"
 
 start_service git-integration services/git-integration/target/git-integration.jar 8083 \
-  VERICOV_DATABASE_URL="$SUPABASE_DB_URL" \
-  VERICOV_DATABASE_USER="$SUPABASE_DB_USER" \
-  VERICOV_DATABASE_PASSWORD="$SUPABASE_DB_PASSWORD" \
+  VERICOV_DATABASE_URL="$VERICOV_DB_URL" \
+  VERICOV_DATABASE_USER="$VERICOV_DB_USER" \
+  VERICOV_DATABASE_PASSWORD="$VERICOV_DB_PASSWORD" \
   VERICOV_INTEGRATIONS_BASE_URL=http://127.0.0.1:8084
 
-echo "Vericov local stack is starting at http://localhost:9000"
+print_urls
 echo "Host-run service logs are in $RUNTIME_DIR/logs"
