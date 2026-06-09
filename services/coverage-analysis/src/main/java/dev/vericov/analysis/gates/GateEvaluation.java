@@ -11,7 +11,6 @@ import java.util.UUID;
 public record GateEvaluation(
         UUID id,
         UUID tenantId,
-        UUID organizationId,
         UUID repositoryId,
         UUID coverageReportId,
         String commitSha,
@@ -30,7 +29,6 @@ public record GateEvaluation(
     public GateEvaluation {
         Objects.requireNonNull(id, "id");
         Objects.requireNonNull(tenantId, "tenantId");
-        Objects.requireNonNull(organizationId, "organizationId");
         Objects.requireNonNull(repositoryId, "repositoryId");
         Objects.requireNonNull(coverageReportId, "coverageReportId");
         Objects.requireNonNull(commitSha, "commitSha");

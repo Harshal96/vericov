@@ -26,7 +26,6 @@ public class JdbcCoverageAnalysisInputRepository implements CoverageAnalysisInpu
                     upload.id(),
                     upload.tenantId(),
                     upload.repositoryId(),
-                    upload.organizationId(),
                     upload.provider(),
                     upload.commitSha(),
                     upload.branch(),
@@ -39,7 +38,7 @@ public class JdbcCoverageAnalysisInputRepository implements CoverageAnalysisInpu
 
     private static UploadRow findUpload(java.sql.Connection connection, UUID uploadId) throws SQLException {
         try (var statement = connection.prepareStatement("""
-                select u.id, u.tenant_id, u.repository_id, r.org_id, r.provider,
+                select u.id, u.tenant_id, u.repository_id, r.provider,
                        u.commit_sha, u.branch, u.pull_request_number
                 from vericov.uploads u
                 join vericov.repositories r on r.id = u.repository_id
@@ -54,7 +53,6 @@ public class JdbcCoverageAnalysisInputRepository implements CoverageAnalysisInpu
                         resultSet.getObject("id", UUID.class),
                         resultSet.getObject("tenant_id", UUID.class),
                         resultSet.getObject("repository_id", UUID.class),
-                        resultSet.getObject("org_id", UUID.class),
                         resultSet.getString("provider"),
                         resultSet.getString("commit_sha"),
                         resultSet.getString("branch"),
@@ -97,7 +95,6 @@ public class JdbcCoverageAnalysisInputRepository implements CoverageAnalysisInpu
             UUID id,
             UUID tenantId,
             UUID repositoryId,
-            UUID organizationId,
             String provider,
             String commitSha,
             String branch,

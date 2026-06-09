@@ -84,6 +84,18 @@ public class UploadApplicationService {
         return uploadDetails(upload);
     }
 
+    public CoverageReportDetails getCoverageReport(UUID uploadId, String authorizationHeader) {
+        QueuedUpload upload = uploadRepository.findById(uploadId)
+                .orElseThrow(() -> new InvalidUploadException("not_found", "Upload not found"));
+        RepositoryApiKeyPrincipal principal = authenticator.authenticateRepositoryAccess(
+                authorizationHeader,
+                upload.repositoryId(),
+                upload.branch());
+        authorizeRepositoryAccess(principal, upload.repositoryId(), upload.branch(), READ_UPLOAD_SCOPE);
+        return uploadRepository.coverageReportFor(uploadId)
+                .orElseThrow(() -> new InvalidUploadException("not_found", "Coverage report not found"));
+    }
+
     public RunnerUploadToken createRunnerUploadToken(String authorizationHeader, UUID repositoryId, String branch) {
         if (runnerTokenIssuer == null) {
             throw new InvalidUploadException("unauthorized", "Runner upload tokens are not configured");

@@ -2,6 +2,7 @@ package dev.vericov.upload.application.port;
 
 import dev.vericov.upload.application.QueuedUpload;
 import dev.vericov.upload.application.StoredArtifact;
+import dev.vericov.upload.application.CoverageReportDetails;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -14,4 +15,8 @@ public interface UploadRepository {
     void save(QueuedUpload upload, List<StoredArtifact> artifacts);
 
     List<StoredArtifact> artifactsFor(UUID uploadId);
+
+    default Optional<CoverageReportDetails> coverageReportFor(UUID uploadId) {
+        return Optional.empty();
+    }
 }

@@ -21,7 +21,7 @@ public class JdbcGateConfigurationRepository implements GateConfigurationReposit
     public List<GateConfiguration> listActiveForRepository(UUID tenantId, UUID repositoryId) {
         try (var connection = dataSource.getConnection();
                 var statement = connection.prepareStatement("""
-                        select id, tenant_id, org_id, repository_id, name, gate_type, metric,
+                        select id, tenant_id, repository_id, name, gate_type, metric,
                                threshold, max_drop, blocking, config_json, status
                         from vericov.repository_gate_configurations
                         where tenant_id = ?
@@ -37,7 +37,6 @@ public class JdbcGateConfigurationRepository implements GateConfigurationReposit
                     gates.add(new GateConfiguration(
                             resultSet.getObject("id", UUID.class),
                             resultSet.getObject("tenant_id", UUID.class),
-                            resultSet.getObject("org_id", UUID.class),
                             resultSet.getObject("repository_id", UUID.class),
                             resultSet.getString("name"),
                             resultSet.getString("gate_type"),

@@ -40,7 +40,6 @@ check_url() {
 
 check_url upload "http://localhost:${VERICOV_UPLOAD_HTTP_PORT:-8080}/health/ready"
 check_url coverage-analysis "http://localhost:${VERICOV_ANALYSIS_HTTP_PORT:-8081}/health/ready"
-check_url control-plane "http://localhost:${VERICOV_CONTROL_PLANE_HTTP_PORT:-8082}/health/ready"
 
 upload_response="$(curl -fsS \
   -X POST \
@@ -77,7 +76,17 @@ while [ "$(date +%s)" -lt "$deadline" ]; do
     | sed -n 's/.*"status"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')"
   case "$status" in
     completed)
+      report_response="$(curl -fsS \
+        -H "Authorization: Bearer ${VERICOV_DEV_API_KEY}" \
+        "http://localhost:${VERICOV_UPLOAD_HTTP_PORT:-8080}/api/v1/uploads/$upload_id/report")"
+      report_status="$(printf '%s' "$report_response" \
+        | sed -n 's/.*"status"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')"
+      if [ "$report_status" != "complete" ]; then
+        echo "smoke-test: coverage report was not complete: $report_response" >&2
+        exit 1
+      fi
       printf '%s\n' "ok: upload $upload_id was analyzed"
+      printf '%s\n' "ok: coverage report is available"
       printf '%s\n' "smoke-test: upload-to-report flow is working"
       exit 0
       ;;

@@ -26,12 +26,13 @@ The default self-hosted path only requires Git and Docker:
 Run the same main checks as CI:
 
 ```bash
-mvn test
+mvn verify
 python -m pytest -q
-python -m pip install -e clis/coverage-upload pytest
-(cd clis/coverage-upload && python -m pytest -q)
+python -m pip install -e clis/coverage-upload pytest pytest-cov
+(cd clis/coverage-upload && python -m pytest -q --cov=vericov_coverage_upload --cov-report=term-missing --cov-fail-under=80)
 sh -n vericov scripts/*.sh
-docker compose --env-file .env.example \
+VERICOV_COMPOSE_ENV_FILE=../../.env.example \
+  docker compose --env-file .env.example \
   -f infra/local/docker-compose.yml \
   --profile bundled-db config --quiet
 ```

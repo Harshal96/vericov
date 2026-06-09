@@ -1,4 +1,0 @@
-interface:
-  display_name: "BDD Integration Planner"
-  short_description: "Find BDD and integration scenarios from code."
-  default_prompt: "Use $bdd-integration-planner to inspect changed code, identify behavior scenarios, and create BDD plus integration tests for the affected service."
