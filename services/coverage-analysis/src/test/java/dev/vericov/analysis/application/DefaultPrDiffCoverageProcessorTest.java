@@ -24,7 +24,6 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 class DefaultPrDiffCoverageProcessorTest {
     private static final Instant NOW = Instant.parse("2026-05-23T12:00:00Z");
     private static final UUID TENANT_ID = UUID.fromString("0f4f478a-3fc0-45c4-b274-43a0e18850cf");
-    private static final UUID ORG_ID = UUID.fromString("8247a65f-9d3d-4d61-8cc9-1f2692c6da9e");
     private static final UUID REPOSITORY_ID = UUID.fromString("4d607f16-1af7-4d3b-ac38-06454cba463c");
     private static final UUID UPLOAD_ID = UUID.fromString("03ce97f7-af1c-4d65-a9a6-9f95cb4ccfc6");
     private static final UUID REPORT_ID = UUID.fromString("29bf4d81-edf3-47d9-8f90-c24037396473");
@@ -76,7 +75,6 @@ class DefaultPrDiffCoverageProcessorTest {
                 UPLOAD_ID,
                 TENANT_ID,
                 REPOSITORY_ID,
-                ORG_ID,
                 "github",
                 "head456",
                 "feature/diff",

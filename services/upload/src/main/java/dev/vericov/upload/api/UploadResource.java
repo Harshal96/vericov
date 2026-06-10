@@ -126,6 +126,25 @@ public class UploadResource {
         }
     }
 
+    @GET
+    @Path("/{upload_id}/report")
+    @Operation(summary = "Get the analyzed coverage report for an upload")
+    @APIResponse(
+            responseCode = "200",
+            description = "Coverage report",
+            content = @Content(schema = @Schema(implementation = CoverageReportHttpResponse.class)))
+    @APIResponse(responseCode = "404", description = "Upload or report not found")
+    public Response getCoverageReport(
+            @HeaderParam("Authorization") String authorizationHeader,
+            @PathParam("upload_id") UUID uploadId) {
+        try {
+            var report = uploadService.getCoverageReport(uploadId, authorizationHeader);
+            return Response.ok(new ApiResponse<>(CoverageReportHttpResponse.from(report))).build();
+        } catch (InvalidUploadException exception) {
+            return errorResponse(exception);
+        }
+    }
+
     private static Response errorResponse(InvalidUploadException exception) {
         Response.Status status = switch (exception.code()) {
             case "unauthorized" -> Response.Status.UNAUTHORIZED;

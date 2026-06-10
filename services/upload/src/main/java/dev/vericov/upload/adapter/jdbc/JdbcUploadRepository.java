@@ -3,6 +3,8 @@ package dev.vericov.upload.adapter.jdbc;
 import dev.vericov.upload.application.QueuedUpload;
 import dev.vericov.upload.application.StoredArtifact;
 import dev.vericov.upload.application.DuplicateUploadException;
+import dev.vericov.upload.application.CoverageMetricDetails;
+import dev.vericov.upload.application.CoverageReportDetails;
 import dev.vericov.upload.application.port.UploadRepository;
 import dev.vericov.upload.domain.ArtifactKind;
 import dev.vericov.upload.domain.UploadStatus;
@@ -96,6 +98,42 @@ public class JdbcUploadRepository implements UploadRepository {
             }
         } catch (SQLException exception) {
             throw new IllegalStateException("Failed to load artifacts for upload " + uploadId, exception);
+        }
+    }
+
+    @Override
+    public Optional<CoverageReportDetails> coverageReportFor(UUID uploadId) {
+        try (Connection connection = dataSource.getConnection();
+                var statement = connection.prepareStatement("""
+                        select upload_id, repository_id, commit_sha, branch, pull_request_number,
+                               status, line_covered, line_total, branch_covered, branch_total,
+                               function_covered, function_total, statement_covered, statement_total,
+                               normalized_storage_bucket, normalized_storage_path, created_at
+                        from vericov.coverage_reports
+                        where upload_id = ?
+                        """)) {
+            statement.setObject(1, uploadId);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                if (!resultSet.next()) {
+                    return Optional.empty();
+                }
+                return Optional.of(new CoverageReportDetails(
+                        resultSet.getObject("upload_id", UUID.class),
+                        resultSet.getObject("repository_id", UUID.class),
+                        resultSet.getString("commit_sha"),
+                        resultSet.getString("branch"),
+                        nullableInteger(resultSet, "pull_request_number"),
+                        resultSet.getString("status"),
+                        metric(resultSet, "line"),
+                        metric(resultSet, "branch"),
+                        metric(resultSet, "function"),
+                        metric(resultSet, "statement"),
+                        resultSet.getString("normalized_storage_bucket"),
+                        resultSet.getString("normalized_storage_path"),
+                        resultSet.getObject("created_at", OffsetDateTime.class).toInstant()));
+            }
+        } catch (SQLException exception) {
+            throw new IllegalStateException("Failed to load coverage report for upload " + uploadId, exception);
         }
     }
 
@@ -275,6 +313,12 @@ public class JdbcUploadRepository implements UploadRepository {
     private static Integer nullableInteger(ResultSet resultSet, String column) throws SQLException {
         int value = resultSet.getInt(column);
         return resultSet.wasNull() ? null : value;
+    }
+
+    private static CoverageMetricDetails metric(ResultSet resultSet, String prefix) throws SQLException {
+        return new CoverageMetricDetails(
+                resultSet.getLong(prefix + "_covered"),
+                resultSet.getLong(prefix + "_total"));
     }
 
     private static String databaseStatus(UploadStatus status) {

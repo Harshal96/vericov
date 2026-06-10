@@ -57,6 +57,28 @@ def test_init_command_generates_credentials_instead_of_copying_placeholders() ->
     assert "cp .env.example .env" not in readme
 
 
+def test_public_configuration_only_documents_supported_auth_modes() -> None:
+    env_example = read(".env.example")
+    launcher = read("vericov")
+    self_hosting = read("docs/SELF_HOSTING.md")
+
+    assert "VERICOV_SERVICE_JWT" not in env_example
+    assert "VERICOV_SERVICE_JWT" not in launcher
+    assert "service-JWT" not in self_hosting
+    assert "VERICOV_REPO_API_KEY_PEPPER" in launcher
+
+
+def test_public_launcher_only_supports_bring_your_own_supabase_storage() -> None:
+    env_example = read(".env.example")
+    launcher = read("vericov")
+    self_hosting = read("docs/SELF_HOSTING.md")
+
+    assert "BYO_SUPABASE=0" not in env_example
+    assert "ensure_supabase_env" not in launcher
+    assert "BYO_SUPABASE must be 1 or skip" in launcher
+    assert "optional bundled Supabase" not in self_hosting
+
+
 def test_database_schema_supports_postgres_without_supabase_storage() -> None:
     schema = read("infra/supabase/volumes/db/vericov.sql")
 
@@ -75,30 +97,59 @@ def test_local_schema_seeds_the_default_upload_workspace() -> None:
     assert "VERICOV_DEV_REPOSITORY_ID=00000000-0000-0000-0000-000000000003" in env_example
 
 
-def test_public_schema_has_no_membership_or_invitation_product_tables() -> None:
+def test_public_schema_contains_only_single_workspace_product_tables() -> None:
     schema = read("infra/supabase/volumes/db/vericov.sql")
 
+    assert "vericov.organizations" not in schema
     assert "vericov.memberships" not in schema
     assert "vericov.organization_invitations" not in schema
+    assert "org_id" not in schema
+    assert "vericov.integration_" not in schema
+    assert "vericov.agent_" not in schema
+
+
+def test_analysis_runtime_has_no_removed_service_clients() -> None:
+    components = read("services/coverage-analysis/src/main/java/dev/vericov/analysis/config/AnalysisComponents.java")
+    gate_evaluator = read("services/coverage-analysis/src/main/java/dev/vericov/analysis/gates/GateEvaluator.java")
+
+    assert "InternalControlPlaneRepositoryContextClient" not in components
+    assert "InternalGitDiffHttpClient" not in components
+    assert "VERICOV_INTERNAL_SERVICE_TOKEN" not in components
+    assert "VERICOV_CONTROL_PLANE_BASE_URL" not in components
+    assert "VERICOV_GIT_BASE_URL" not in components
+    assert "agent_review_required" not in gate_evaluator
 
 
 def test_local_services_share_filesystem_artifact_storage_by_default() -> None:
     compose = read("infra/local/docker-compose.yml")
     env_example = read(".env.example")
 
+    assert "VERICOV_COMPOSE_ENV_FILE:?run through ./vericov" in compose
     assert "VERICOV_ARTIFACT_STORAGE_BACKEND: ${VERICOV_ARTIFACT_STORAGE_BACKEND:-filesystem}" in compose
     assert compose.count("vericov-artifacts:/var/lib/vericov/artifacts") == 2
     assert "vericov-artifacts:" in compose
     assert "VERICOV_ARTIFACT_STORAGE_BACKEND=filesystem" in env_example
 
 
-def test_public_quick_start_only_starts_the_three_core_services() -> None:
+def test_public_quick_start_only_starts_the_two_core_services() -> None:
     compose = read("infra/local/docker-compose.yml")
     self_hosting = read("docs/SELF_HOSTING.md")
 
-    assert "profiles:\n      - integrations" in compose
-    assert "profiles:\n      - agents" in compose
-    assert "three core Helidon services" in self_hosting
+    assert "control-plane:" not in compose
+    assert "git-integration:" not in compose
+    assert "integrations:" not in compose
+    assert "agent-runner:" not in compose
+    assert "two Helidon services" in self_hosting
+
+
+def test_legacy_multi_service_launchers_are_removed() -> None:
+    for path in (
+        "scripts/dev-up.sh",
+        "scripts/dev-down.sh",
+        "infra/local/.env.example",
+        "infra/local/scripts/generate-env.mjs",
+    ):
+        assert not (ROOT / path).exists()
 
 
 def test_public_repository_has_contributor_and_security_documents() -> None:
@@ -109,18 +160,35 @@ def test_public_repository_has_contributor_and_security_documents() -> None:
 def test_ci_runs_java_python_and_configuration_checks() -> None:
     workflow = read(".github/workflows/ci.yml")
 
-    assert "mvn --batch-mode test" in workflow
+    assert "mvn --batch-mode verify" in workflow
     assert "pytest -q" in workflow
+    assert "--cov-fail-under=80" in workflow
     assert "./vericov doctor" in workflow
     assert "docker compose" in workflow
     assert "./vericov init" in workflow
     assert "./scripts/smoke-test.sh" in workflow
 
 
+def test_java_modules_enforce_eighty_percent_line_coverage() -> None:
+    for path in ("services/upload/pom.xml", "services/coverage-analysis/pom.xml"):
+        pom = read(path)
+
+        assert "<artifactId>jacoco-maven-plugin</artifactId>" in pom
+        assert "<counter>LINE</counter>" in pom
+        assert "<minimum>0.80</minimum>" in pom
+
+
+def test_upload_cli_declares_coverage_test_tooling() -> None:
+    pyproject = read("clis/coverage-upload/pyproject.toml")
+
+    assert '"pytest-cov>=6"' in pyproject
+
+
 def test_smoke_test_exercises_upload_to_analysis_flow() -> None:
     smoke_test = read("scripts/smoke-test.sh")
 
     assert "/api/v1/uploads" in smoke_test
+    assert "/report" in smoke_test
     assert '"content_base64"' in smoke_test
     assert "was analyzed" in smoke_test
 

@@ -173,6 +173,31 @@ class UploadApplicationServiceTest {
     }
 
     @Test
+    void returnsCoverageReportForAuthorizedUpload() {
+        TestFixture fixture = new TestFixture();
+        var accepted = fixture.service.acceptUpload(command("report-key"));
+        fixture.uploadRepository.coverageReport = new CoverageReportDetails(
+                accepted.uploadId(),
+                REPOSITORY_ID,
+                "abc123",
+                "main",
+                42,
+                "complete",
+                new CoverageMetricDetails(8, 10),
+                new CoverageMetricDetails(1, 2),
+                new CoverageMetricDetails(3, 4),
+                new CoverageMetricDetails(8, 10),
+                "coverage-normalized",
+                "report.json.gz",
+                NOW);
+
+        var report = fixture.service.getCoverageReport(accepted.uploadId(), "Bearer vc_live_test");
+
+        assertEquals(8, report.line().covered());
+        assertEquals(10, report.line().total());
+    }
+
+    @Test
     void rejectsArtifactNamesThatCouldEscapeObjectPrefix() {
         TestFixture fixture = new TestFixture();
         CreateUploadCommand command = new CreateUploadCommand(
@@ -272,6 +297,7 @@ class UploadApplicationServiceTest {
         private static final UUID CONCURRENT_JOB_ID =
                 UUID.fromString("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
         private boolean simulateConcurrentWinner;
+        private CoverageReportDetails coverageReport;
 
         @Override
         public void save(QueuedUpload upload, List<StoredArtifact> artifacts) {
@@ -299,6 +325,12 @@ class UploadApplicationServiceTest {
                     upload.acceptedAt(),
                     Optional.of(CONCURRENT_JOB_ID)), artifacts);
             throw new DuplicateUploadException(new IllegalStateException("duplicate"));
+        }
+
+        @Override
+        public Optional<CoverageReportDetails> coverageReportFor(UUID uploadId) {
+            return Optional.ofNullable(coverageReport)
+                    .filter(report -> report.uploadId().equals(uploadId));
         }
     }
 

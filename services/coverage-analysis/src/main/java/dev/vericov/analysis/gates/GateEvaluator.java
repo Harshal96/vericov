@@ -46,119 +46,12 @@ public class GateEvaluator {
             case "project_coverage" -> evaluateProjectCoverageGate(report, gate, repositoryContext, evaluatedAt);
             case "patch_coverage" -> evaluatePatchCoverageGate(report, gate, repositoryContext, diffCoverage, evaluatedAt);
             case "component_coverage" -> evaluateComponentCoverageGate(report, gate, repositoryContext, evaluatedAt);
-            case "agent_review_required" -> evaluateAgentReviewGate(report, gate, repositoryContext, evaluatedAt);
             case "coverage_drop" -> evaluateCoverageDropGate(report, gate, repositoryContext, diffCoverage, evaluatedAt);
             default -> evaluation(report, gate, null, "warning", Map.of(
                     "scope", "project",
                     "reason", "unsupported_gate_type_" + gateType,
                     "coverage_report_id", report.reportId().toString()), evaluatedAt);
         };
-    }
-
-    private GateEvaluation evaluateAgentReviewGate(
-            CoverageReport report,
-            GateConfiguration gate,
-            RepositoryContext repositoryContext,
-            Instant evaluatedAt) {
-        Map<String, Object> config = gate.config() != null ? gate.config() : Map.of();
-        Map<String, Object> debtConfig = getDebtConfig(config);
-        String debtMode = (String) debtConfig.getOrDefault("mode", "none");
-        List<String> allowRiskLevels = getList(debtConfig, "allow_risk_levels", List.of("low", "medium"));
-        boolean failOnExpiredDebt = getBoolean(debtConfig, "fail_on_expired_debt", true);
-
-        // Scope
-        Map<String, Object> scopeConfig = (Map<String, Object>) config.getOrDefault("scope", Map.of());
-        String pathPattern = (String) scopeConfig.get("path_pattern");
-
-        List<Finding> activeFindings = repositoryContext.findings().stream()
-                .filter(f -> "active".equalsIgnoreCase(f.status()))
-                .filter(f -> pathPattern == null || DebtItem.matchPath(pathPattern, f.filePath()))
-                .toList();
-
-        List<Finding> highRiskFindings = activeFindings.stream()
-                .filter(f -> "high".equalsIgnoreCase(f.riskLevel()) || "critical".equalsIgnoreCase(f.riskLevel()))
-                .toList();
-
-        List<UUID> suppressedFindingIds = new ArrayList<>();
-        List<UUID> suppressedDebtIds = new ArrayList<>();
-        List<UUID> expiredDebtIds = new ArrayList<>();
-        List<UUID> reappearedFindingIds = new ArrayList<>();
-        List<UUID> topFindingIds = new ArrayList<>();
-
-        boolean hasUnsuppressedHighRisk = false;
-        boolean hasExpiredDebtFailure = false;
-
-        for (Finding finding : highRiskFindings) {
-            boolean suppressed = false;
-            boolean expiredMatch = false;
-
-            if ("suppress_findings".equalsIgnoreCase(debtMode)) {
-                for (DebtItem debtItem : repositoryContext.debtItems()) {
-                    if (debtItem.matches(finding)) {
-                        if (isActive(debtItem, evaluatedAt)) {
-                            if (allowRiskLevels.contains(finding.riskLevel().toLowerCase(Locale.ROOT))) {
-                                suppressed = true;
-                                suppressedFindingIds.add(finding.id());
-                                suppressedDebtIds.add(debtItem.id());
-                            }
-                        } else if (isExpired(debtItem, evaluatedAt)) {
-                            expiredMatch = true;
-                            expiredDebtIds.add(debtItem.id());
-                        }
-                    }
-                }
-            }
-
-            if (!suppressed) {
-                hasUnsuppressedHighRisk = true;
-                topFindingIds.add(finding.id());
-                if (expiredMatch) {
-                    reappearedFindingIds.add(finding.id());
-                    if (failOnExpiredDebt) {
-                        hasExpiredDebtFailure = true;
-                    }
-                }
-            }
-        }
-
-        // Raw metrics
-        int rawTotal = highRiskFindings.size();
-        int rawCovered = 0;
-        BigDecimal rawPercentage = rawTotal == 0 ? BigDecimal.valueOf(100).setScale(4, RoundingMode.HALF_UP) : BigDecimal.ZERO.setScale(4, RoundingMode.HALF_UP);
-        String rawStatus = rawTotal > 0 ? (gate.blocking() ? "failed" : "warning") : "passed";
-
-        // Effective status
-        String effectiveStatus = "passed";
-        String effectiveReason = null;
-        BigDecimal effectivePercentage = rawPercentage;
-
-        if (hasUnsuppressedHighRisk) {
-            effectiveStatus = gate.blocking() ? "failed" : "warning";
-            effectivePercentage = BigDecimal.ZERO.setScale(4, RoundingMode.HALF_UP);
-            if (hasExpiredDebtFailure) {
-                effectiveReason = "expired_debt_reappeared";
-            } else {
-                effectiveReason = "unsuppressed_high_risk_findings_remain";
-            }
-        } else {
-            effectiveStatus = "passed";
-            effectivePercentage = BigDecimal.valueOf(100).setScale(4, RoundingMode.HALF_UP);
-            if (rawTotal > 0) {
-                effectiveReason = "raw_metric_failed_but_only_debt_suppressed_findings_remain";
-            }
-        }
-
-        Map<String, Object> details = buildDetailsV2(
-                "finding",
-                report.reportId(),
-                repositoryContext.contextVersion(),
-                rawCovered, rawTotal, rawPercentage, null, rawStatus,
-                debtMode, suppressedFindingIds, suppressedDebtIds, expiredDebtIds, reappearedFindingIds,
-                effectivePercentage, effectiveStatus, effectiveReason,
-                topFindingIds
-        );
-
-        return evaluation(report, gate, effectivePercentage, effectiveStatus, details, evaluatedAt);
     }
 
     private GateEvaluation evaluateProjectCoverageGate(
@@ -644,7 +537,6 @@ public class GateEvaluator {
         return new GateEvaluation(
                 UUID.randomUUID(),
                 report.tenantId(),
-                gate.organizationId(),
                 report.repositoryId(),
                 report.reportId(),
                 report.commitSha(),

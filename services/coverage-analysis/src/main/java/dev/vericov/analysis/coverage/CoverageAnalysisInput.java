@@ -8,7 +8,6 @@ public record CoverageAnalysisInput(
         UUID uploadId,
         UUID tenantId,
         UUID repositoryId,
-        UUID organizationId,
         String provider,
         String commitSha,
         String branch,
@@ -28,7 +27,7 @@ public record CoverageAnalysisInput(
             String branch,
             Integer pullRequestNumber,
             List<CoverageInputArtifact> artifacts) {
-        this(uploadId, tenantId, repositoryId, null, "github", commitSha, branch, pullRequestNumber, artifacts);
+        this(uploadId, tenantId, repositoryId, "github", commitSha, branch, pullRequestNumber, artifacts);
     }
 
     public List<CoverageInputArtifact> coverageArtifacts() {

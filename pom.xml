@@ -10,11 +10,7 @@
     <packaging>pom</packaging>
 
     <modules>
-        <module>services/control-plane</module>
         <module>services/upload</module>
         <module>services/coverage-analysis</module>
-        <module>services/agent-runner</module>
-        <module>services/integrations</module>
-        <module>services/git-integration</module>
     </modules>
 </project>

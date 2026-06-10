@@ -96,7 +96,6 @@ class DefaultCoverageAnalysisProcessorTest {
         FakeGateConfigurationRepository gates = new FakeGateConfigurationRepository(List.of(new GateConfiguration(
                 UUID.fromString("6ca2b9dc-75f0-45e7-b28b-a76c4db133d9"),
                 TENANT_ID,
-                UUID.fromString("2ca9c094-7c28-4cb9-9b99-aae95cf07050"),
                 REPOSITORY_ID,
                 "line-minimum",
                 "project_coverage",
@@ -200,7 +199,6 @@ class DefaultCoverageAnalysisProcessorTest {
         FakeGateConfigurationRepository gates = new FakeGateConfigurationRepository(List.of(new GateConfiguration(
                 UUID.fromString("6ca2b9dc-75f0-45e7-b28b-a76c4db133d9"),
                 TENANT_ID,
-                UUID.fromString("2ca9c094-7c28-4cb9-9b99-aae95cf07050"),
                 REPOSITORY_ID,
                 "payments-line-minimum",
                 "component_coverage",
@@ -544,7 +542,6 @@ class DefaultCoverageAnalysisProcessorTest {
         FakeGateConfigurationRepository gates = new FakeGateConfigurationRepository(List.of(new GateConfiguration(
                 UUID.fromString("6ca2b9dc-75f0-45e7-b28b-a76c4db133d9"),
                 TENANT_ID,
-                UUID.fromString("2ca9c094-7c28-4cb9-9b99-aae95cf07050"),
                 REPOSITORY_ID,
                 "line-minimum",
                 "project_coverage",

@@ -60,7 +60,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 public class AnalysisSteps {
     private static final Instant NOW = Instant.parse("2026-05-23T12:00:00Z");
     private static final UUID TENANT_ID = UUID.fromString("0f4f478a-3fc0-45c4-b274-43a0e18850cf");
-    private static final UUID ORGANIZATION_ID = UUID.fromString("2ca9c094-7c28-4cb9-9b99-aae95cf07050");
     private static final UUID REPOSITORY_ID = UUID.fromString("4d607f16-1af7-4d3b-ac38-06454cba463c");
     private static final UUID UPLOAD_ID = UUID.fromString("03ce97f7-af1c-4d65-a9a6-9f95cb4ccfc6");
     private static final UUID JOB_ID = UUID.fromString("fb0e1e5d-55d7-4f74-9303-7a93400d53a1");
@@ -134,7 +133,6 @@ public class AnalysisSteps {
         gates.gates = List.of(new GateConfiguration(
                 UUID.fromString("6ca2b9dc-75f0-45e7-b28b-a76c4db133d9"),
                 TENANT_ID,
-                ORGANIZATION_ID,
                 REPOSITORY_ID,
                 "line-minimum",
                 "project_coverage",
