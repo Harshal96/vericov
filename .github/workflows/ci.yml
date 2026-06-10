@@ -71,7 +71,7 @@ jobs:
         run: |
           ./vericov init
           ./vericov doctor
-          docker compose --env-file .env -f infra/local/docker-compose.yml --profile bundled-db config --quiet
+          VERICOV_COMPOSE_ENV_FILE=../../.env docker compose --env-file .env -f infra/local/docker-compose.yml --profile bundled-db config --quiet
 
   self-host-integration:
     name: Self-host upload flow
@@ -92,7 +92,7 @@ jobs:
 
       - name: Show container logs after failure
         if: failure()
-        run: docker compose --env-file .env -f infra/local/docker-compose.yml --profile bundled-db logs --no-color
+        run: VERICOV_COMPOSE_ENV_FILE=../../.env docker compose --env-file .env -f infra/local/docker-compose.yml --profile bundled-db logs --no-color
 
       - name: Stop stack
         if: always()
