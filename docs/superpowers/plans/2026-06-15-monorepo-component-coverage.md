@@ -183,6 +183,6 @@
 - [x] Review the complete diff for scope, immutability, input validation, migration safety, SQL parameterization, and accidental secret exposure.
 - [x] Run focused tests after every review fix, then repeat all verification commands from Task 8.
 - [x] Confirm Java modules and CLI remain above the repository's 80% coverage gates.
-- [ ] Commit the implementation with conventional commit messages.
-- [ ] Push `feat/monorepo-component-coverage`.
-- [ ] Create a PR with design summary, migration notes, compatibility behavior, and exact test results.
+- [x] Commit the implementation with conventional commit messages.
+- [x] Push `feat/monorepo-component-coverage`.
+- [x] Create a PR with design summary, migration notes, compatibility behavior, and exact test results.
