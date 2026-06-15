@@ -9,7 +9,7 @@
 ## Verification
 
 - [ ] Tests added or updated
-- [ ] `mvn test`
+- [ ] `mvn verify`
 - [ ] Python tests
 - [ ] Documentation updated
 - [ ] No secrets or generated local state committed

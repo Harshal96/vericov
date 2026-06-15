@@ -63,12 +63,6 @@ compose() {
   fi
 }
 
-ensure_supabase_env() {
-  if [ ! -f "$ROOT_DIR/infra/supabase/.env" ]; then
-    node "$ROOT_DIR/infra/supabase/scripts/generate-env.mjs"
-  fi
-}
-
 doctor() {
   load_env
   failed=0
@@ -93,36 +87,31 @@ doctor() {
   esac
 
   case "${BYO_SUPABASE:-skip}" in
-    0|skip)
+    skip)
       ;;
     1)
       require_env SUPABASE_URL || failed=1
       require_env SUPABASE_SERVICE_ROLE_KEY || failed=1
       ;;
     *)
-      echo "BYO_SUPABASE must be 0, 1, or skip" >&2
+      echo "BYO_SUPABASE must be 1 or skip" >&2
       failed=1
       ;;
   esac
 
   if [ "${VERICOV_ARTIFACT_STORAGE_BACKEND:-memory}" = "supabase" ]; then
-    if [ "${BYO_SUPABASE:-skip}" = "skip" ] && [ "${SUPABASE_URL:-}" = "" ]; then
-      echo "VERICOV_ARTIFACT_STORAGE_BACKEND=supabase requires BYO_SUPABASE=0/1 or SUPABASE_URL" >&2
+    if [ "${BYO_SUPABASE:-skip}" != "1" ]; then
+      echo "VERICOV_ARTIFACT_STORAGE_BACKEND=supabase requires BYO_SUPABASE=1" >&2
       failed=1
     fi
   fi
 
   if [ "${VERICOV_DEV_AUTH_BYPASS:-false}" = "true" ]; then
+    require_env VERICOV_DEV_API_KEY || failed=1
     echo "auth: dev bypass enabled for self-host/no-auth setup"
   else
-    if [ "${VERICOV_SERVICE_JWT_PUBLIC_KEY:-}" = "" ] && [ "${VERICOV_SERVICE_JWT_SECRET:-}" = "" ]; then
-      echo "Managed auth requires VERICOV_SERVICE_JWT_PUBLIC_KEY or VERICOV_SERVICE_JWT_SECRET" >&2
-      failed=1
-    fi
-  fi
-
-  if [ "${VERICOV_SERVICE_JWT_PUBLIC_KEY:-}" != "" ] && [ "${VERICOV_SERVICE_JWT_SECRET:-}" != "" ]; then
-    echo "warning: both service JWT public key and secret are set; services prefer the public key" >&2
+    require_env VERICOV_REPO_API_KEY_PEPPER || failed=1
+    echo "auth: database-backed repository credentials enabled"
   fi
 
   if [ "$failed" -ne 0 ]; then
@@ -135,11 +124,6 @@ up() {
   doctor
   load_env
 
-  if [ "${BYO_SUPABASE:-skip}" = "0" ]; then
-    ensure_supabase_env
-    (cd "$ROOT_DIR/infra/supabase" && docker compose up -d)
-  fi
-
   if [ "${BYO_POSTGRES:-0}" = "0" ]; then
     compose --profile bundled-db up -d --build
   else
@@ -149,17 +133,12 @@ up() {
   echo "Vericov is starting on direct service ports:"
   echo "  upload:            http://localhost:${VERICOV_UPLOAD_HTTP_PORT:-8080}"
   echo "  coverage-analysis: http://localhost:${VERICOV_ANALYSIS_HTTP_PORT:-8081}"
-  echo "  control-plane:     http://localhost:${VERICOV_CONTROL_PLANE_HTTP_PORT:-8082}"
-  echo "Optional profiles: integrations, agents"
 }
 
 down() {
   if [ -f "$ENV_FILE" ]; then
     load_env
     compose down
-    if [ "${BYO_SUPABASE:-skip}" = "0" ]; then
-      (cd "$ROOT_DIR/infra/supabase" && docker compose down)
-    fi
   else
     VERICOV_COMPOSE_ENV_FILE="../../.env.example" \
       docker compose --env-file "$ROOT_DIR/.env.example" -f "$COMPOSE_FILE" down
@@ -170,9 +149,6 @@ down() {
 status() {
   load_env
   compose ps
-  if [ "${BYO_SUPABASE:-skip}" = "0" ]; then
-    (cd "$ROOT_DIR/infra/supabase" && docker compose ps)
-  fi
 }
 
 logs() {

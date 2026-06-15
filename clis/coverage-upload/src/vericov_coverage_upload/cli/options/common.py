@@ -5,7 +5,7 @@ from typing import Optional
 import typer
 
 
-def config_option(value: Optional[str] = typer.Option(None, "--config", help="Path to vericov.yml.")) -> Optional[str]:
+def config_option(value: Optional[str] = typer.Option(None, "--config", help="Path to .vericov.yml.")) -> Optional[str]:
     return value
 
 

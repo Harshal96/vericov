@@ -9,6 +9,8 @@ import dev.vericov.upload.application.port.UploadWorkQueue;
 import dev.vericov.upload.domain.CreateUploadCommand;
 import dev.vericov.upload.domain.RepositoryApiKeyPrincipal;
 import dev.vericov.upload.domain.UploadStatus;
+import dev.vericov.ignore.CoverageIgnoreRules;
+import dev.vericov.ignore.InvalidCoverageIgnoreRuleException;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -84,6 +86,18 @@ public class UploadApplicationService {
         return uploadDetails(upload);
     }
 
+    public CoverageReportDetails getCoverageReport(UUID uploadId, String authorizationHeader) {
+        QueuedUpload upload = uploadRepository.findById(uploadId)
+                .orElseThrow(() -> new InvalidUploadException("not_found", "Upload not found"));
+        RepositoryApiKeyPrincipal principal = authenticator.authenticateRepositoryAccess(
+                authorizationHeader,
+                upload.repositoryId(),
+                upload.branch());
+        authorizeRepositoryAccess(principal, upload.repositoryId(), upload.branch(), READ_UPLOAD_SCOPE);
+        return uploadRepository.coverageReportFor(uploadId)
+                .orElseThrow(() -> new InvalidUploadException("not_found", "Coverage report not found"));
+    }
+
     public RunnerUploadToken createRunnerUploadToken(String authorizationHeader, UUID repositoryId, String branch) {
         if (runnerTokenIssuer == null) {
             throw new InvalidUploadException("unauthorized", "Runner upload tokens are not configured");
@@ -140,6 +154,7 @@ public class UploadApplicationService {
                 command.ciBuildId(),
                 command.ciBuildUrl(),
                 command.flags(),
+                command.ignore(),
                 command.component(),
                 command.packageName(),
                 UploadStatus.QUEUED,
@@ -185,6 +200,11 @@ public class UploadApplicationService {
         if (command.artifacts().isEmpty()) {
             throw new InvalidUploadException("validation_error", "at least one artifact is required");
         }
+        try {
+            CoverageIgnoreRules.validate(command.ignore());
+        } catch (InvalidCoverageIgnoreRuleException exception) {
+            throw new InvalidUploadException("validation_error", exception.getMessage());
+        }
         command.artifacts().forEach(this::validateArtifact);
     }
 
@@ -203,6 +223,7 @@ public class UploadApplicationService {
                 command.ciBuildId(),
                 command.ciBuildUrl(),
                 command.flags(),
+                command.ignore(),
                 command.component(),
                 command.packageName(),
                 command.artifacts());

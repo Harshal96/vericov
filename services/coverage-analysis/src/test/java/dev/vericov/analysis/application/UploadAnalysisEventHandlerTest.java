@@ -7,6 +7,7 @@ import dev.vericov.analysis.domain.AnalysisFailureDecision;
 import dev.vericov.analysis.domain.AnalysisJobStartResult;
 import dev.vericov.analysis.domain.QueuedAnalysisMessage;
 import dev.vericov.analysis.domain.UploadReceivedEvent;
+import dev.vericov.analysis.domain.NonRetryableAnalysisException;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -99,6 +100,20 @@ class UploadAnalysisEventHandlerTest {
     }
 
     @Test
+    void immediatelyFailsAndDeadLettersNonRetryableInput() {
+        TestFixture fixture = new TestFixture();
+        fixture.processor.failure = new NonRetryableAnalysisException("invalid persisted ignore rules");
+
+        fixture.handler.handle(message());
+
+        assertEquals(List.of(JOB_ID), fixture.repository.terminallyFailedJobs);
+        assertTrue(fixture.repository.failedJobs.isEmpty());
+        assertEquals(List.of(101L), fixture.queue.deadLetters);
+        assertEquals(List.of(101L), fixture.queue.archivedMessageIds);
+        assertTrue(fixture.queue.rescheduledMessageIds.isEmpty());
+    }
+
+    @Test
     void deadLettersUnsupportedEvents() {
         TestFixture fixture = new TestFixture();
         UploadReceivedEvent unsupported = new UploadReceivedEvent(
@@ -175,6 +190,7 @@ class UploadAnalysisEventHandlerTest {
         private final List<UUID> startedJobs = new ArrayList<>();
         private final List<UUID> completedJobs = new ArrayList<>();
         private final List<UUID> failedJobs = new ArrayList<>();
+        private final List<UUID> terminallyFailedJobs = new ArrayList<>();
         private AnalysisJobStartResult startResult = AnalysisJobStartResult.started();
         private AnalysisFailureDecision failureDecision = AnalysisFailureDecision.retryLater();
 
@@ -193,6 +209,11 @@ class UploadAnalysisEventHandlerTest {
         public AnalysisFailureDecision recordFailure(UUID jobId, String workerId, Instant failedAt, String errorMessage) {
             failedJobs.add(jobId);
             return failureDecision;
+        }
+
+        @Override
+        public void recordTerminalFailure(UUID jobId, String workerId, Instant failedAt, String errorMessage) {
+            terminallyFailedJobs.add(jobId);
         }
     }
 

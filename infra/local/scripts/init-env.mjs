@@ -24,7 +24,6 @@ const replacements = new Map([
   ["VERICOV_REPO_API_KEY_PEPPER", randomHex(32)],
   ["VERICOV_DEV_API_KEY", `vc_repo_${randomHex(20)}`],
   ["VERICOV_RUNNER_JWT_SECRET", randomBase64Url(48)],
-  ["VERICOV_GITHUB_WEBHOOK_SECRET", randomBase64Url(36)],
 ]);
 
 const generated = readFileSync(templatePath, "utf8")

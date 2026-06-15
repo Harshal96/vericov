@@ -56,8 +56,7 @@ class AnalysisComponentsTest {
     }
 
     @Test
-    void defaultRepositoryContextIsEmptyWhenInternalTokenIsAbsent() {
-        assumeNoInternalToken();
+    void defaultRepositoryContextIsLocalAndEmpty() {
         AnalysisComponents components = new AnalysisComponents();
 
         var context = components.repositoryContextRepository()
@@ -114,10 +113,6 @@ class AnalysisComponentsTest {
 
     private static void assumeNoAnalysisDatabase() {
         Assumptions.assumeTrue(env("VERICOV_ANALYSIS_DB_URL").isBlank());
-    }
-
-    private static void assumeNoInternalToken() {
-        Assumptions.assumeTrue(env("VERICOV_INTERNAL_SERVICE_TOKEN").isBlank());
     }
 
     private static String env(String name) {

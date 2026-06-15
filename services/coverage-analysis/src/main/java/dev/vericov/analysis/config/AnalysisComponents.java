@@ -1,7 +1,5 @@
 package dev.vericov.analysis.config;
 
-import dev.vericov.analysis.adapter.git.InternalGitDiffHttpClient;
-import dev.vericov.analysis.adapter.controlplane.InternalControlPlaneRepositoryContextClient;
 import dev.vericov.analysis.adapter.jdbc.AnalysisMessageJsonCodec;
 import dev.vericov.analysis.adapter.jdbc.DriverManagerDataSource;
 import dev.vericov.analysis.adapter.jdbc.JdbcAnalysisJobQueue;
@@ -9,7 +7,6 @@ import dev.vericov.analysis.adapter.jdbc.JdbcAnalysisJobRepository;
 import dev.vericov.analysis.adapter.jdbc.JdbcCoverageAnalysisInputRepository;
 import dev.vericov.analysis.adapter.jdbc.JdbcCoverageReportRepository;
 import dev.vericov.analysis.adapter.jdbc.JdbcGateConfigurationRepository;
-import dev.vericov.analysis.adapter.jdbc.JdbcPrDiffCoverageRepository;
 import dev.vericov.analysis.adapter.jdbc.JdbcTestRunRepository;
 import dev.vericov.analysis.adapter.storage.HttpSupabaseArtifactContentStore;
 import dev.vericov.analysis.adapter.storage.FileSystemArtifactContentStore;
@@ -18,7 +15,6 @@ import dev.vericov.analysis.adapter.storage.SupabaseNormalizedCoverageStore;
 import dev.vericov.analysis.application.AnalysisMessageHandler;
 import dev.vericov.analysis.application.AnalysisWorker;
 import dev.vericov.analysis.application.DefaultCoverageAnalysisProcessor;
-import dev.vericov.analysis.application.DefaultPrDiffCoverageProcessor;
 import dev.vericov.analysis.application.PrDiffCoverageProcessor;
 import dev.vericov.analysis.application.UploadAnalysisEventHandler;
 import dev.vericov.analysis.application.port.AnalysisJobQueue;
@@ -87,14 +83,8 @@ public class AnalysisComponents {
     @Produces
     @ApplicationScoped
     public RepositoryContextRepository repositoryContextRepository() {
-        String token = System.getenv("VERICOV_INTERNAL_SERVICE_TOKEN");
-        if (token != null && !token.isBlank()) {
-            return new InternalControlPlaneRepositoryContextClient(
-                    URI.create(env("VERICOV_CONTROL_PLANE_BASE_URL", "http://127.0.0.1:8081")),
-                    token);
-        }
         return (tenantId, repositoryId, commitSha, branch, pr) -> new dev.vericov.analysis.gates.RepositoryContext(
-                "ctx-" + Instant.now().toString(),
+                "local",
                 List.of(),
                 List.of(),
                 Map.of());
@@ -127,7 +117,7 @@ public class AnalysisComponents {
                 new TestResultParserRegistry(List.of(
                         new JUnitTestResultParser(new SecureXmlTestResultDocumentReader()))),
                 new JdbcTestRunRepository(dataSource),
-                prDiffCoverageProcessor(dataSource, reportRepository),
+                PrDiffCoverageProcessor.noop(),
                 Clock.systemUTC());
     }
 
@@ -234,21 +224,6 @@ public class AnalysisComponents {
         return URI.create(trimTrailingSlash(supabaseUrl) + "/storage/v1");
     }
 
-    private static PrDiffCoverageProcessor prDiffCoverageProcessor(
-            DataSource dataSource,
-            JdbcCoverageReportRepository reportRepository) {
-        String token = env("VERICOV_INTERNAL_SERVICE_TOKEN", "");
-        if (token.isBlank()) {
-            return PrDiffCoverageProcessor.noop();
-        }
-        return new DefaultPrDiffCoverageProcessor(
-                new InternalGitDiffHttpClient(
-                        URI.create(env("VERICOV_GIT_BASE_URL", "http://127.0.0.1:8083")),
-                        token),
-                reportRepository,
-                new JdbcPrDiffCoverageRepository(dataSource));
-    }
-
     private static String trimTrailingSlash(String value) {
         return value.endsWith("/") ? value.substring(0, value.length() - 1) : value;
     }
@@ -319,6 +294,11 @@ public class AnalysisComponents {
         public AnalysisFailureDecision recordFailure(UUID jobId, String workerId, Instant failedAt, String errorMessage) {
             int attempts = attemptsByJobId.getOrDefault(jobId, 1);
             return attempts >= 5 ? AnalysisFailureDecision.deadLetter() : AnalysisFailureDecision.retryLater();
+        }
+
+        @Override
+        public void recordTerminalFailure(UUID jobId, String workerId, Instant failedAt, String errorMessage) {
+            attemptsByJobId.put(jobId, 5);
         }
     }
 }

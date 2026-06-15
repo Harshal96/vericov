@@ -69,6 +69,10 @@ git pull --ff-only
 ./scripts/smoke-test.sh
 ```
 
+Vericov `0.1` requires a fresh database when moving from earlier development
+snapshots. The tracked SQL is idempotent for the public `0.1` schema, but it is
+not a migration from older schemas.
+
 Read release notes for schema or environment changes before starting the new
 containers.
 

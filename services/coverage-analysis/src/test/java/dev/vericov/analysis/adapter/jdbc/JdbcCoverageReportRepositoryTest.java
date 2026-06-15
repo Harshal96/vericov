@@ -83,10 +83,10 @@ class JdbcCoverageReportRepositoryTest {
         assertEquals("app", fileSummary.parameters.get(7));
 
         RecordedStatement rollup = dataSource.statementContaining("insert into vericov.component_coverage_rollups");
-        assertTrue(rollup.sql.contains("select org_id from vericov.repositories"));
+        assertTrue(rollup.sql.contains("repository_id"));
         assertEquals(REPOSITORY_ID, rollup.parameters.get(2));
-        assertEquals(componentId, rollup.parameters.get(5));
-        assertEquals("@acme/app", rollup.parameters.get(6));
+        assertEquals(componentId, rollup.parameters.get(4));
+        assertEquals("@acme/app", rollup.parameters.get(5));
     }
 
     @Test
@@ -136,15 +136,15 @@ class JdbcCoverageReportRepositoryTest {
         assertTrue(gap.sql.contains("risk_score"));
         assertTrue(gap.sql.contains("evidence_json"));
         assertEquals(finding.id(), gap.parameters.get(1));
-        assertEquals(componentId, gap.parameters.get(7));
-        assertEquals("new_uncovered_changed_line", gap.parameters.get(15));
-        assertEquals(new BigDecimal("72.5"), gap.parameters.get(18));
-        assertEquals("high", gap.parameters.get(19));
+        assertEquals(componentId, gap.parameters.get(6));
+        assertEquals("new_uncovered_changed_line", gap.parameters.get(14));
+        assertEquals(new BigDecimal("72.5"), gap.parameters.get(17));
+        assertEquals("high", gap.parameters.get(18));
 
         RecordedStatement rollup = dataSource.statementContaining("insert into vericov.component_coverage_rollups");
-        assertEquals(1, rollup.parameters.get(15));
-        assertEquals(0, rollup.parameters.get(16));
-        assertEquals(new BigDecimal("72.5"), rollup.parameters.get(17));
+        assertEquals(1, rollup.parameters.get(14));
+        assertEquals(0, rollup.parameters.get(15));
+        assertEquals(new BigDecimal("72.5"), rollup.parameters.get(16));
     }
 
     private static CoverageReport report() {

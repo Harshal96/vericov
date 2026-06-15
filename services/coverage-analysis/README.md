@@ -1,185 +1,53 @@
 # Coverage Analysis Service
 
-The Coverage Analysis service is Vericov's internal worker for turning raw
-coverage and test-result uploads into normalized reports, gate evaluations,
-diff coverage, and read models consumed by the control-plane service.
+The coverage-analysis service is Vericov's internal worker. It consumes durable
+upload jobs, parses coverage and test-result artifacts, writes normalized
+reports, evaluates gates, and updates upload status.
 
-The fuller contract lives in
-`docs/backend/services/04-coverage-analysis-service.md`.
-
-## Why This Service Exists
-
-Upload ingestion must return quickly and be safe to retry. Coverage parsing,
-report merging, test-result parsing, gate evaluation, and pull-request diff
-coverage are slower and can fail independently. This service isolates that work
-behind a durable queue and keeps coverage semantics out of the public API
-control plane.
-
-## Current Architecture
+## Processing Flow
 
 ```text
-                 PGMQ message: upload.received
-                            |
-                            v
-+-------------------+  pollOnce  +------------------------+
-| AnalysisJobQueue  | ---------> | UploadAnalysisEvent    |
-| PGMQ/JDBC or fake |            | Handler                |
-+-------------------+            +-----------+------------+
-                                             |
-                                             v
-                                  +----------+------------+
-                                  | DefaultCoverage       |
-                                  | AnalysisProcessor     |
-                                  +----------+------------+
-                                             |
-         +-----------------------------------+-----------------------------------+
-         |                  |                |                 |                 |
-         v                  v                v                 v                 v
-+--------+-------+ +--------+-------+ +------+--------+ +------+--------+ +------+------+
-| ArtifactContent| | CoverageParser | | TestResult    | | GateEvaluator | | Diff PR     |
-| Store          | | Registry       | | ParserRegistry| |               | | Processor   |
-+--------+-------+ +--------+-------+ +------+--------+ +------+--------+ +------+------+
-         |                  |                |                 |                 |
-         v                  v                v                 v                 v
- Supabase Storage     LCOV/XML/gcov     JUnit XML       gate rows         Git diff client
+upload service
+  -> PostgreSQL upload, artifact, analysis job, and PGMQ message
+  -> coverage-analysis leases the queued job
+  -> artifact bytes load from shared filesystem or Supabase Storage
+  -> coverage and JUnit parsers normalize the inputs
+  -> reports, file summaries, line hits, test runs, gaps, and gates persist
+  -> upload service exposes the completed report
 ```
 
-## Where It Is Called From
+Supported coverage inputs include LCOV, Cobertura and coverage.py XML, JaCoCo
+XML, Clover XML, Go cover profiles, and gcov-compatible text. JUnit XML is
+supported for test results.
 
-```text
-CI client
-  -> upload service stores raw artifacts
-  -> upload service enqueues upload.received
-  -> coverage-analysis polls coverage_analysis_jobs
-  -> coverage-analysis stores coverage_reports, line hits, test_runs, gates
-  -> control-plane service serves report reads and dashboards
+## Persistence
 
-Pull request upload
-  -> coverage-analysis requests true provider diff from git-integration
-  -> compares base/head line-hit maps
-  -> stores pr_diff_coverage for UI and policy decisions
-```
+The worker uses PostgreSQL and PGMQ for leasing, retries, dead letters, and
+state transitions. Summary data stays in PostgreSQL. Detailed normalized maps
+are gzip-compressed in the configured artifact store.
 
-The service has no public product API. It is an internal worker plus internal
-control API surface.
-
-## Data Model
-
-Key domain objects:
-
-| Concept | What It Represents |
-| --- | --- |
-| `CoverageAnalysisInput` | Upload metadata and artifact locations to process |
-| `CoverageReport` | Merged commit or PR-head coverage summary |
-| `CoverageLineHit` | Per-file executable line hit data |
-| `TestRun` | Aggregated JUnit/test-result summary |
-| `GateConfiguration` | Repository-level threshold rule |
-| `GateEvaluation` | Result of applying a gate to a report |
-| `DiffCoverageReport` | PR patch coverage, missed lines, and lost coverage |
-| `QueuedAnalysisMessage` | Durable queue message wrapping an event |
-
-Persistence shape:
-
-```text
-analysis_jobs
-  id, upload_id, repository_id, commit_sha, status, attempts, available_at
-
-coverage_reports
-  id, upload_id, tenant_id, repository_id, commit_sha, branch, pr_number
-  line_covered, line_total, branch_covered, branch_total
-  function_covered, function_total, statement_covered, statement_total
-  normalized_storage_bucket, normalized_storage_path
-
-coverage_file_summaries
-  report_id, file_path, line/branch/function/statement rollups
-
-coverage_line_hits
-  report_id, file_path, line_number, hits
-
-test_runs
-  upload_id, artifact_id, suite_name, total, passed, failed, skipped
-
-gate_evaluations
-  report_id, gate_id, status, metric, actual, expected
-
-pr_diff_coverage
-  repository_id, pull_request_number, base_sha, head_sha, status, rollups
-```
-
-Normalized coverage maps are stored separately in Supabase Storage so the
-database can keep fast summaries while detailed line maps stay compressed.
-
-## APIs And Events
-
-Implemented worker path:
-
-```text
-coverage_analysis_jobs
-  -> upload.received
-  -> processor success: archive message, complete analysis_jobs row
-  -> retryable failure: record failure, reschedule message
-  -> unsupported event: move to coverage_analysis_dead_letters
-```
-
-Documented internal endpoints:
-
-| Method | Path | Purpose |
-| --- | --- | --- |
-| `POST` | `/internal/v1/coverage-analysis/jobs/{job_id}/lease` | Lease an analysis job |
-| `POST` | `/internal/v1/coverage-analysis/jobs/{job_id}/complete` | Mark analysis complete |
-| `POST` | `/internal/v1/coverage-analysis/jobs/{job_id}/fail` | Mark analysis failed |
-| `POST` | `/internal/v1/coverage-analysis/repositories/{repository_id}/commits/{sha}/analyze` | Trigger commit analysis |
-| `POST` | `/internal/v1/coverage-analysis/repositories/{repository_id}/pull-requests/{number}/analyze` | Trigger PR diff analysis |
-| `POST` | `/internal/v1/coverage-analysis/gates/evaluate` | Evaluate gates |
+The public two-service runtime does not depend on a control-plane or provider
+integration service. Repository context is optional, and pull-request diff
+processing is disabled unless a future local provider adapter is configured.
 
 ## Source Map
 
 ```text
-application/
-  Worker loop, event handler, coverage processor, PR diff processor
-
-coverage/
-  LCOV, JaCoCo, Cobertura, Clover, Go cover, gcov parsers and merger
-
-testresults/
-  JUnit parser and secure XML reader
-
-gates/
-  Gate model and evaluator
-
-gaps/
-  Coverage gap extraction and risk scoring
-
-diff/
-  Provider diff model and diff coverage calculator
-
-adapter/jdbc/
-  PGMQ, report, line-hit, gate, input, and test-run persistence
-
-adapter/storage/
-  Supabase artifact and normalized coverage storage
+application/     Worker loop and report processors
+coverage/        Coverage parsers, merger, and normalized map serializer
+testresults/     JUnit parser
+gates/           Gate evaluation
+gaps/            Gap extraction and risk scoring
+diff/            Local diff coverage calculation
+adapter/jdbc/    Queue, job, report, input, and test-run persistence
+adapter/storage/ Filesystem and Supabase artifact access
+config/          CDI wiring
 ```
 
 ## Tests
 
-```text
-src/test/resources/features/analysis/coverage-analysis.feature
-  Queue-driven BDD scenarios for success, JUnit-only uploads, retries,
-  mixed coverage formats, busy/completed jobs, exhausted retry dead letters,
-  and unsupported events
-
-src/test/java/dev/vericov/analysis/coverage
-  Parser and merger unit tests
-
-src/test/java/dev/vericov/analysis/application
-  Worker, event handler, report processor, and PR diff processor tests
-
-src/test/java/dev/vericov/analysis/adapter
-  HTTP/storage/JDBC adapter tests where local fakes are possible
-```
-
-Run this service only:
+Run the module, including its 80% line-coverage gate:
 
 ```bash
-mvn -pl services/coverage-analysis test
+mvn -pl services/coverage-analysis verify
 ```

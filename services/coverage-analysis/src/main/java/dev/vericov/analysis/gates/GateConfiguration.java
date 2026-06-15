@@ -10,7 +10,6 @@ import java.util.UUID;
 public record GateConfiguration(
         UUID id,
         UUID tenantId,
-        UUID organizationId,
         UUID repositoryId,
         String name,
         String gateType,
@@ -24,7 +23,6 @@ public record GateConfiguration(
     public GateConfiguration {
         Objects.requireNonNull(id, "id");
         Objects.requireNonNull(tenantId, "tenantId");
-        Objects.requireNonNull(organizationId, "organizationId");
         Objects.requireNonNull(repositoryId, "repositoryId");
         Objects.requireNonNull(name, "name");
         Objects.requireNonNull(gateType, "gateType");

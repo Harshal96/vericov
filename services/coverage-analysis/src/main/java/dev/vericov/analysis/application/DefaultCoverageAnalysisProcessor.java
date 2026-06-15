@@ -11,6 +11,7 @@ import dev.vericov.analysis.application.port.RepositoryContextRepository;
 import dev.vericov.analysis.application.port.TestRunRepository;
 import dev.vericov.analysis.coverage.CoverageAnalysisInput;
 import dev.vericov.analysis.coverage.CoverageComponentRollup;
+import dev.vericov.analysis.coverage.CoverageFileFilter;
 import dev.vericov.analysis.coverage.CoverageFileSummary;
 import dev.vericov.analysis.coverage.CoverageInputArtifact;
 import dev.vericov.analysis.coverage.CoverageMetric;
@@ -20,6 +21,8 @@ import dev.vericov.analysis.coverage.CoverageReportMerger;
 import dev.vericov.analysis.coverage.ParsedCoverage;
 import dev.vericov.analysis.diff.DiffCoverageReport;
 import dev.vericov.analysis.domain.UploadReceivedEvent;
+import dev.vericov.analysis.domain.NonRetryableAnalysisException;
+import dev.vericov.ignore.InvalidCoverageIgnoreRuleException;
 import dev.vericov.analysis.gaps.CoverageGapExtractor;
 import dev.vericov.analysis.gaps.CoverageGapFinding;
 import dev.vericov.analysis.gates.GateEvaluation;
@@ -227,6 +230,14 @@ public class DefaultCoverageAnalysisProcessor implements CoverageAnalysisProcess
     public void process(UploadReceivedEvent event) {
         Instant processedAt = clock.instant();
         CoverageAnalysisInput input = inputs.load(event.uploadId());
+        CoverageFileFilter coverageFileFilter;
+        try {
+            coverageFileFilter = new CoverageFileFilter(input.ignore());
+        } catch (InvalidCoverageIgnoreRuleException exception) {
+            throw new NonRetryableAnalysisException(
+                    "Invalid persisted upload ignore rules: " + exception.getMessage(),
+                    exception);
+        }
         List<CoverageInputArtifact> coverageArtifacts = input.coverageArtifacts();
         List<CoverageInputArtifact> testResultArtifacts = input.testResultArtifacts();
         if (coverageArtifacts.isEmpty() && testResultArtifacts.isEmpty()) {
@@ -236,7 +247,7 @@ public class DefaultCoverageAnalysisProcessor implements CoverageAnalysisProcess
         List<ParsedCoverage> parsedCoverages = new ArrayList<>();
         for (CoverageInputArtifact artifact : coverageArtifacts) {
             byte[] content = contentStore.read(artifact.storageBucket(), artifact.storagePath());
-            parsedCoverages.add(parserRegistry.parse(artifact, content));
+            parsedCoverages.add(coverageFileFilter.filter(parserRegistry.parse(artifact, content)));
         }
         List<TestRun> testRuns = parseTestRuns(input, testResultArtifacts, processedAt);
 

@@ -23,7 +23,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class GateEvaluatorTest {
     private static final UUID TENANT_ID = UUID.fromString("0f4f478a-3fc0-45c4-b274-43a0e18850cf");
-    private static final UUID ORG_ID = UUID.fromString("2ca9c094-7c28-4cb9-9b99-aae95cf07050");
     private static final UUID REPOSITORY_ID = UUID.fromString("4d607f16-1af7-4d3b-ac38-06454cba463c");
     private static final UUID REPORT_ID = UUID.fromString("46d061c7-b160-4550-b7a4-5e0b81821621");
     private static final Instant NOW = Instant.parse("2026-05-23T12:00:00Z");
@@ -89,7 +88,6 @@ class GateEvaluatorTest {
         GateConfiguration gate = new GateConfiguration(
                 UUID.fromString("6ca2b9dc-75f0-45e7-b28b-a76c4db133d9"),
                 TENANT_ID,
-                ORG_ID,
                 REPOSITORY_ID,
                 "line-minimum",
                 "project_coverage",
@@ -105,7 +103,6 @@ class GateEvaluatorTest {
         GateEvaluation evaluation = new GateEvaluation(
                 UUID.fromString("76bbb788-221e-42e6-8e36-b54be561a018"),
                 TENANT_ID,
-                ORG_ID,
                 REPOSITORY_ID,
                 REPORT_ID,
                 "abc123",
@@ -137,7 +134,6 @@ class GateEvaluatorTest {
         return new GateConfiguration(
                 UUID.nameUUIDFromBytes(name.getBytes()),
                 TENANT_ID,
-                ORG_ID,
                 REPOSITORY_ID,
                 name,
                 gateType,
@@ -161,7 +157,6 @@ class GateEvaluatorTest {
         return new GateConfiguration(
                 UUID.nameUUIDFromBytes(name.getBytes()),
                 TENANT_ID,
-                ORG_ID,
                 REPOSITORY_ID,
                 name,
                 gateType,
@@ -171,65 +166,6 @@ class GateEvaluatorTest {
                 blocking,
                 config,
                 status);
-    }
-
-    @Test
-    void evaluatesAgentReviewGateWithDebt() {
-        GateEvaluator evaluator = new GateEvaluator();
-
-        // 1. No debt: High-risk active finding -> failed
-        Finding finding = new Finding(UUID.randomUUID(), "src/App.java", 10, "high", "active");
-        RepositoryContext contextNoDebt = new RepositoryContext("ctx-1", List.of(finding), List.of(), Map.of());
-
-        GateConfiguration gate = gateWithConfig(
-                "agent-review", "agent_review_required", "risk", "100.0", null, true,
-                Map.of("debt", Map.of("mode", "suppress_findings", "allow_risk_levels", List.of("low", "medium"))),
-                "active");
-
-        List<GateEvaluation> evaluations = evaluator.evaluate(report(), List.of(gate), contextNoDebt, null, NOW);
-        assertEquals(1, evaluations.size());
-        assertEquals("failed", evaluations.get(0).status());
-        assertEquals(BigDecimal.ZERO.setScale(4, RoundingMode.HALF_UP), evaluations.get(0).actual());
-        Map<?, ?> effective = (Map<?, ?>) evaluations.get(0).details().get("effective");
-        assertEquals("unsuppressed_high_risk_findings_remain", effective.get("reason"));
-
-        // 2. Active debt matching, but risk level high NOT allowed -> failed
-        UUID debtId = UUID.randomUUID();
-        DebtItem debt = new DebtItem(debtId, "src/App.java", 5, 15, "active", NOW.plusSeconds(3600));
-        RepositoryContext contextWithDebtLowMedium = new RepositoryContext("ctx-2", List.of(finding), List.of(debt), Map.of());
-
-        evaluations = evaluator.evaluate(report(), List.of(gate), contextWithDebtLowMedium, null, NOW);
-        assertEquals("failed", evaluations.get(0).status());
-
-        // 3. Active debt matching, risk level high allowed -> passed
-        GateConfiguration gateHighAllowed = gateWithConfig(
-                "agent-review", "agent_review_required", "risk", "100.0", null, true,
-                Map.of("debt", Map.of("mode", "suppress_findings", "allow_risk_levels", List.of("low", "medium", "high"))),
-                "active");
-        evaluations = evaluator.evaluate(report(), List.of(gateHighAllowed), contextWithDebtLowMedium, null, NOW);
-        assertEquals("passed", evaluations.get(0).status());
-        assertEquals(BigDecimal.valueOf(100).setScale(4, RoundingMode.HALF_UP), evaluations.get(0).actual());
-        Map<?, ?> debtDetails = (Map<?, ?>) evaluations.get(0).details().get("debt");
-        assertEquals(List.of(finding.id().toString()), debtDetails.get("suppressed_finding_ids"));
-        assertEquals(List.of(debtId.toString()), debtDetails.get("suppressed_debt_item_ids"));
-
-        // 4. Expired debt matching, fail_on_expired_debt = true -> failed with reason expired_debt_reappeared
-        DebtItem expiredDebt = new DebtItem(debtId, "src/App.java", 5, 15, "active", NOW.minusSeconds(3600));
-        RepositoryContext contextExpired = new RepositoryContext("ctx-3", List.of(finding), List.of(expiredDebt), Map.of());
-        evaluations = evaluator.evaluate(report(), List.of(gateHighAllowed), contextExpired, null, NOW);
-        assertEquals("failed", evaluations.get(0).status());
-        effective = (Map<?, ?>) evaluations.get(0).details().get("effective");
-        assertEquals("expired_debt_reappeared", effective.get("reason"));
-
-        // 5. Expired debt matching, fail_on_expired_debt = false -> failed with reason unsuppressed_high_risk_findings_remain
-        GateConfiguration gateHighAllowedNoFail = gateWithConfig(
-                "agent-review", "agent_review_required", "risk", "100.0", null, true,
-                Map.of("debt", Map.of("mode", "suppress_findings", "allow_risk_levels", List.of("low", "medium", "high"), "fail_on_expired_debt", false)),
-                "active");
-        evaluations = evaluator.evaluate(report(), List.of(gateHighAllowedNoFail), contextExpired, null, NOW);
-        assertEquals("failed", evaluations.get(0).status());
-        effective = (Map<?, ?>) evaluations.get(0).details().get("effective");
-        assertEquals("unsuppressed_high_risk_findings_remain", effective.get("reason"));
     }
 
     @Test

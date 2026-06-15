@@ -1,13 +1,18 @@
 package dev.vericov.upload.api;
 
 import dev.vericov.upload.application.AnalysisJob;
+import dev.vericov.upload.application.CoverageMetricDetails;
+import dev.vericov.upload.application.CoverageReportDetails;
 import dev.vericov.upload.application.InMemoryUploadRepository;
+import dev.vericov.upload.application.RunnerUploadToken;
 import dev.vericov.upload.application.StoredArtifact;
 import dev.vericov.upload.application.UploadApplicationService;
 import dev.vericov.upload.application.UploadEvent;
 import dev.vericov.upload.application.port.ArtifactStorage;
 import dev.vericov.upload.application.port.RepositoryApiKeyAuthenticator;
+import dev.vericov.upload.application.port.RunnerUploadTokenIssuer;
 import dev.vericov.upload.application.port.UploadEventPublisher;
+import dev.vericov.upload.application.port.UploadRepository;
 import dev.vericov.upload.application.port.UploadWorkQueue;
 import dev.vericov.upload.domain.CreateUploadCommand;
 import dev.vericov.upload.domain.RepositoryApiKeyPrincipal;
@@ -59,6 +64,45 @@ class UploadResourceIntegrationTest {
     }
 
     @Test
+    void acceptsMissingAndPopulatedIgnoreSnapshots() {
+        InMemoryUploadRepository repository = new InMemoryUploadRepository();
+        Fixture fixture = new Fixture(repository, null);
+
+        Response populatedResponse = fixture.resource.createUpload(
+                "Bearer vc_live_test",
+                "integration-ignore-populated",
+                validRequest(List.of("vendor/**", "!vendor/maintained/**")));
+        CreateUploadHttpResponse populated = acceptedBody(populatedResponse);
+        Response missingResponse = fixture.resource.createUpload(
+                "Bearer vc_live_test",
+                "integration-ignore-missing",
+                validRequest(null));
+        CreateUploadHttpResponse missing = acceptedBody(missingResponse);
+
+        assertEquals(
+                List.of("vendor/**", "!vendor/maintained/**"),
+                repository.findById(populated.uploadId()).orElseThrow().ignore());
+        assertEquals(List.of(), repository.findById(missing.uploadId()).orElseThrow().ignore());
+    }
+
+    @Test
+    void rejectsInvalidIgnoreSnapshotBeforeUploadSideEffects() {
+        Fixture fixture = new Fixture();
+
+        Response response = fixture.resource.createUpload(
+                "Bearer vc_live_test",
+                "integration-ignore-invalid",
+                validRequest(List.of("../secret.py")));
+
+        assertEquals(400, response.getStatus());
+        ApiError error = assertInstanceOf(ApiError.class, response.getEntity());
+        assertEquals("validation_error", error.error().code());
+        assertTrue(fixture.storage.storedArtifacts.isEmpty());
+        assertTrue(fixture.queue.jobs.isEmpty());
+        assertTrue(fixture.publisher.events.isEmpty());
+    }
+
+    @Test
     void returnsValidationEnvelopeForMalformedArtifactContent() {
         Fixture fixture = new Fixture();
         CreateUploadHttpRequest request = new CreateUploadHttpRequest(
@@ -70,6 +114,7 @@ class UploadResourceIntegrationTest {
                 "987654321",
                 "https://github.com/acme/payments-api/actions/runs/987654321",
                 List.of("unit"),
+                List.of(),
                 "api",
                 "services/api",
                 List.of(new UploadArtifactHttpRequest(
@@ -122,6 +167,70 @@ class UploadResourceIntegrationTest {
     }
 
     @Test
+    void requiresReadScopeWhenFetchingCoverageReport() {
+        CoverageReportRepository repository = new CoverageReportRepository();
+        Fixture fixture = new Fixture(repository, null);
+        Response create = fixture.resource.createUpload("Bearer vc_live_test", "integration-report-auth", validRequest());
+        CreateUploadHttpResponse accepted = acceptedBody(create);
+        repository.report = report(accepted.uploadId(), accepted.repositoryId());
+        fixture.authenticator.principal = new RepositoryApiKeyPrincipal(
+                TENANT_ID,
+                REPOSITORY_ID,
+                API_KEY_ID,
+                Set.of("uploads:create"),
+                Set.of("main"));
+
+        Response response = fixture.resource.getCoverageReport("Bearer vc_live_test", accepted.uploadId());
+
+        assertEquals(403, response.getStatus());
+        ApiError error = assertInstanceOf(ApiError.class, response.getEntity());
+        assertEquals("forbidden", error.error().code());
+    }
+
+    @Test
+    void returnsNotFoundWhenCoverageReportHasNotBeenGenerated() {
+        Fixture fixture = new Fixture();
+        Response create = fixture.resource.createUpload("Bearer vc_live_test", "integration-report-missing", validRequest());
+        CreateUploadHttpResponse accepted = acceptedBody(create);
+
+        Response response = fixture.resource.getCoverageReport("Bearer vc_live_test", accepted.uploadId());
+
+        assertEquals(404, response.getStatus());
+        ApiError error = assertInstanceOf(ApiError.class, response.getEntity());
+        assertEquals("not_found", error.error().code());
+    }
+
+    @Test
+    void createsRunnerUploadTokenWhenConfiguredAndAuthorized() {
+        RecordingRunnerTokenIssuer runnerTokenIssuer = new RecordingRunnerTokenIssuer();
+        Fixture fixture = new Fixture(new InMemoryUploadRepository(), runnerTokenIssuer);
+
+        Response response = fixture.resource.createRunnerUploadToken(
+                "Bearer vc_live_test",
+                new CreateRunnerUploadTokenHttpRequest(REPOSITORY_ID, "main"));
+
+        assertEquals(200, response.getStatus());
+        RunnerUploadTokenHttpResponse token = responseBody(response, RunnerUploadTokenHttpResponse.class);
+        assertEquals("runner-token", token.token());
+        assertEquals(NOW.plusSeconds(900), token.expiresAt());
+        assertEquals(REPOSITORY_ID, runnerTokenIssuer.repositoryId);
+        assertEquals("main", runnerTokenIssuer.branch);
+    }
+
+    @Test
+    void validatesRunnerUploadTokenRequests() {
+        Fixture fixture = new Fixture(new InMemoryUploadRepository(), new RecordingRunnerTokenIssuer());
+
+        Response response = fixture.resource.createRunnerUploadToken(
+                "Bearer vc_live_test",
+                new CreateRunnerUploadTokenHttpRequest(REPOSITORY_ID, " "));
+
+        assertEquals(400, response.getStatus());
+        ApiError error = assertInstanceOf(ApiError.class, response.getEntity());
+        assertEquals("validation_error", error.error().code());
+    }
+
+    @Test
     void returnsServiceUnavailableWhenArtifactStorageFails() {
         Fixture fixture = new Fixture();
         fixture.storage.failure = new IllegalStateException("Supabase Storage upload failed with HTTP 500");
@@ -136,6 +245,10 @@ class UploadResourceIntegrationTest {
     }
 
     private static CreateUploadHttpRequest validRequest() {
+        return validRequest(List.of());
+    }
+
+    private static CreateUploadHttpRequest validRequest(List<String> ignore) {
         return new CreateUploadHttpRequest(
                 REPOSITORY_ID,
                 "abc123",
@@ -145,6 +258,7 @@ class UploadResourceIntegrationTest {
                 "987654321",
                 "https://github.com/acme/payments-api/actions/runs/987654321",
                 List.of("unit", "linux"),
+                ignore,
                 "api",
                 "services/api",
                 List.of(
@@ -176,13 +290,22 @@ class UploadResourceIntegrationTest {
         private final FakeStorage storage = new FakeStorage();
         private final FakePublisher publisher = new FakePublisher();
         private final FakeQueue queue = new FakeQueue();
-        private final UploadResource resource = new UploadResource(new UploadApplicationService(
-                authenticator,
-                new InMemoryUploadRepository(),
-                storage,
-                publisher,
-                queue,
-                Clock.fixed(NOW, ZoneOffset.UTC)));
+        private final UploadResource resource;
+
+        private Fixture() {
+            this(new InMemoryUploadRepository(), null);
+        }
+
+        private Fixture(UploadRepository repository, RunnerUploadTokenIssuer runnerTokenIssuer) {
+            this.resource = new UploadResource(new UploadApplicationService(
+                    authenticator,
+                    repository,
+                    storage,
+                    publisher,
+                    queue,
+                    Clock.fixed(NOW, ZoneOffset.UTC),
+                    runnerTokenIssuer));
+        }
     }
 
     private static final class FakeAuthenticator implements RepositoryApiKeyAuthenticator {
@@ -244,5 +367,43 @@ class UploadResourceIntegrationTest {
             jobs.add(job);
             return job;
         }
+    }
+
+    private static final class CoverageReportRepository extends InMemoryUploadRepository {
+        private CoverageReportDetails report;
+
+        @Override
+        public java.util.Optional<CoverageReportDetails> coverageReportFor(UUID uploadId) {
+            return java.util.Optional.ofNullable(report).filter(value -> value.uploadId().equals(uploadId));
+        }
+    }
+
+    private static final class RecordingRunnerTokenIssuer implements RunnerUploadTokenIssuer {
+        private UUID repositoryId;
+        private String branch;
+
+        @Override
+        public RunnerUploadToken issue(RepositoryApiKeyPrincipal principal, UUID repositoryId, String branch, java.time.Duration ttl) {
+            this.repositoryId = repositoryId;
+            this.branch = branch;
+            return new RunnerUploadToken("runner-token", NOW.plus(ttl));
+        }
+    }
+
+    private static CoverageReportDetails report(UUID uploadId, UUID repositoryId) {
+        return new CoverageReportDetails(
+                uploadId,
+                repositoryId,
+                "abc123",
+                "main",
+                42,
+                "complete",
+                new CoverageMetricDetails(8, 10),
+                new CoverageMetricDetails(1, 2),
+                new CoverageMetricDetails(3, 4),
+                new CoverageMetricDetails(8, 10),
+                "coverage-normalized",
+                "report.json.gz",
+                NOW.plusSeconds(300));
     }
 }

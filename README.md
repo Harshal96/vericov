@@ -1,8 +1,14 @@
 # Vericov
 
-Vericov is an open-source, self-hosted coverage backend for coverage uploads,
-normalized reports, policy gates, merge confidence, and test-remediation
-workflows.
+**Open-source, self-hosted coverage backend.** Ship coverage and test results
+from CI, get normalized reports and policy gates — on your own infrastructure,
+backed by your own PostgreSQL or the database that ships in the box.
+
+[![CI](https://github.com/Harshal96/vericov/actions/workflows/ci.yml/badge.svg)](https://github.com/Harshal96/vericov/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+![Status: pre-1.0](https://img.shields.io/badge/status-pre--1.0-orange.svg)
+![Java 25](https://img.shields.io/badge/Java-25-blue.svg)
+![Python 3.9+](https://img.shields.io/badge/Python-3.9%2B-blue.svg)
 
 > **Project status:** pre-1.0. The core services and upload CLI are usable, but
 > APIs and database schemas may still change between releases.
@@ -11,6 +17,8 @@ workflows.
 
 - Upload coverage and test-result artifacts from CI.
 - Parse LCOV, JaCoCo, Cobertura, Clover, Go cover, gcov, and llvm-cov output.
+- Exclude generated or vendored source files with ordered rules in
+  `.vericov.yml`.
 - Store normalized reports, line hits, test runs, coverage gaps, and gates.
 - Run with an integrated PostgreSQL database or bring your own compatible
   PostgreSQL instance.
@@ -50,6 +58,18 @@ VERICOV_API_KEY="$VERICOV_DEV_API_KEY" \
 vericov upload --coverage coverage/lcov.info --wait
 ```
 
+Repositories can exclude source files from every coverage-derived result with
+the top-level `ignore` list in `.vericov.yml`:
+
+```yaml
+version: 1
+
+ignore:
+  - generated/**
+  - vendor/**
+  - "!vendor/maintained/**"
+```
+
 Stop it without deleting data:
 
 ```bash
@@ -59,16 +79,41 @@ Stop it without deleting data:
 See [Self-hosting](docs/SELF_HOSTING.md) for configuration and
 [Operations](docs/OPERATIONS.md) for backups, upgrades, recovery, and security.
 
+## Database
+
+Vericov is bring-your-own-database with a batteries-included default:
+
+- **Integrated (default):** `BYO_POSTGRES=0` starts a pinned PostgreSQL
+  container with the Vericov schema and PGMQ queues initialized on first boot.
+  Nothing else to install.
+- **Bring your own:** `BYO_POSTGRES=1` points Vericov at an existing PostgreSQL
+  instance. Set `VERICOV_DB_URL`, `VERICOV_DB_USER`, and `VERICOV_DB_PASSWORD`,
+  then apply the tracked schema with `./vericov migrate`. The database needs the
+  `pgcrypto` and `pgmq` extensions.
+
+See [Bring your own Postgres](docs/SELF_HOSTING.md#bring-your-own-postgres) for
+details.
+
 ## Architecture
 
 | Service | Purpose | Port |
 | --- | --- | --- |
 | upload | CI coverage artifact ingestion | 8080 |
 | coverage-analysis | Coverage parsing, normalization, reports, gates | 8081 |
-| control-plane | Repositories, config, policies, badges, debt, dashboards | 8082 |
 
-Provider integrations are currently optional and are not part of the default
-three-service startup.
+```mermaid
+flowchart LR
+  ci["CI / upload CLI"] -->|"POST /api/v1/uploads"| upload["upload :8080"]
+  upload -->|"job + PGMQ message"| db[("PostgreSQL + PGMQ")]
+  analysis["coverage-analysis :8081"] -->|"lease job"| db
+  analysis -->|"parse, normalize, gate"| db
+  upload -->|"GET .../report"| ci
+  upload <-->|"artifact bytes"| store[["filesystem / Supabase Storage"]]
+  analysis <-->|"artifact bytes"| store
+```
+
+The two services communicate only through PostgreSQL and PGMQ — there is no
+internal service-to-service RPC to operate or secure.
 
 Vericov does not expose a bundled public gateway. Keep direct service ports on
 a private network or put your own TLS, authentication, and rate-limiting proxy
@@ -90,10 +135,10 @@ usage.
 ## Development
 
 ```bash
-mvn test
+mvn verify
 python -m pytest -q
-python -m pip install -e clis/coverage-upload pytest
-(cd clis/coverage-upload && python -m pytest -q)
+python -m pip install -e clis/coverage-upload pytest pytest-cov
+(cd clis/coverage-upload && python -m pytest -q --cov=vericov_coverage_upload --cov-report=term-missing --cov-fail-under=80)
 ```
 
 Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request. Report

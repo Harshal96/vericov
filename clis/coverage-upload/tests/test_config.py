@@ -11,20 +11,44 @@ def test_loads_no_config_with_defaults(tmp_path: Path) -> None:
 
     assert resolved.path is None
     assert resolved.upload.api_url == "https://api.vericov.dev"
+    assert resolved.upload.ignore == ()
 
 
-def test_rejects_both_default_config_names(tmp_path: Path) -> None:
+def test_rejects_legacy_config_name_with_rename_instruction(tmp_path: Path) -> None:
+    (tmp_path / "vericov.yml").write_text("version: 1\n", encoding="utf-8")
+
+    with pytest.raises(VericovCliError) as error:
+        load_config(tmp_path)
+
+    assert error.value.code == "legacy_config_filename"
+    assert "rename" in error.value.message.lower()
+    assert ".vericov.yml" in error.value.message
+
+
+def test_rejects_both_config_names_with_rename_instruction(tmp_path: Path) -> None:
     (tmp_path / "vericov.yml").write_text("version: 1\n", encoding="utf-8")
     (tmp_path / ".vericov.yml").write_text("version: 1\n", encoding="utf-8")
 
     with pytest.raises(VericovCliError) as error:
         load_config(tmp_path)
 
-    assert error.value.code == "multiple_configs"
+    assert error.value.code == "legacy_config_filename"
+    assert "rename" in error.value.message.lower()
+
+
+def test_rejects_explicit_config_with_noncanonical_filename(tmp_path: Path) -> None:
+    custom = tmp_path / "custom.yml"
+    custom.write_text("version: 1\n", encoding="utf-8")
+
+    with pytest.raises(VericovCliError) as error:
+        load_config(tmp_path, str(custom))
+
+    assert error.value.code == "invalid_config_filename"
+    assert ".vericov.yml" in error.value.message
 
 
 def test_rejects_secrets_in_config(tmp_path: Path) -> None:
-    (tmp_path / "vericov.yml").write_text("version: 1\napi_key: vc_live_bad\n", encoding="utf-8")
+    (tmp_path / ".vericov.yml").write_text("version: 1\napi_key: vc_live_bad\n", encoding="utf-8")
 
     with pytest.raises(VericovCliError) as error:
         load_config(tmp_path)
@@ -33,7 +57,7 @@ def test_rejects_secrets_in_config(tmp_path: Path) -> None:
 
 
 def test_rejects_unknown_keys(tmp_path: Path) -> None:
-    (tmp_path / "vericov.yml").write_text("version: 1\nupload:\n  typo: true\n", encoding="utf-8")
+    (tmp_path / ".vericov.yml").write_text("version: 1\nupload:\n  typo: true\n", encoding="utf-8")
 
     with pytest.raises(VericovCliError) as error:
         load_config(tmp_path)
@@ -42,9 +66,13 @@ def test_rejects_unknown_keys(tmp_path: Path) -> None:
 
 
 def test_parses_upload_config(tmp_path: Path) -> None:
-    (tmp_path / "vericov.yml").write_text(
+    (tmp_path / ".vericov.yml").write_text(
         """
 version: 1
+ignore:
+  - generated/**
+  - vendor/**
+  - "!vendor/maintained/**"
 api:
   url: http://localhost:8080
 upload:
@@ -61,3 +89,49 @@ upload:
     assert resolved.upload.api_url == "http://localhost:8080"
     assert resolved.upload.flags == ("unit",)
     assert resolved.upload.coverage == ("coverage/lcov.info",)
+    assert resolved.upload.ignore == (
+        "generated/**",
+        "vendor/**",
+        "!vendor/maintained/**",
+    )
+
+
+def test_rejects_non_list_ignore_value(tmp_path: Path) -> None:
+    (tmp_path / ".vericov.yml").write_text(
+        "version: 1\nignore: generated/**\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(VericovCliError) as error:
+        load_config(tmp_path)
+
+    assert error.value.code == "invalid_ignore_list"
+    assert "ignore must be a list" in error.value.message
+
+
+def test_rejects_invalid_ignore_rule_with_path_and_index(tmp_path: Path) -> None:
+    config = tmp_path / ".vericov.yml"
+    config.write_text(
+        "version: 1\nignore:\n  - generated/**\n  - ../secret.py\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(VericovCliError) as error:
+        load_config(tmp_path)
+
+    assert error.value.code == "invalid_ignore_rule"
+    assert str(config) in error.value.message
+    assert "ignore[1]" in error.value.message
+    assert "parent traversal" in error.value.message
+
+
+def test_rejects_malformed_yaml_with_config_path(tmp_path: Path) -> None:
+    config = tmp_path / ".vericov.yml"
+    config.write_text("version: [\n", encoding="utf-8")
+
+    with pytest.raises(VericovCliError) as error:
+        load_config(tmp_path)
+
+    assert error.value.code == "invalid_yaml"
+    assert str(config) in error.value.message
+    assert "malformed YAML" in error.value.message

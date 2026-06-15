@@ -40,7 +40,7 @@ services:
         SERVICE_DIR: services/upload
         SERVICE_JAR: upload.jar
     env_file:
-      - ${VERICOV_COMPOSE_ENV_FILE:-.env}
+      - ${VERICOV_COMPOSE_ENV_FILE:?run through ./vericov or set VERICOV_COMPOSE_ENV_FILE}
     environment:
       VERICOV_UPLOAD_DB_URL: ${VERICOV_DB_URL:-jdbc:postgresql://postgres-bundled:5432/postgres}
       VERICOV_UPLOAD_DB_USER: ${VERICOV_RUNTIME_DB_USER:-postgres}
@@ -65,15 +65,13 @@ services:
         SERVICE_DIR: services/coverage-analysis
         SERVICE_JAR: coverage-analysis.jar
     env_file:
-      - ${VERICOV_COMPOSE_ENV_FILE:-.env}
+      - ${VERICOV_COMPOSE_ENV_FILE:?run through ./vericov or set VERICOV_COMPOSE_ENV_FILE}
     environment:
       VERICOV_ANALYSIS_DB_URL: ${VERICOV_DB_URL:-jdbc:postgresql://postgres-bundled:5432/postgres}
       VERICOV_ANALYSIS_DB_USER: ${VERICOV_RUNTIME_DB_USER:-postgres}
       VERICOV_ANALYSIS_DB_PASSWORD: ${VERICOV_DB_PASSWORD:-vericov}
       VERICOV_ARTIFACT_STORAGE_BACKEND: ${VERICOV_ARTIFACT_STORAGE_BACKEND:-filesystem}
       VERICOV_ARTIFACT_STORAGE_ROOT: /var/lib/vericov/artifacts
-      VERICOV_CONTROL_PLANE_BASE_URL: http://control-plane:8082
-      VERICOV_GIT_BASE_URL: http://git-integration:8083
       VERICOV_SERVICE_HOST: 0.0.0.0
     ports:
       - "127.0.0.1:${VERICOV_ANALYSIS_HTTP_PORT:-8081}:8081"
@@ -81,98 +79,6 @@ services:
       - "host.docker.internal:host-gateway"
     volumes:
       - vericov-artifacts:/var/lib/vericov/artifacts
-    networks:
-      - product
-
-  control-plane:
-    build:
-      context: ../..
-      dockerfile: infra/docker/helidon-service.Dockerfile
-      args:
-        SERVICE_DIR: services/control-plane
-        SERVICE_JAR: control-plane.jar
-    env_file:
-      - ${VERICOV_COMPOSE_ENV_FILE:-.env}
-    environment:
-      VERICOV_CONTROL_PLANE_DB_URL: ${VERICOV_DB_URL:-jdbc:postgresql://postgres-bundled:5432/postgres}
-      VERICOV_CONTROL_PLANE_DB_USER: ${VERICOV_RUNTIME_DB_USER:-postgres}
-      VERICOV_CONTROL_PLANE_DB_PASSWORD: ${VERICOV_DB_PASSWORD:-vericov}
-      VERICOV_SERVICE_HOST: 0.0.0.0
-    ports:
-      - "127.0.0.1:${VERICOV_CONTROL_PLANE_HTTP_PORT:-8082}:8082"
-      - "127.0.0.1:${VERICOV_CONTROL_PLANE_GRPC_PORT:-50082}:50082"
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    networks:
-      - product
-
-  git-integration:
-    profiles:
-      - integrations
-    build:
-      context: ../..
-      dockerfile: infra/docker/helidon-service.Dockerfile
-      args:
-        SERVICE_DIR: services/git-integration
-        SERVICE_JAR: git-integration.jar
-    env_file:
-      - ${VERICOV_COMPOSE_ENV_FILE:-.env}
-    environment:
-      VERICOV_DATABASE_URL: ${VERICOV_DB_URL:-jdbc:postgresql://postgres-bundled:5432/postgres}
-      VERICOV_DATABASE_USER: ${VERICOV_RUNTIME_DB_USER:-postgres}
-      VERICOV_DATABASE_PASSWORD: ${VERICOV_DB_PASSWORD:-vericov}
-      VERICOV_INTEGRATIONS_BASE_URL: http://integrations:8084
-      VERICOV_SERVICE_HOST: 0.0.0.0
-    ports:
-      - "127.0.0.1:${VERICOV_GIT_HTTP_PORT:-8083}:8083"
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    networks:
-      - product
-
-  integrations:
-    profiles:
-      - integrations
-    build:
-      context: ../..
-      dockerfile: infra/docker/helidon-service.Dockerfile
-      args:
-        SERVICE_DIR: services/integrations
-        SERVICE_JAR: integrations.jar
-    env_file:
-      - ${VERICOV_COMPOSE_ENV_FILE:-.env}
-    environment:
-      VERICOV_DATABASE_URL: ${VERICOV_DB_URL:-jdbc:postgresql://postgres-bundled:5432/postgres}
-      VERICOV_DATABASE_USER: ${VERICOV_RUNTIME_DB_USER:-postgres}
-      VERICOV_DATABASE_PASSWORD: ${VERICOV_DB_PASSWORD:-vericov}
-      VERICOV_SERVICE_HOST: 0.0.0.0
-    ports:
-      - "127.0.0.1:${VERICOV_INTEGRATIONS_HTTP_PORT:-8084}:8084"
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    networks:
-      - product
-
-  agent-runner:
-    profiles:
-      - agents
-    build:
-      context: ../..
-      dockerfile: infra/docker/helidon-service.Dockerfile
-      args:
-        SERVICE_DIR: services/agent-runner
-        SERVICE_JAR: agent-runner.jar
-    env_file:
-      - ${VERICOV_COMPOSE_ENV_FILE:-.env}
-    environment:
-      VERICOV_DATABASE_URL: ${VERICOV_DB_URL:-jdbc:postgresql://postgres-bundled:5432/postgres}
-      VERICOV_DATABASE_USER: ${VERICOV_RUNTIME_DB_USER:-postgres}
-      VERICOV_DATABASE_PASSWORD: ${VERICOV_DB_PASSWORD:-vericov}
-      VERICOV_SERVICE_HOST: 0.0.0.0
-    ports:
-      - "127.0.0.1:${VERICOV_AGENT_HTTP_PORT:-8085}:8085"
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     networks:
       - product
 

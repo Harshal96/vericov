@@ -3,9 +3,14 @@ package dev.vericov.upload.adapter.jdbc;
 import dev.vericov.upload.application.QueuedUpload;
 import dev.vericov.upload.application.StoredArtifact;
 import dev.vericov.upload.application.DuplicateUploadException;
+import dev.vericov.upload.application.CoverageMetricDetails;
+import dev.vericov.upload.application.CoverageReportDetails;
 import dev.vericov.upload.application.port.UploadRepository;
 import dev.vericov.upload.domain.ArtifactKind;
 import dev.vericov.upload.domain.UploadStatus;
+import jakarta.json.Json;
+import jakarta.json.JsonString;
+import java.io.StringReader;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -99,12 +104,48 @@ public class JdbcUploadRepository implements UploadRepository {
         }
     }
 
+    @Override
+    public Optional<CoverageReportDetails> coverageReportFor(UUID uploadId) {
+        try (Connection connection = dataSource.getConnection();
+                var statement = connection.prepareStatement("""
+                        select upload_id, repository_id, commit_sha, branch, pull_request_number,
+                               status, line_covered, line_total, branch_covered, branch_total,
+                               function_covered, function_total, statement_covered, statement_total,
+                               normalized_storage_bucket, normalized_storage_path, created_at
+                        from vericov.coverage_reports
+                        where upload_id = ?
+                        """)) {
+            statement.setObject(1, uploadId);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                if (!resultSet.next()) {
+                    return Optional.empty();
+                }
+                return Optional.of(new CoverageReportDetails(
+                        resultSet.getObject("upload_id", UUID.class),
+                        resultSet.getObject("repository_id", UUID.class),
+                        resultSet.getString("commit_sha"),
+                        resultSet.getString("branch"),
+                        nullableInteger(resultSet, "pull_request_number"),
+                        resultSet.getString("status"),
+                        metric(resultSet, "line"),
+                        metric(resultSet, "branch"),
+                        metric(resultSet, "function"),
+                        metric(resultSet, "statement"),
+                        resultSet.getString("normalized_storage_bucket"),
+                        resultSet.getString("normalized_storage_path"),
+                        resultSet.getObject("created_at", OffsetDateTime.class).toInstant()));
+            }
+        } catch (SQLException exception) {
+            throw new IllegalStateException("Failed to load coverage report for upload " + uploadId, exception);
+        }
+    }
+
     private Optional<QueuedUpload> find(String whereClause, Object... parameters) {
         String sql = """
                 select u.id, u.tenant_id, u.repository_id, u.api_key_id,
                        u.commit_sha, u.branch, u.pull_request_number,
                        u.ci_provider, u.ci_build_id, u.ci_build_url,
-                       u.flags, u.component, u.package_name, u.status,
+                       u.flags, u.ignore_rules, u.component, u.package_name, u.status,
                        u.idempotency_key, u.accepted_at, j.id as analysis_job_id
                 from vericov.uploads u
                 left join vericov.analysis_jobs j on j.upload_id = u.id
@@ -127,9 +168,9 @@ public class JdbcUploadRepository implements UploadRepository {
                 insert into vericov.uploads (
                     id, tenant_id, repository_id, api_key_id, commit_sha, branch,
                     pull_request_number, ci_provider, ci_build_id, ci_build_url,
-                    flags, component, package_name, status, idempotency_key, accepted_at
+                    flags, ignore_rules, component, package_name, status, idempotency_key, accepted_at
                 )
-                values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?, ?, ?, ?, ?)
                 """)) {
             int index = 1;
             statement.setObject(index++, upload.uploadId());
@@ -147,6 +188,7 @@ public class JdbcUploadRepository implements UploadRepository {
             statement.setString(index++, upload.ciBuildId());
             statement.setString(index++, upload.ciBuildUrl());
             statement.setArray(index++, connection.createArrayOf("text", upload.flags().toArray(String[]::new)));
+            statement.setString(index++, ignoreRulesJson(upload.ignore()));
             statement.setString(index++, upload.component().orElse(null));
             statement.setString(index++, upload.packageName().orElse(null));
             statement.setString(index++, databaseStatus(upload.status()));
@@ -253,12 +295,32 @@ public class JdbcUploadRepository implements UploadRepository {
                 resultSet.getString("ci_build_id"),
                 resultSet.getString("ci_build_url"),
                 List.of(flags),
+                parseIgnoreRules(resultSet.getString("ignore_rules")),
                 Optional.ofNullable(resultSet.getString("component")),
                 Optional.ofNullable(resultSet.getString("package_name")),
                 uploadStatus(resultSet.getString("status")),
                 resultSet.getString("idempotency_key"),
                 resultSet.getObject("accepted_at", OffsetDateTime.class).toInstant(),
                 Optional.ofNullable(resultSet.getObject("analysis_job_id", UUID.class)));
+    }
+
+    private static String ignoreRulesJson(List<String> rules) {
+        var builder = Json.createArrayBuilder();
+        rules.forEach(builder::add);
+        return builder.build().toString();
+    }
+
+    private static List<String> parseIgnoreRules(String json) {
+        if (json == null || json.isBlank()) {
+            return List.of();
+        }
+        try (var reader = Json.createReader(new StringReader(json))) {
+            return reader.readArray().getValuesAs(JsonString.class).stream()
+                    .map(JsonString::getString)
+                    .toList();
+        } catch (RuntimeException exception) {
+            throw new IllegalStateException("Stored upload ignore rules must be a JSON string array", exception);
+        }
     }
 
     private static void setNullableUuid(
@@ -275,6 +337,12 @@ public class JdbcUploadRepository implements UploadRepository {
     private static Integer nullableInteger(ResultSet resultSet, String column) throws SQLException {
         int value = resultSet.getInt(column);
         return resultSet.wasNull() ? null : value;
+    }
+
+    private static CoverageMetricDetails metric(ResultSet resultSet, String prefix) throws SQLException {
+        return new CoverageMetricDetails(
+                resultSet.getLong(prefix + "_covered"),
+                resultSet.getLong(prefix + "_total"));
     }
 
     private static String databaseStatus(UploadStatus status) {

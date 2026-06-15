@@ -11,4 +11,6 @@ public interface AnalysisJobRepository {
     void completeJob(UUID jobId, Instant finishedAt);
 
     AnalysisFailureDecision recordFailure(UUID jobId, String workerId, Instant failedAt, String errorMessage);
+
+    void recordTerminalFailure(UUID jobId, String workerId, Instant failedAt, String errorMessage);
 }

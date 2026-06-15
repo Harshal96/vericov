@@ -18,7 +18,13 @@ class UploadRequest:
     component: Optional[str]
     package: Optional[str]
     artifacts: Tuple[UploadArtifact, ...]
+    ignore: Tuple[str, ...] = ()
     idempotency_key: Optional[str] = None
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "flags", tuple(self.flags))
+        object.__setattr__(self, "artifacts", tuple(self.artifacts))
+        object.__setattr__(self, "ignore", tuple(self.ignore))
 
     def to_json(self) -> Dict[str, Any]:
         payload: Dict[str, Any] = {
@@ -30,6 +36,7 @@ class UploadRequest:
             "ci_build_id": self.metadata.ci_build_id,
             "ci_build_url": self.metadata.ci_build_url,
             "flags": list(self.flags),
+            "ignore": list(self.ignore),
             "component": self.component,
             "package": self.package,
             "artifacts": [artifact.to_request() for artifact in self.artifacts],
@@ -48,6 +55,7 @@ class UploadRequest:
             "ci_provider": self.metadata.ci_provider,
             "ci_build_id": self.metadata.ci_build_id,
             "flags": list(self.flags),
+            "ignore": list(self.ignore),
             "component": self.component,
             "package": self.package,
             "artifacts": [

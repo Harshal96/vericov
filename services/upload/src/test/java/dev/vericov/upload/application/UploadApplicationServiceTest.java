@@ -51,6 +51,7 @@ class UploadApplicationServiceTest {
         assertEquals(API_KEY_ID, storedUpload.apiKeyId().orElseThrow());
         assertEquals(UploadStatus.QUEUED, storedUpload.status());
         assertEquals(NOW, storedUpload.acceptedAt());
+        assertEquals(List.of("generated/**", "!generated/maintained/**"), storedUpload.ignore());
 
         assertEquals(2, fixture.artifactStorage.storedArtifacts.size());
         assertEquals(1, fixture.eventPublisher.events.size());
@@ -173,6 +174,31 @@ class UploadApplicationServiceTest {
     }
 
     @Test
+    void returnsCoverageReportForAuthorizedUpload() {
+        TestFixture fixture = new TestFixture();
+        var accepted = fixture.service.acceptUpload(command("report-key"));
+        fixture.uploadRepository.coverageReport = new CoverageReportDetails(
+                accepted.uploadId(),
+                REPOSITORY_ID,
+                "abc123",
+                "main",
+                42,
+                "complete",
+                new CoverageMetricDetails(8, 10),
+                new CoverageMetricDetails(1, 2),
+                new CoverageMetricDetails(3, 4),
+                new CoverageMetricDetails(8, 10),
+                "coverage-normalized",
+                "report.json.gz",
+                NOW);
+
+        var report = fixture.service.getCoverageReport(accepted.uploadId(), "Bearer vc_live_test");
+
+        assertEquals(8, report.line().covered());
+        assertEquals(10, report.line().total());
+    }
+
+    @Test
     void rejectsArtifactNamesThatCouldEscapeObjectPrefix() {
         TestFixture fixture = new TestFixture();
         CreateUploadCommand command = new CreateUploadCommand(
@@ -186,6 +212,7 @@ class UploadApplicationServiceTest {
                 "987654321",
                 "https://github.com/acme/payments-api/actions/runs/987654321",
                 List.of("unit", "linux"),
+                List.of(),
                 Optional.of("api"),
                 Optional.of("services/api"),
                 List.of(new UploadArtifactInput(
@@ -200,6 +227,36 @@ class UploadApplicationServiceTest {
                 () -> fixture.service.acceptUpload(command));
 
         assertEquals("validation_error", exception.code());
+        assertEquals(0, fixture.artifactStorage.storedArtifacts.size());
+        assertEquals(0, fixture.workQueue.jobs.size());
+    }
+
+    @Test
+    void rejectsInvalidIgnoreRulesBeforeAuthenticationOrSideEffects() {
+        TestFixture fixture = new TestFixture();
+        CreateUploadCommand valid = command("invalid-ignore");
+        CreateUploadCommand command = new CreateUploadCommand(
+                valid.authorizationHeader(),
+                valid.idempotencyKey(),
+                valid.repositoryId(),
+                valid.commitSha(),
+                valid.branch(),
+                valid.pullRequestNumber(),
+                valid.ciProvider(),
+                valid.ciBuildId(),
+                valid.ciBuildUrl(),
+                valid.flags(),
+                List.of("generated/**", "../secret.py"),
+                valid.component(),
+                valid.packageName(),
+                valid.artifacts());
+
+        InvalidUploadException exception = assertThrows(
+                InvalidUploadException.class,
+                () -> fixture.service.acceptUpload(command));
+
+        assertEquals("validation_error", exception.code());
+        assertEquals(0, fixture.authenticator.calls);
         assertEquals(0, fixture.artifactStorage.storedArtifacts.size());
         assertEquals(0, fixture.workQueue.jobs.size());
     }
@@ -220,6 +277,7 @@ class UploadApplicationServiceTest {
                 "987654321",
                 "https://github.com/acme/payments-api/actions/runs/987654321",
                 List.of("unit", "linux"),
+                List.of("generated/**", "!generated/maintained/**"),
                 Optional.of("api"),
                 Optional.of("services/api"),
                 List.of(
@@ -259,9 +317,11 @@ class UploadApplicationServiceTest {
                 API_KEY_ID,
                 Set.of("uploads:create", "uploads:read"),
                 Set.of("main"));
+        private int calls;
 
         @Override
         public RepositoryApiKeyPrincipal authenticate(CreateUploadCommand command) {
+            calls++;
             return principal;
         }
     }
@@ -272,6 +332,7 @@ class UploadApplicationServiceTest {
         private static final UUID CONCURRENT_JOB_ID =
                 UUID.fromString("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
         private boolean simulateConcurrentWinner;
+        private CoverageReportDetails coverageReport;
 
         @Override
         public void save(QueuedUpload upload, List<StoredArtifact> artifacts) {
@@ -292,6 +353,7 @@ class UploadApplicationServiceTest {
                     upload.ciBuildId(),
                     upload.ciBuildUrl(),
                     upload.flags(),
+                    upload.ignore(),
                     upload.component(),
                     upload.packageName(),
                     upload.status(),
@@ -299,6 +361,12 @@ class UploadApplicationServiceTest {
                     upload.acceptedAt(),
                     Optional.of(CONCURRENT_JOB_ID)), artifacts);
             throw new DuplicateUploadException(new IllegalStateException("duplicate"));
+        }
+
+        @Override
+        public Optional<CoverageReportDetails> coverageReportFor(UUID uploadId) {
+            return Optional.ofNullable(coverageReport)
+                    .filter(report -> report.uploadId().equals(uploadId));
         }
     }
 

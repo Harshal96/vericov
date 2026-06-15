@@ -1,0 +1,25 @@
+# name	rules	path	ignored
+no_rules		src/App.java	false
+ordinary_directory_glob	generated/**	generated/App.java	true
+slash_pattern_matches_at_depth	generated/**	src/generated/App.java	true
+root_anchor_matches_root	/generated/**	generated/App.java	true
+root_anchor_does_not_match_at_depth	/generated/**	src/generated/App.java	false
+trailing_slash_matches_descendants	vendor/	src/vendor/library.c	true
+basename_matches_at_any_depth	*.generated.py	src/tools/model.generated.py	true
+basename_directory_matches_descendants	node_modules	src/node_modules/pkg/index.js	true
+single_star_does_not_cross_slash	src/*.py	src/nested/app.py	false
+single_star_matches_segment	src/*.py	src/app.py	true
+question_mark_matches_one_character	src/file?.py	src/file1.py	true
+question_mark_does_not_match_two_characters	src/file?.py	src/file10.py	false
+character_range_matches	src/[a-c].py	src/b.py	true
+character_range_is_case_sensitive	src/[a-c].py	src/B.py	false
+globstar_matches_zero_directories	src/**/generated/*.java	src/generated/App.java	true
+globstar_matches_many_directories	src/**/generated/*.java	src/main/java/generated/App.java	true
+ordered_negation_reincludes	vendor/**;;!vendor/maintained/**	vendor/maintained/App.java	false
+ordered_negation_leaves_other_files_excluded	vendor/**;;!vendor/maintained/**	vendor/third_party/App.java	true
+later_rule_excludes_again	vendor/**;;!vendor/maintained/**;;vendor/maintained/generated/**	vendor/maintained/generated/App.java	true
+path_backslashes_are_normalized	generated/**	.\generated\App.java	true
+leading_dot_segments_are_removed	/src/**	././src/App.java	true
+matching_is_case_sensitive	SRC/**	src/App.java	false
+escaped_leading_bang_is_literal	\!important.py	!important.py	true
+escaped_question_mark_is_literal	file\?.txt	file?.txt	true

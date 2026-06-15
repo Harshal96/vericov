@@ -252,7 +252,6 @@ public class JdbcCoverageReportRepository implements CoverageReportRepository {
                 insert into vericov.component_coverage_rollups (
                     id,
                     tenant_id,
-                    org_id,
                     repository_id,
                     coverage_report_id,
                     component_id,
@@ -274,7 +273,6 @@ public class JdbcCoverageReportRepository implements CoverageReportRepository {
                 values (
                     extensions.gen_random_uuid(),
                     ?,
-                    (select org_id from vericov.repositories where id = ?),
                     ?,
                     ?,
                     ?,
@@ -296,7 +294,6 @@ public class JdbcCoverageReportRepository implements CoverageReportRepository {
             for (CoverageComponentRollup rollup : report.componentRollups()) {
                 int index = 1;
                 statement.setObject(index++, report.tenantId());
-                statement.setObject(index++, report.repositoryId());
                 statement.setObject(index++, report.repositoryId());
                 statement.setObject(index++, report.reportId());
                 statement.setObject(index++, rollup.componentId());
@@ -328,7 +325,6 @@ public class JdbcCoverageReportRepository implements CoverageReportRepository {
                 insert into vericov.coverage_gap_findings (
                     id,
                     tenant_id,
-                    org_id,
                     repository_id,
                     coverage_report_id,
                     pr_diff_id,
@@ -355,7 +351,6 @@ public class JdbcCoverageReportRepository implements CoverageReportRepository {
                 values (
                     ?,
                     ?,
-                    (select org_id from vericov.repositories where id = ?),
                     ?,
                     ?,
                     (select id from vericov.pull_request_coverage_diffs where coverage_report_id = ?),
@@ -384,7 +379,6 @@ public class JdbcCoverageReportRepository implements CoverageReportRepository {
                 int index = 1;
                 statement.setObject(index++, finding.id());
                 statement.setObject(index++, finding.tenantId());
-                statement.setObject(index++, finding.repositoryId());
                 statement.setObject(index++, finding.repositoryId());
                 statement.setObject(index++, finding.coverageReportId());
                 statement.setObject(index++, finding.coverageReportId());
@@ -458,7 +452,6 @@ public class JdbcCoverageReportRepository implements CoverageReportRepository {
                 insert into vericov.gate_evaluations (
                     id,
                     tenant_id,
-                    org_id,
                     repository_id,
                     coverage_report_id,
                     commit_sha,
@@ -474,13 +467,12 @@ public class JdbcCoverageReportRepository implements CoverageReportRepository {
                     details_json,
                     evaluated_at
                 )
-                values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?)
+                values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?)
                 """)) {
             for (GateEvaluation evaluation : evaluations) {
                 int index = 1;
                 statement.setObject(index++, evaluation.id());
                 statement.setObject(index++, evaluation.tenantId());
-                statement.setObject(index++, evaluation.organizationId());
                 statement.setObject(index++, evaluation.repositoryId());
                 statement.setObject(index++, evaluation.coverageReportId());
                 statement.setString(index++, evaluation.commitSha());

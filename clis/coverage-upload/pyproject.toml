@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=65"]
+requires = ["setuptools>=77", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "Vericov coverage upload CLI."
 readme = "README.md"
 requires-python = ">=3.9"
-license = { text = "MIT" }
+license = "MIT"
 authors = [
   { name = "Harshal Parekh" }
 ]
@@ -37,7 +37,8 @@ vericov = "vericov_coverage_upload.cli.main:main"
 [dependency-groups]
 dev = [
   "build>=1.2",
-  "pytest>=8"
+  "pytest>=8",
+  "pytest-cov>=6"
 ]
 
 [tool.setuptools.packages.find]
