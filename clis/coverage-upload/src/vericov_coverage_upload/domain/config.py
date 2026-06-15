@@ -28,6 +28,7 @@ class UploadConfig:
     ci_build_id: Optional[str] = None
     ci_build_url: Optional[str] = None
     flags: Tuple[str, ...] = ()
+    ignore: Tuple[str, ...] = ()
     component: Optional[str] = None
     package: Optional[str] = None
     coverage: Tuple[str, ...] = ()

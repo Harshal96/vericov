@@ -54,6 +54,7 @@ class JdbcUploadRepositoryTest {
                 "build-1",
                 "https://ci.example/build-1",
                 List.of("unit"),
+                List.of("vendor/**", "!vendor/maintained/**"),
                 Optional.of("api"),
                 Optional.empty(),
                 UploadStatus.QUEUED,
@@ -76,6 +77,7 @@ class JdbcUploadRepositoryTest {
         assertTrue(dataSource.committed);
         assertFalse(dataSource.rolledBack);
         assertTrue(dataSource.containsSql("insert into vericov.uploads"));
+        assertTrue(dataSource.containsSql("ignore_rules"));
         assertTrue(dataSource.containsSql("insert into vericov.upload_artifacts"));
         assertTrue(dataSource.containsSql("insert into vericov.analysis_jobs"));
         assertTrue(dataSource.containsSql("insert into vericov.upload_events"));
@@ -97,6 +99,7 @@ class JdbcUploadRepositoryTest {
                 "ci_build_id", "build-1",
                 "ci_build_url", "https://ci.example/build-1",
                 "flags", new String[] {"unit"},
+                "ignore_rules", "[\"vendor/**\",\"!vendor/maintained/**\"]",
                 "component", "api",
                 "package_name", null,
                 "status", "processed",
@@ -142,6 +145,7 @@ class JdbcUploadRepositoryTest {
         assertEquals(UploadStatus.COMPLETED, byId.status());
         assertEquals(byId, byKey);
         assertEquals(List.of("unit"), byId.flags());
+        assertEquals(List.of("vendor/**", "!vendor/maintained/**"), byId.ignore());
         assertEquals(ArtifactKind.COVERAGE, artifact.kind());
         assertEquals(7L, artifact.sizeBytes());
         assertEquals(42, report.pullRequestNumber());

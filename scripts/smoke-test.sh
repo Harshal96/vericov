@@ -51,14 +51,16 @@ upload_response="$(curl -fsS \
     "commit_sha": "smoke-test",
     "branch": "main",
     "ci_provider": "local",
+    "ignore": ["generated/**"],
     "artifacts": [{
       "name": "coverage.lcov",
       "kind": "coverage",
       "format": "lcov",
       "content_type": "text/plain",
-      "content_base64": "VE46ClNGOnNyYy9NYWluLmphdmEKREE6MSwxCmVuZF9vZl9yZWNvcmQK"
+      "content_base64": "VE46ClNGOnNyYy9NYWluLmphdmEKREE6MSwxCmVuZF9vZl9yZWNvcmQKVE46ClNGOmdlbmVyYXRlZC9HZW5lcmF0ZWQuamF2YQpEQToxLDAKZW5kX29mX3JlY29yZAo="
     }]
   }')"
+# The fixture contains src/Main.java and generated/Generated.java.
 
 upload_id="$(printf '%s' "$upload_response" \
   | sed -n 's/.*"upload_id"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')"
@@ -85,7 +87,16 @@ while [ "$(date +%s)" -lt "$deadline" ]; do
         echo "smoke-test: coverage report was not complete: $report_response" >&2
         exit 1
       fi
+      case "$report_response" in
+        *'"line":{"covered":1,"total":1}'*)
+          ;;
+        *)
+          echo "smoke-test: ignored source affected coverage totals: $report_response" >&2
+          exit 1
+          ;;
+      esac
       printf '%s\n' "ok: upload $upload_id was analyzed"
+      printf '%s\n' "ok: coverage exclusions were applied"
       printf '%s\n' "ok: coverage report is available"
       printf '%s\n' "smoke-test: upload-to-report flow is working"
       exit 0

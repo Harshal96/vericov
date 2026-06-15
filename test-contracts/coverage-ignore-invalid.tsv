@@ -1,0 +1,14 @@
+# name	rule	error_code
+empty_rule	<empty>	empty
+whitespace_rule	<spaces>	empty
+bare_negation	!	bare_negation
+parent_traversal	../secret.py	parent_traversal
+nested_parent_traversal	src/../secret.py	parent_traversal
+windows_absolute_path	C:\temp\file.py	absolute_path
+unc_absolute_path	\\server\share\file.py	absolute_path
+unclosed_character_range	src/[abc.py	malformed_range
+empty_character_range	src/[].py	malformed_range
+empty_negated_character_range	src/[!].py	malformed_range
+descending_character_range	src/[z-a].py	malformed_range
+dangling_escape	generated\	invalid_escape
+unsupported_escape	foo\q	invalid_escape

@@ -35,6 +35,7 @@ def upload_request() -> UploadRequest:
         component=None,
         package=None,
         artifacts=(),
+        ignore=("generated/**",),
         idempotency_key="request-key",
     )
 
@@ -84,6 +85,7 @@ def test_create_upload_sends_authenticated_json_request(monkeypatch) -> None:
     assert request.get_header("Authorization") == "Bearer vc_live_test"
     assert request.get_header("Idempotency-key") == "request-key"
     assert json.loads(request.data)["commit_sha"] == "abc123"
+    assert json.loads(request.data)["ignore"] == ["generated/**"]
     assert captured["timeout"] == 12
     assert accepted.upload_id == "upload-1"
     assert accepted.analysis_job_id == "job-1"

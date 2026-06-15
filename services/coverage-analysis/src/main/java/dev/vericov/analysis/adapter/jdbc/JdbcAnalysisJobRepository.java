@@ -137,6 +137,38 @@ public class JdbcAnalysisJobRepository implements AnalysisJobRepository {
         }
     }
 
+    @Override
+    public void recordTerminalFailure(UUID jobId, String workerId, Instant failedAt, String errorMessage) {
+        try (var connection = dataSource.getConnection()) {
+            connection.setAutoCommit(false);
+            try {
+                insertAttempt(connection, jobId, "failed", failedAt, errorMessage);
+                try (var statement = connection.prepareStatement("""
+                        update vericov.analysis_jobs
+                        set status = 'failed',
+                            finished_at = ?,
+                            locked_by = null,
+                            locked_at = null,
+                            lease_expires_at = null,
+                            last_error = ?
+                        where id = ?
+                        """)) {
+                    statement.setObject(1, utc(failedAt));
+                    statement.setString(2, errorMessage);
+                    statement.setObject(3, jobId);
+                    statement.executeUpdate();
+                }
+                markUploadFailed(connection, jobId, failedAt, errorMessage);
+                connection.commit();
+            } catch (SQLException exception) {
+                rollbackQuietly(connection);
+                throw exception;
+            }
+        } catch (SQLException exception) {
+            throw new IllegalStateException("Failed to record terminal analysis failure " + jobId, exception);
+        }
+    }
+
     private AnalysisJobStartResult readUnclaimableJobStatus(UUID jobId) throws SQLException {
         try (var connection = dataSource.getConnection();
                 var statement = connection.prepareStatement("""

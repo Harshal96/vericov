@@ -170,7 +170,11 @@ def test_ci_runs_java_python_and_configuration_checks() -> None:
 
 
 def test_java_modules_enforce_eighty_percent_line_coverage() -> None:
-    for path in ("services/upload/pom.xml", "services/coverage-analysis/pom.xml"):
+    for path in (
+        "libraries/coverage-ignore/pom.xml",
+        "services/upload/pom.xml",
+        "services/coverage-analysis/pom.xml",
+    ):
         pom = read(path)
 
         assert "<artifactId>jacoco-maven-plugin</artifactId>" in pom
@@ -190,7 +194,30 @@ def test_smoke_test_exercises_upload_to_analysis_flow() -> None:
     assert "/api/v1/uploads" in smoke_test
     assert "/report" in smoke_test
     assert '"content_base64"' in smoke_test
+    assert '"ignore": ["generated/**"]' in smoke_test
+    assert "generated/Generated.java" in smoke_test
+    assert '"line":{"covered":1,"total":1}' in smoke_test
     assert "was analyzed" in smoke_test
+
+
+def test_public_docs_define_the_coverage_file_exclusion_contract() -> None:
+    root_readme = read("README.md")
+    cli_readme = read("clis/coverage-upload/README.md")
+
+    assert ".vericov.yml" in root_readme
+    assert "The only supported configuration filename is `.vericov.yml`." in cli_readme
+    assert "upload.discover.exclude" in cli_readme
+    assert "!vendor/maintained/**" in cli_readme
+    assert "future uploads only" in cli_readme
+    assert "empty `0/0` coverage report" in cli_readme
+    assert "`.vericov.yml` is also accepted" not in cli_readme
+
+
+def test_upload_schema_persists_immutable_ignore_snapshot() -> None:
+    schema = read("infra/supabase/volumes/db/vericov.sql")
+
+    assert "ignore_rules jsonb NOT NULL DEFAULT '[]'::jsonb" in schema
+    assert "uploads_ignore_rules_array" in schema
 
 
 def test_release_builds_the_real_upload_cli_package() -> None:

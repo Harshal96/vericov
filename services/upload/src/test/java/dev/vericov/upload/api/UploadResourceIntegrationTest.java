@@ -64,6 +64,45 @@ class UploadResourceIntegrationTest {
     }
 
     @Test
+    void acceptsMissingAndPopulatedIgnoreSnapshots() {
+        InMemoryUploadRepository repository = new InMemoryUploadRepository();
+        Fixture fixture = new Fixture(repository, null);
+
+        Response populatedResponse = fixture.resource.createUpload(
+                "Bearer vc_live_test",
+                "integration-ignore-populated",
+                validRequest(List.of("vendor/**", "!vendor/maintained/**")));
+        CreateUploadHttpResponse populated = acceptedBody(populatedResponse);
+        Response missingResponse = fixture.resource.createUpload(
+                "Bearer vc_live_test",
+                "integration-ignore-missing",
+                validRequest(null));
+        CreateUploadHttpResponse missing = acceptedBody(missingResponse);
+
+        assertEquals(
+                List.of("vendor/**", "!vendor/maintained/**"),
+                repository.findById(populated.uploadId()).orElseThrow().ignore());
+        assertEquals(List.of(), repository.findById(missing.uploadId()).orElseThrow().ignore());
+    }
+
+    @Test
+    void rejectsInvalidIgnoreSnapshotBeforeUploadSideEffects() {
+        Fixture fixture = new Fixture();
+
+        Response response = fixture.resource.createUpload(
+                "Bearer vc_live_test",
+                "integration-ignore-invalid",
+                validRequest(List.of("../secret.py")));
+
+        assertEquals(400, response.getStatus());
+        ApiError error = assertInstanceOf(ApiError.class, response.getEntity());
+        assertEquals("validation_error", error.error().code());
+        assertTrue(fixture.storage.storedArtifacts.isEmpty());
+        assertTrue(fixture.queue.jobs.isEmpty());
+        assertTrue(fixture.publisher.events.isEmpty());
+    }
+
+    @Test
     void returnsValidationEnvelopeForMalformedArtifactContent() {
         Fixture fixture = new Fixture();
         CreateUploadHttpRequest request = new CreateUploadHttpRequest(
@@ -75,6 +114,7 @@ class UploadResourceIntegrationTest {
                 "987654321",
                 "https://github.com/acme/payments-api/actions/runs/987654321",
                 List.of("unit"),
+                List.of(),
                 "api",
                 "services/api",
                 List.of(new UploadArtifactHttpRequest(
@@ -205,6 +245,10 @@ class UploadResourceIntegrationTest {
     }
 
     private static CreateUploadHttpRequest validRequest() {
+        return validRequest(List.of());
+    }
+
+    private static CreateUploadHttpRequest validRequest(List<String> ignore) {
         return new CreateUploadHttpRequest(
                 REPOSITORY_ID,
                 "abc123",
@@ -214,6 +258,7 @@ class UploadResourceIntegrationTest {
                 "987654321",
                 "https://github.com/acme/payments-api/actions/runs/987654321",
                 List.of("unit", "linux"),
+                ignore,
                 "api",
                 "services/api",
                 List.of(

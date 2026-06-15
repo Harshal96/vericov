@@ -9,6 +9,8 @@ import dev.vericov.upload.application.port.UploadWorkQueue;
 import dev.vericov.upload.domain.CreateUploadCommand;
 import dev.vericov.upload.domain.RepositoryApiKeyPrincipal;
 import dev.vericov.upload.domain.UploadStatus;
+import dev.vericov.ignore.CoverageIgnoreRules;
+import dev.vericov.ignore.InvalidCoverageIgnoreRuleException;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -152,6 +154,7 @@ public class UploadApplicationService {
                 command.ciBuildId(),
                 command.ciBuildUrl(),
                 command.flags(),
+                command.ignore(),
                 command.component(),
                 command.packageName(),
                 UploadStatus.QUEUED,
@@ -197,6 +200,11 @@ public class UploadApplicationService {
         if (command.artifacts().isEmpty()) {
             throw new InvalidUploadException("validation_error", "at least one artifact is required");
         }
+        try {
+            CoverageIgnoreRules.validate(command.ignore());
+        } catch (InvalidCoverageIgnoreRuleException exception) {
+            throw new InvalidUploadException("validation_error", exception.getMessage());
+        }
         command.artifacts().forEach(this::validateArtifact);
     }
 
@@ -215,6 +223,7 @@ public class UploadApplicationService {
                 command.ciBuildId(),
                 command.ciBuildUrl(),
                 command.flags(),
+                command.ignore(),
                 command.component(),
                 command.packageName(),
                 command.artifacts());

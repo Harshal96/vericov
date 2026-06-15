@@ -61,11 +61,18 @@ uvx --from vericov-coverage-upload vericov upload --coverage coverage/lcov.info 
 
 ## Configuration
 
-The canonical config file is `vericov.yml`. `.vericov.yml` is also accepted, but
-having both files in the same project is an error.
+The only supported configuration filename is `.vericov.yml`. The CLI discovers
+it automatically from the current project. A legacy `vericov.yml`, or an
+explicit `--config` path with another filename, fails with an actionable rename
+error.
 
 ```yaml
 version: 1
+
+ignore:
+  - generated/**
+  - vendor/**
+  - "!vendor/maintained/**"
 
 api:
   url: https://vericov.example.internal
@@ -81,6 +88,25 @@ upload:
   test_results:
     - junit.xml
 ```
+
+The top-level `ignore` list filters source paths after Vericov parses coverage
+artifacts and before it merges reports. Paths are normalized to
+repository-relative `/` separators and matching is case-sensitive. Rules run in order, so
+a later rule overrides an earlier one; a leading `!` re-includes a path. A
+leading `/` anchors a rule at the repository root, a trailing `/` matches a
+directory and its descendants, and patterns without `/` match at any depth.
+The `*`, `?`, character-range, and `**` wildcards use gitignore-style behavior.
+
+This is separate from `upload.discover.exclude`: `ignore` removes source files
+from coverage analysis, while `upload.discover.exclude` prevents artifact files
+from being discovered and uploaded.
+
+Configuration changes affect future uploads only; existing reports are not
+recomputed.
+
+If every coverage source file is excluded, analysis still succeeds with an
+empty `0/0` coverage report. Test-result artifacts in the same upload continue
+to be processed.
 
 Do not put API keys or tokens in this file. Use `VERICOV_API_KEY` or your CI
 secret store.

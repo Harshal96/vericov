@@ -295,5 +295,10 @@ public class AnalysisComponents {
             int attempts = attemptsByJobId.getOrDefault(jobId, 1);
             return attempts >= 5 ? AnalysisFailureDecision.deadLetter() : AnalysisFailureDecision.retryLater();
         }
+
+        @Override
+        public void recordTerminalFailure(UUID jobId, String workerId, Instant failedAt, String errorMessage) {
+            attemptsByJobId.put(jobId, 5);
+        }
     }
 }
