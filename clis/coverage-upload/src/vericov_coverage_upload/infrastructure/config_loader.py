@@ -17,15 +17,20 @@ from vericov_coverage_upload.domain.config import (
     ResolvedConfig,
     UploadConfig,
 )
+from vericov_coverage_upload.domain.coverage_ignore import (
+    CoverageIgnoreRules,
+    InvalidCoverageIgnoreRule,
+)
 from vericov_coverage_upload.domain.errors import ExitCode, VericovCliError
 
-CONFIG_NAMES = ("vericov.yml", ".vericov.yml")
+CANONICAL_CONFIG_NAME = ".vericov.yml"
+LEGACY_CONFIG_NAME = "vericov.yml"
 SECRET_KEY_RE = re.compile(r"(api[_-]?key|token|secret)", re.IGNORECASE)
 UUID_RE = re.compile(
     r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
 )
 
-TOP_LEVEL_KEYS = {"version", "api", "upload"}
+TOP_LEVEL_KEYS = {"version", "ignore", "api", "upload"}
 API_KEYS = {"url"}
 UPLOAD_KEYS = {
     "repository_id",
@@ -53,32 +58,47 @@ def load_config(cwd: Path, explicit_path: Optional[str] = None) -> ResolvedConfi
     path = resolve_config_path(cwd, explicit_path)
     if path is None:
         return ResolvedConfig(None, UploadConfig())
-    raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    try:
+        raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    except yaml.YAMLError as error:
+        raise _config_error(
+            "invalid_yaml",
+            f"Invalid config {path}: malformed YAML.",
+        ) from error
     if not isinstance(raw, dict):
-        raise _config_error("config_type", "Config file must contain a YAML mapping.")
+        raise _config_error(
+            "config_type",
+            f"Invalid config {path}: file must contain a YAML mapping.",
+        )
     validate_no_secrets(raw)
-    upload = parse_upload_config(raw)
+    upload = parse_upload_config(raw, str(path))
     return ResolvedConfig(str(path), upload)
 
 
 def resolve_config_path(cwd: Path, explicit_path: Optional[str] = None) -> Optional[Path]:
     if explicit_path:
         path = Path(explicit_path)
+        if path.name != CANONICAL_CONFIG_NAME:
+            raise _config_error(
+                "invalid_config_filename",
+                f"Config file must be named {CANONICAL_CONFIG_NAME}.",
+            )
         resolved = path if path.is_absolute() else cwd / path
         if not resolved.exists():
             raise _config_error("config_not_found", f"Config file not found: {explicit_path}")
         return resolved.resolve()
 
-    matches = [cwd / name for name in CONFIG_NAMES if (cwd / name).exists()]
-    if len(matches) > 1:
+    legacy = cwd / LEGACY_CONFIG_NAME
+    if legacy.exists():
         raise _config_error(
-            "multiple_configs",
-            "Found both vericov.yml and .vericov.yml. Choose one or pass --config.",
+            "legacy_config_filename",
+            f"Found legacy config {legacy}. Rename it to {CANONICAL_CONFIG_NAME}.",
         )
-    return matches[0].resolve() if matches else None
+    canonical = cwd / CANONICAL_CONFIG_NAME
+    return canonical.resolve() if canonical.exists() else None
 
 
-def parse_upload_config(raw: Mapping[str, Any]) -> UploadConfig:
+def parse_upload_config(raw: Mapping[str, Any], config_path: str = CANONICAL_CONFIG_NAME) -> UploadConfig:
     _reject_unknown(raw.keys(), TOP_LEVEL_KEYS, "config")
     version = raw.get("version", 1)
     if version != 1:
@@ -109,6 +129,7 @@ def parse_upload_config(raw: Mapping[str, Any]) -> UploadConfig:
         ci_build_id=_optional_string(upload, "ci_build_id"),
         ci_build_url=_optional_string(upload, "ci_build_url"),
         flags=_string_tuple(upload.get("flags", ()), "upload.flags"),
+        ignore=_ignore_tuple(raw.get("ignore"), config_path),
         component=_optional_string(upload, "component"),
         package=_optional_string(upload, "package"),
         coverage=_string_tuple(upload.get("coverage", ()), "upload.coverage"),
@@ -158,6 +179,7 @@ def merge_environment(config: UploadConfig, env: Mapping[str, str]) -> UploadCon
         ci_build_id=config.ci_build_id,
         ci_build_url=config.ci_build_url,
         flags=config.flags,
+        ignore=config.ignore,
         component=config.component,
         package=config.package,
         coverage=config.coverage,
@@ -230,6 +252,23 @@ def _string_tuple(value: Any, path: str) -> Tuple[str, ...]:
             raise _config_error("invalid_string", f"{path} entries must be non-empty strings.")
         result.append(item)
     return tuple(result)
+
+
+def _ignore_tuple(value: Any, config_path: str) -> Tuple[str, ...]:
+    if value is None:
+        return ()
+    if not isinstance(value, (list, tuple)):
+        raise _config_error(
+            "invalid_ignore_list",
+            f"Invalid config {config_path}: ignore must be a list of strings.",
+        )
+    try:
+        return CoverageIgnoreRules(tuple(value)).rules
+    except InvalidCoverageIgnoreRule as error:
+        raise _config_error(
+            "invalid_ignore_rule",
+            f"Invalid config {config_path}: {error}.",
+        ) from error
 
 
 def _optional_string(mapping: Mapping[str, Any], key: str) -> Optional[str]:

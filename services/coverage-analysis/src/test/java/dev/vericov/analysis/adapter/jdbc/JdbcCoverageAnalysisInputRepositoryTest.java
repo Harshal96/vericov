@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.sql.SQLException;
 import java.util.List;
 import java.util.UUID;
+import dev.vericov.analysis.domain.NonRetryableAnalysisException;
 import org.junit.jupiter.api.Test;
 
 class JdbcCoverageAnalysisInputRepositoryTest {
@@ -33,6 +34,8 @@ class JdbcCoverageAnalysisInputRepositoryTest {
                                 "abc123",
                                 "branch",
                                 "main",
+                                "ignore_rules",
+                                "[\"vendor/**\",\"!vendor/maintained/**\"]",
                                 "pull_request_number",
                                 null))))
                 .whenSqlContains(
@@ -62,6 +65,7 @@ class JdbcCoverageAnalysisInputRepositoryTest {
         assertEquals("github", input.provider());
         assertEquals("abc123", input.commitSha());
         assertEquals("main", input.branch());
+        assertEquals(List.of("vendor/**", "!vendor/maintained/**"), input.ignore());
         assertEquals(null, input.pullRequestNumber());
         assertEquals(1, input.artifacts().size());
         assertEquals(ARTIFACT_ID, input.artifacts().getFirst().artifactId());
@@ -89,5 +93,30 @@ class JdbcCoverageAnalysisInputRepositoryTest {
                 () -> failingRepository.load(UPLOAD_ID));
         assertTrue(jdbcFailure.getMessage().contains("Failed to load coverage analysis input for upload " + UPLOAD_ID));
         assertTrue(jdbcFailure.getCause() instanceof SQLException);
+    }
+
+    @Test
+    void rejectsInvalidPersistedIgnoreRulesAsNonRetryableInput() {
+        JdbcProxySupport.RecordingDataSource dataSource = JdbcProxySupport.dataSource()
+                .whenSqlContains(
+                        "from vericov.uploads u",
+                        new JdbcProxySupport.StatementBehavior().withRows(List.of(JdbcProxySupport.row(
+                                "id", UPLOAD_ID,
+                                "tenant_id", TENANT_ID,
+                                "repository_id", REPOSITORY_ID,
+                                "provider", "github",
+                                "commit_sha", "abc123",
+                                "branch", "main",
+                                "ignore_rules", "[\"../secret.py\"]",
+                                "pull_request_number", null))))
+                .whenSqlContains(
+                        "from vericov.upload_artifacts",
+                        new JdbcProxySupport.StatementBehavior().withRows(List.of()));
+
+        NonRetryableAnalysisException exception = assertThrows(
+                NonRetryableAnalysisException.class,
+                () -> new JdbcCoverageAnalysisInputRepository(dataSource).load(UPLOAD_ID));
+
+        assertTrue(exception.getMessage().contains("ignore[0]"));
     }
 }

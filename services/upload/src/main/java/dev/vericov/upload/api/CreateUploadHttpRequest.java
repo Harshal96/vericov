@@ -21,6 +21,7 @@ public record CreateUploadHttpRequest(
         @JsonbProperty("ci_build_url")
         String ciBuildUrl,
         List<String> flags,
+        List<String> ignore,
         String component,
         @JsonbProperty("package")
         String packageName,
@@ -28,6 +29,7 @@ public record CreateUploadHttpRequest(
 
     public CreateUploadHttpRequest {
         flags = List.copyOf(flags == null ? List.of() : flags);
+        ignore = List.copyOf(ignore == null ? List.of() : ignore);
         artifacts = List.copyOf(artifacts == null ? List.of() : artifacts);
     }
 
@@ -43,6 +45,7 @@ public record CreateUploadHttpRequest(
                 ciBuildId,
                 ciBuildUrl,
                 flags,
+                ignore,
                 Optional.ofNullable(blankToNull(component)),
                 Optional.ofNullable(blankToNull(packageName)),
                 artifacts.stream().map(UploadArtifactHttpRequest::toDomain).toList());

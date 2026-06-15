@@ -36,6 +36,24 @@ class JdbcAnalysisJobRepositoryTransactionTest {
         assertTrue(dataSource.containsSql("update vericov.uploads"));
     }
 
+    @Test
+    void recordsTerminalFailureAndMarksUploadFailedInOneTransaction() {
+        RecordingDataSource dataSource = new RecordingDataSource();
+        var repository = new JdbcAnalysisJobRepository(dataSource);
+
+        repository.recordTerminalFailure(
+                UUID.fromString("11111111-1111-1111-1111-111111111111"),
+                "worker-1",
+                Instant.parse("2026-06-05T12:00:00Z"),
+                "invalid persisted ignore rules");
+
+        assertFalse(dataSource.autoCommit);
+        assertTrue(dataSource.committed);
+        assertFalse(dataSource.rolledBack);
+        assertTrue(dataSource.containsSql("set status = 'failed'"));
+        assertTrue(dataSource.containsSql("update vericov.uploads"));
+    }
+
     private static final class RecordingDataSource implements DataSource {
         private final List<String> sql = new ArrayList<>();
         private boolean autoCommit = true;

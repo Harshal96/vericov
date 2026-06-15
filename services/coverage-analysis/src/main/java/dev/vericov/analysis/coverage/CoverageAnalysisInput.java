@@ -12,11 +12,25 @@ public record CoverageAnalysisInput(
         String commitSha,
         String branch,
         Integer pullRequestNumber,
+        List<String> ignore,
         List<CoverageInputArtifact> artifacts) {
 
     public CoverageAnalysisInput {
         provider = provider == null || provider.isBlank() ? "github" : provider.trim().toLowerCase(Locale.ROOT);
+        ignore = List.copyOf(ignore == null ? List.of() : ignore);
         artifacts = List.copyOf(artifacts == null ? List.of() : artifacts);
+    }
+
+    public CoverageAnalysisInput(
+            UUID uploadId,
+            UUID tenantId,
+            UUID repositoryId,
+            String provider,
+            String commitSha,
+            String branch,
+            Integer pullRequestNumber,
+            List<CoverageInputArtifact> artifacts) {
+        this(uploadId, tenantId, repositoryId, provider, commitSha, branch, pullRequestNumber, List.of(), artifacts);
     }
 
     public CoverageAnalysisInput(
@@ -27,7 +41,7 @@ public record CoverageAnalysisInput(
             String branch,
             Integer pullRequestNumber,
             List<CoverageInputArtifact> artifacts) {
-        this(uploadId, tenantId, repositoryId, "github", commitSha, branch, pullRequestNumber, artifacts);
+        this(uploadId, tenantId, repositoryId, "github", commitSha, branch, pullRequestNumber, List.of(), artifacts);
     }
 
     public List<CoverageInputArtifact> coverageArtifacts() {

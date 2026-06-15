@@ -42,6 +42,11 @@
 
     <dependencies>
         <dependency>
+            <groupId>dev.vericov</groupId>
+            <artifactId>coverage-ignore</artifactId>
+            <version>0.1.0-SNAPSHOT</version>
+        </dependency>
+        <dependency>
             <groupId>io.helidon.microprofile.bundles</groupId>
             <artifactId>helidon-microprofile</artifactId>
         </dependency>

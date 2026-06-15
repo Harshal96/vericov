@@ -71,13 +71,24 @@ def test_upload_reports_missing_api_key_as_json(tmp_path: Path, monkeypatch) -> 
 
 
 def test_config_validate_reports_error_as_json(tmp_path: Path, monkeypatch) -> None:
-    (tmp_path / "vericov.yml").write_text("version: 2\n", encoding="utf-8")
+    (tmp_path / ".vericov.yml").write_text("version: 2\n", encoding="utf-8")
     monkeypatch.chdir(tmp_path)
 
     result = runner.invoke(app, ["config", "validate", "--json"])
 
     assert result.exit_code == 1
     assert json.loads(result.stdout)["error"]["code"] == "unsupported_version"
+
+
+def test_config_validate_reports_legacy_filename_error(tmp_path: Path, monkeypatch) -> None:
+    (tmp_path / "vericov.yml").write_text("version: 1\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+
+    result = runner.invoke(app, ["config", "validate"])
+
+    assert result.exit_code == 1
+    assert "rename" in result.stderr.lower()
+    assert ".vericov.yml" in result.stderr
 
 
 def test_upload_prints_accepted_response(monkeypatch, tmp_path: Path) -> None:

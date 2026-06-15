@@ -4,6 +4,7 @@ import dev.vericov.analysis.application.port.AnalysisJobQueue;
 import dev.vericov.analysis.application.port.AnalysisJobRepository;
 import dev.vericov.analysis.application.port.CoverageAnalysisProcessor;
 import dev.vericov.analysis.domain.AnalysisFailureDecision;
+import dev.vericov.analysis.domain.NonRetryableAnalysisException;
 import dev.vericov.analysis.domain.QueuedAnalysisMessage;
 import dev.vericov.analysis.domain.UploadReceivedEvent;
 import java.time.Clock;
@@ -77,6 +78,13 @@ public class UploadAnalysisEventHandler implements AnalysisMessageHandler {
             processor.process(event);
             jobs.completeJob(event.analysisJobId(), clock.instant());
             queue.archive(queueName, message.messageId());
+        } catch (NonRetryableAnalysisException exception) {
+            jobs.recordTerminalFailure(
+                    event.analysisJobId(),
+                    workerId,
+                    clock.instant(),
+                    exception.getMessage());
+            deadLetterAndArchive(message, exception.getMessage());
         } catch (RuntimeException exception) {
             handleProcessingFailure(message, event, exception);
         }

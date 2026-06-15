@@ -439,6 +439,85 @@ class DefaultCoverageAnalysisProcessorTest {
     }
 
     @Test
+    void allCoverageFilesExcludedPersistsEmptyReportAndTestRuns() {
+        CoverageAnalysisInput input = new CoverageAnalysisInput(
+                UPLOAD_ID,
+                TENANT_ID,
+                REPOSITORY_ID,
+                "github",
+                "abc123",
+                "main",
+                42,
+                List.of("generated/**"),
+                List.of(
+                        new CoverageInputArtifact(
+                                "unit.lcov",
+                                "coverage",
+                                "lcov",
+                                "coverage-raw",
+                                "tenant/upload/coverage/unit.lcov",
+                                "sha-1"),
+                        new CoverageInputArtifact(
+                                "integration.lcov",
+                                "coverage",
+                                "lcov",
+                                "coverage-raw",
+                                "tenant/upload/coverage/integration.lcov",
+                                "sha-2"),
+                        new CoverageInputArtifact(
+                                TEST_ARTIFACT_ID,
+                                "junit.xml",
+                                "test_results",
+                                "junit",
+                                "test-results-raw",
+                                "tenant/upload/test-results/junit.xml",
+                                "sha-3")));
+        FakeContentStore content = new FakeContentStore(Map.of(
+                "coverage-raw/tenant/upload/coverage/unit.lcov", """
+                        TN:
+                        SF:generated/One.java
+                        DA:1,1
+                        end_of_record
+                        """.getBytes(StandardCharsets.UTF_8),
+                "coverage-raw/tenant/upload/coverage/integration.lcov", """
+                        TN:
+                        SF:generated/Two.java
+                        DA:1,0
+                        end_of_record
+                        """.getBytes(StandardCharsets.UTF_8),
+                "test-results-raw/tenant/upload/test-results/junit.xml", """
+                        <testsuite name="unit" tests="1" failures="0" errors="0" skipped="0" />
+                        """.getBytes(StandardCharsets.UTF_8)));
+        FakeReportRepository reports = new FakeReportRepository();
+        FakeNormalizedCoverageStore normalizedCoverage = new FakeNormalizedCoverageStore();
+        FakeTestRunRepository testRuns = new FakeTestRunRepository();
+        DefaultCoverageAnalysisProcessor processor = new DefaultCoverageAnalysisProcessor(
+                new FakeInputRepository(input),
+                content,
+                reports,
+                new FakeGateConfigurationRepository(List.of()),
+                normalizedCoverage,
+                lcovParserRegistry(),
+                testResultParserRegistry(),
+                testRuns,
+                Clock.fixed(NOW, ZoneOffset.UTC));
+
+        processor.process(event());
+
+        CoverageReport report = reports.savedReport;
+        assertEquals(0, report.line().covered());
+        assertEquals(0, report.line().total());
+        assertEquals(List.of(), report.files());
+        assertEquals(List.of(), report.lineHits());
+        assertEquals(List.of(), report.gapFindings());
+        assertEquals(List.of(), report.componentRollups());
+        assertEquals(1, normalizedCoverage.storedReports.size());
+        assertEquals(List.of(), normalizedCoverage.storedReports.getFirst().files());
+        assertEquals(List.of(), normalizedCoverage.storedReports.getFirst().lineHits());
+        assertEquals(1, testRuns.savedRuns.size());
+    }
+
+    @Test
     void failsWhenTestResultArtifactFormatIsUnsupported() {
         DefaultCoverageAnalysisProcessor processor = new DefaultCoverageAnalysisProcessor(
                 new FakeInputRepository(new CoverageAnalysisInput(

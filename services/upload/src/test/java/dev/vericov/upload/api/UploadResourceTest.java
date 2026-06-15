@@ -147,6 +147,7 @@ class UploadResourceTest {
                 "987654321",
                 "https://github.com/acme/payments-api/actions/runs/987654321",
                 List.of("unit"),
+                List.of(),
                 "api",
                 "services/api",
                 List.of(new UploadArtifactHttpRequest(

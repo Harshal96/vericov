@@ -20,7 +20,7 @@ def register(root: typer.Typer) -> None:
 
 @config_app.command("validate")
 def validate(
-    config: Optional[str] = typer.Option(None, "--config", help="Path to vericov.yml."),
+    config: Optional[str] = typer.Option(None, "--config", help="Path to .vericov.yml."),
     as_json: bool = typer.Option(False, "--json", help="Emit machine-readable JSON."),
 ) -> None:
     try:

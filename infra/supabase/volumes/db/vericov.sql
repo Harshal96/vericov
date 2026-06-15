@@ -162,6 +162,7 @@ CREATE TABLE IF NOT EXISTS vericov.uploads (
     ci_build_id text,
     ci_build_url text,
     flags text[] NOT NULL DEFAULT ARRAY[]::text[],
+    ignore_rules jsonb NOT NULL DEFAULT '[]'::jsonb,
     component text,
     package_name text,
     status text NOT NULL DEFAULT 'queued'
@@ -173,6 +174,24 @@ CREATE TABLE IF NOT EXISTS vericov.uploads (
     error_message text,
     UNIQUE (repository_id, idempotency_key)
 );
+
+ALTER TABLE vericov.uploads
+    ADD COLUMN IF NOT EXISTS ignore_rules jsonb NOT NULL DEFAULT '[]'::jsonb;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conname = 'uploads_ignore_rules_array'
+          AND conrelid = 'vericov.uploads'::regclass
+    ) THEN
+        ALTER TABLE vericov.uploads
+            ADD CONSTRAINT uploads_ignore_rules_array
+            CHECK (jsonb_typeof(ignore_rules) = 'array');
+    END IF;
+END
+$$;
 
 CREATE TABLE IF NOT EXISTS vericov.upload_artifacts (
     id uuid PRIMARY KEY DEFAULT extensions.gen_random_uuid(),

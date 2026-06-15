@@ -8,6 +8,9 @@ import dev.vericov.upload.application.CoverageReportDetails;
 import dev.vericov.upload.application.port.UploadRepository;
 import dev.vericov.upload.domain.ArtifactKind;
 import dev.vericov.upload.domain.UploadStatus;
+import jakarta.json.Json;
+import jakarta.json.JsonString;
+import java.io.StringReader;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -142,7 +145,7 @@ public class JdbcUploadRepository implements UploadRepository {
                 select u.id, u.tenant_id, u.repository_id, u.api_key_id,
                        u.commit_sha, u.branch, u.pull_request_number,
                        u.ci_provider, u.ci_build_id, u.ci_build_url,
-                       u.flags, u.component, u.package_name, u.status,
+                       u.flags, u.ignore_rules, u.component, u.package_name, u.status,
                        u.idempotency_key, u.accepted_at, j.id as analysis_job_id
                 from vericov.uploads u
                 left join vericov.analysis_jobs j on j.upload_id = u.id
@@ -165,9 +168,9 @@ public class JdbcUploadRepository implements UploadRepository {
                 insert into vericov.uploads (
                     id, tenant_id, repository_id, api_key_id, commit_sha, branch,
                     pull_request_number, ci_provider, ci_build_id, ci_build_url,
-                    flags, component, package_name, status, idempotency_key, accepted_at
+                    flags, ignore_rules, component, package_name, status, idempotency_key, accepted_at
                 )
-                values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?, ?, ?, ?, ?)
                 """)) {
             int index = 1;
             statement.setObject(index++, upload.uploadId());
@@ -185,6 +188,7 @@ public class JdbcUploadRepository implements UploadRepository {
             statement.setString(index++, upload.ciBuildId());
             statement.setString(index++, upload.ciBuildUrl());
             statement.setArray(index++, connection.createArrayOf("text", upload.flags().toArray(String[]::new)));
+            statement.setString(index++, ignoreRulesJson(upload.ignore()));
             statement.setString(index++, upload.component().orElse(null));
             statement.setString(index++, upload.packageName().orElse(null));
             statement.setString(index++, databaseStatus(upload.status()));
@@ -291,12 +295,32 @@ public class JdbcUploadRepository implements UploadRepository {
                 resultSet.getString("ci_build_id"),
                 resultSet.getString("ci_build_url"),
                 List.of(flags),
+                parseIgnoreRules(resultSet.getString("ignore_rules")),
                 Optional.ofNullable(resultSet.getString("component")),
                 Optional.ofNullable(resultSet.getString("package_name")),
                 uploadStatus(resultSet.getString("status")),
                 resultSet.getString("idempotency_key"),
                 resultSet.getObject("accepted_at", OffsetDateTime.class).toInstant(),
                 Optional.ofNullable(resultSet.getObject("analysis_job_id", UUID.class)));
+    }
+
+    private static String ignoreRulesJson(List<String> rules) {
+        var builder = Json.createArrayBuilder();
+        rules.forEach(builder::add);
+        return builder.build().toString();
+    }
+
+    private static List<String> parseIgnoreRules(String json) {
+        if (json == null || json.isBlank()) {
+            return List.of();
+        }
+        try (var reader = Json.createReader(new StringReader(json))) {
+            return reader.readArray().getValuesAs(JsonString.class).stream()
+                    .map(JsonString::getString)
+                    .toList();
+        } catch (RuntimeException exception) {
+            throw new IllegalStateException("Stored upload ignore rules must be a JSON string array", exception);
+        }
     }
 
     private static void setNullableUuid(

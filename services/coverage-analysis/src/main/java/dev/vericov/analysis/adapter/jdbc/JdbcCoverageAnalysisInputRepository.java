@@ -3,6 +3,12 @@ package dev.vericov.analysis.adapter.jdbc;
 import dev.vericov.analysis.application.port.CoverageAnalysisInputRepository;
 import dev.vericov.analysis.coverage.CoverageAnalysisInput;
 import dev.vericov.analysis.coverage.CoverageInputArtifact;
+import dev.vericov.analysis.domain.NonRetryableAnalysisException;
+import dev.vericov.ignore.CoverageIgnoreRules;
+import dev.vericov.ignore.InvalidCoverageIgnoreRuleException;
+import jakarta.json.Json;
+import jakarta.json.JsonString;
+import java.io.StringReader;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
@@ -30,6 +36,7 @@ public class JdbcCoverageAnalysisInputRepository implements CoverageAnalysisInpu
                     upload.commitSha(),
                     upload.branch(),
                     upload.pullRequestNumber(),
+                    upload.ignore(),
                     artifacts);
         } catch (SQLException exception) {
             throw new IllegalStateException("Failed to load coverage analysis input for upload " + uploadId, exception);
@@ -39,7 +46,7 @@ public class JdbcCoverageAnalysisInputRepository implements CoverageAnalysisInpu
     private static UploadRow findUpload(java.sql.Connection connection, UUID uploadId) throws SQLException {
         try (var statement = connection.prepareStatement("""
                 select u.id, u.tenant_id, u.repository_id, r.provider,
-                       u.commit_sha, u.branch, u.pull_request_number
+                       u.commit_sha, u.branch, u.pull_request_number, u.ignore_rules
                 from vericov.uploads u
                 join vericov.repositories r on r.id = u.repository_id
                 where u.id = ?
@@ -56,7 +63,8 @@ public class JdbcCoverageAnalysisInputRepository implements CoverageAnalysisInpu
                         resultSet.getString("provider"),
                         resultSet.getString("commit_sha"),
                         resultSet.getString("branch"),
-                        nullableInteger(resultSet, "pull_request_number"));
+                        nullableInteger(resultSet, "pull_request_number"),
+                        parseAndValidateIgnoreRules(resultSet.getString("ignore_rules")));
             }
         }
     }
@@ -91,6 +99,27 @@ public class JdbcCoverageAnalysisInputRepository implements CoverageAnalysisInpu
         return resultSet.wasNull() ? null : value;
     }
 
+    private static List<String> parseAndValidateIgnoreRules(String json) {
+        List<String> rules;
+        try (var reader = Json.createReader(new StringReader(
+                json == null || json.isBlank() ? "[]" : json))) {
+            rules = reader.readArray().getValuesAs(JsonString.class).stream()
+                    .map(JsonString::getString)
+                    .toList();
+        } catch (RuntimeException exception) {
+            throw new NonRetryableAnalysisException(
+                    "Persisted upload ignore rules must be a JSON string array",
+                    exception);
+        }
+        try {
+            return CoverageIgnoreRules.validate(rules);
+        } catch (InvalidCoverageIgnoreRuleException exception) {
+            throw new NonRetryableAnalysisException(
+                    "Invalid persisted upload ignore rules: " + exception.getMessage(),
+                    exception);
+        }
+    }
+
     private record UploadRow(
             UUID id,
             UUID tenantId,
@@ -98,6 +127,7 @@ public class JdbcCoverageAnalysisInputRepository implements CoverageAnalysisInpu
             String provider,
             String commitSha,
             String branch,
-            Integer pullRequestNumber) {
+            Integer pullRequestNumber,
+            List<String> ignore) {
     }
 }

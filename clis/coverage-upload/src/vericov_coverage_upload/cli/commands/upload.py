@@ -19,7 +19,7 @@ def register(root: typer.Typer) -> None:
 
 
 def upload(
-    config: Optional[str] = typer.Option(None, "--config", help="Path to vericov.yml."),
+    config: Optional[str] = typer.Option(None, "--config", help="Path to .vericov.yml."),
     api_key: Optional[str] = typer.Option(None, "--api-key", envvar="VERICOV_API_KEY", help="Vericov repo API key."),
     api_url: Optional[str] = typer.Option(None, "--api-url", envvar="VERICOV_API_URL", help="Vericov API base URL."),
     repository_id: Optional[str] = typer.Option(None, "--repository-id", envvar="VERICOV_REPOSITORY_ID", help="Repository UUID."),

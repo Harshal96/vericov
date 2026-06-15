@@ -607,6 +607,19 @@ public class AnalysisSteps {
             return failureDecision;
         }
 
+        @Override
+        public void recordTerminalFailure(
+                UUID jobId,
+                String workerId,
+                Instant failedAt,
+                String errorMessage) {
+            assertEquals("worker-1", workerId);
+            assertEquals(NOW, failedAt);
+            assertFalseBlank(errorMessage);
+            failedJobs.add(jobId);
+            failureDecision = AnalysisFailureDecision.deadLetter();
+        }
+
         private static void assertFalseBlank(String value) {
             assertNotNull(value);
             assertFalse(value.isBlank());

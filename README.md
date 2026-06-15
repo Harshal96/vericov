@@ -17,6 +17,8 @@ backed by your own PostgreSQL or the database that ships in the box.
 
 - Upload coverage and test-result artifacts from CI.
 - Parse LCOV, JaCoCo, Cobertura, Clover, Go cover, gcov, and llvm-cov output.
+- Exclude generated or vendored source files with ordered rules in
+  `.vericov.yml`.
 - Store normalized reports, line hits, test runs, coverage gaps, and gates.
 - Run with an integrated PostgreSQL database or bring your own compatible
   PostgreSQL instance.
@@ -54,6 +56,18 @@ set +a
 VERICOV_API_URL=http://localhost:8080 \
 VERICOV_API_KEY="$VERICOV_DEV_API_KEY" \
 vericov upload --coverage coverage/lcov.info --wait
+```
+
+Repositories can exclude source files from every coverage-derived result with
+the top-level `ignore` list in `.vericov.yml`:
+
+```yaml
+version: 1
+
+ignore:
+  - generated/**
+  - vendor/**
+  - "!vendor/maintained/**"
 ```
 
 Stop it without deleting data:
