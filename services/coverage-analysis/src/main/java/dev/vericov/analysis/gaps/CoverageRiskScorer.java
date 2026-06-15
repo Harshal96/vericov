@@ -194,7 +194,7 @@ public class CoverageRiskScorer {
             return false;
         }
         return expected.equals(candidate.componentName())
-                || (candidate.componentId() != null && expected.equals(candidate.componentId().toString()));
+                || expected.equals(candidate.componentKey());
     }
 
     private static RiskFactorContribution factor(String name, int value, String reason) {

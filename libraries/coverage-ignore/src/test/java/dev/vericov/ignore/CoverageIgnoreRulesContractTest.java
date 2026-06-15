@@ -45,6 +45,32 @@ class CoverageIgnoreRulesContractTest {
         assertThrows(UnsupportedOperationException.class, () -> matcher.rules().add("generated/**"));
     }
 
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("componentMatchCases")
+    void matchesComponentPathContract(
+            String name,
+            String glob,
+            String path,
+            boolean matches,
+            int literalSegments,
+            int literalCharacters) {
+        CoveragePathPattern pattern = new CoveragePathPattern(glob);
+
+        assertEquals(matches, pattern.matches(path), name);
+        assertEquals(literalSegments, pattern.specificity().literalSegments(), name);
+        assertEquals(literalCharacters, pattern.specificity().literalCharacters(), name);
+    }
+
+    @Test
+    void componentPathsRejectNegation() {
+        assertEquals(
+                "negation_not_allowed",
+                assertThrows(
+                                InvalidCoverageIgnoreRuleException.class,
+                                () -> new CoveragePathPattern("!src/**"))
+                        .code());
+    }
+
     private static Stream<Object[]> matchCases() throws IOException {
         return rows("coverage-ignore-matches.tsv")
                 .map(columns -> new Object[] {
@@ -65,6 +91,18 @@ class CoverageIgnoreRulesContractTest {
                         default -> columns[1];
                     },
                     columns[2]
+                });
+    }
+
+    private static Stream<Object[]> componentMatchCases() throws IOException {
+        return rows("component-path-matches.tsv")
+                .map(columns -> new Object[] {
+                    columns[0],
+                    columns[1],
+                    columns[2],
+                    Boolean.parseBoolean(columns[3]),
+                    Integer.parseInt(columns[4]),
+                    Integer.parseInt(columns[5])
                 });
     }
 

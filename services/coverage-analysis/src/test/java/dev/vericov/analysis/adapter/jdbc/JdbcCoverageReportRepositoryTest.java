@@ -5,6 +5,7 @@ import dev.vericov.analysis.coverage.CoverageLineHit;
 import dev.vericov.analysis.coverage.CoverageMetric;
 import dev.vericov.analysis.coverage.CoverageReport;
 import dev.vericov.analysis.gaps.CoverageGapFinding;
+import dev.vericov.analysis.gates.GateEvaluation;
 import java.math.BigDecimal;
 import java.io.PrintWriter;
 import java.lang.reflect.InvocationHandler;
@@ -36,9 +37,13 @@ class JdbcCoverageReportRepositoryTest {
     @Test
     void insertsNormalizedStorageLocationWithCoverageReport() {
         RecordingDataSource dataSource = new RecordingDataSource();
-        CoverageReport report = report().withNormalizedStorage(
-                "coverage-normalized",
-                TENANT_ID + "/" + UPLOAD_ID + "/coverage-normalized/coverage-map.json.gz");
+        CoverageReport report = report()
+                .withConfigSha256("a".repeat(64))
+                .withGateStatus("failed")
+                .withComponentCoverage(report().files(), List.of(), List.of("unassigned_files:1"))
+                .withNormalizedStorage(
+                        "coverage-normalized",
+                        TENANT_ID + "/" + UPLOAD_ID + "/coverage-normalized/coverage-map.json.gz");
 
         new JdbcCoverageReportRepository(dataSource).save(report);
 
@@ -49,6 +54,9 @@ class JdbcCoverageReportRepositoryTest {
         assertEquals(
                 TENANT_ID + "/" + UPLOAD_ID + "/coverage-normalized/coverage-map.json.gz",
                 statement.parameters.get(17));
+        assertEquals("a".repeat(64), statement.parameters.get(18));
+        assertEquals("failed", statement.parameters.get(19));
+        assertEquals("[\"unassigned_files:1\"]", statement.parameters.get(20));
     }
 
     @Test
@@ -76,17 +84,17 @@ class JdbcCoverageReportRepositoryTest {
         new JdbcCoverageReportRepository(dataSource).save(report);
 
         RecordedStatement fileSummary = dataSource.statementContaining("insert into vericov.coverage_file_summaries");
-        assertTrue(fileSummary.sql.contains("component_id"));
+        assertTrue(fileSummary.sql.contains("leaf_component_key"));
         assertTrue(fileSummary.sql.contains("package_name"));
         assertTrue(fileSummary.sql.contains("owners"));
-        assertEquals(componentId, fileSummary.parameters.get(6));
+        assertEquals(componentId.toString(), fileSummary.parameters.get(6));
         assertEquals("app", fileSummary.parameters.get(7));
 
         RecordedStatement rollup = dataSource.statementContaining("insert into vericov.component_coverage_rollups");
         assertTrue(rollup.sql.contains("repository_id"));
         assertEquals(REPOSITORY_ID, rollup.parameters.get(2));
-        assertEquals(componentId, rollup.parameters.get(4));
-        assertEquals("@acme/app", rollup.parameters.get(5));
+        assertEquals(componentId.toString(), rollup.parameters.get(4));
+        assertEquals(componentId.toString(), rollup.parameters.get(9));
     }
 
     @Test
@@ -98,7 +106,7 @@ class JdbcCoverageReportRepositoryTest {
                 TENANT_ID,
                 REPOSITORY_ID,
                 REPORT_ID,
-                componentId,
+                componentId.toString(),
                 "abc123",
                 42,
                 "src/App.java",
@@ -136,15 +144,52 @@ class JdbcCoverageReportRepositoryTest {
         assertTrue(gap.sql.contains("risk_score"));
         assertTrue(gap.sql.contains("evidence_json"));
         assertEquals(finding.id(), gap.parameters.get(1));
-        assertEquals(componentId, gap.parameters.get(6));
+        assertEquals(componentId.toString(), gap.parameters.get(6));
         assertEquals("new_uncovered_changed_line", gap.parameters.get(14));
         assertEquals(new BigDecimal("72.5"), gap.parameters.get(17));
         assertEquals("high", gap.parameters.get(18));
 
         RecordedStatement rollup = dataSource.statementContaining("insert into vericov.component_coverage_rollups");
-        assertEquals(1, rollup.parameters.get(14));
-        assertEquals(0, rollup.parameters.get(15));
-        assertEquals(new BigDecimal("72.5"), rollup.parameters.get(16));
+        assertEquals(1, rollup.parameters.get(22));
+        assertEquals(0, rollup.parameters.get(23));
+        assertEquals(new BigDecimal("72.5"), rollup.parameters.get(24));
+    }
+
+    @Test
+    void insertsComponentGateScopeAndSource() {
+        RecordingDataSource dataSource = new RecordingDataSource();
+        GateEvaluation evaluation = new GateEvaluation(
+                UUID.fromString("cccccccc-cccc-cccc-cccc-cccccccccccc"),
+                TENANT_ID,
+                REPOSITORY_ID,
+                REPORT_ID,
+                "abc123",
+                "main",
+                42,
+                "payments-api-line",
+                "component_coverage",
+                "line",
+                new BigDecimal("90"),
+                new BigDecimal("80"),
+                "failed",
+                true,
+                Map.of("config_sha256", "a".repeat(64)),
+                "component_config",
+                "component",
+                "payments-api",
+                List.of("commerce", "payments-api"),
+                Instant.parse("2026-05-23T12:00:00Z"));
+
+        new JdbcCoverageReportRepository(dataSource).save(report(), List.of(evaluation));
+
+        RecordedStatement gate = dataSource.statementContaining("insert into vericov.gate_evaluations");
+        assertTrue(gate.sql.contains("source"));
+        assertTrue(gate.sql.contains("scope_type"));
+        assertTrue(gate.sql.contains("scope_key"));
+        assertTrue(gate.sql.contains("scope_path"));
+        assertEquals("component_config", gate.parameters.get(15));
+        assertEquals("component", gate.parameters.get(16));
+        assertEquals("payments-api", gate.parameters.get(17));
     }
 
     private static CoverageReport report() {

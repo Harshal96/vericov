@@ -3,6 +3,8 @@
 from dataclasses import dataclass
 from typing import Optional, Tuple
 
+from vericov_coverage_upload.domain.component_config import ComponentDefinition
+
 DEFAULT_API_URL = "https://api.vericov.dev"
 DEFAULT_MAX_ARTIFACT_BYTES = 25 * 1024 * 1024
 DEFAULT_MAX_TOTAL_BYTES = 50 * 1024 * 1024
@@ -29,6 +31,7 @@ class UploadConfig:
     ci_build_url: Optional[str] = None
     flags: Tuple[str, ...] = ()
     ignore: Tuple[str, ...] = ()
+    components: Tuple[ComponentDefinition, ...] = ()
     component: Optional[str] = None
     package: Optional[str] = None
     coverage: Tuple[str, ...] = ()

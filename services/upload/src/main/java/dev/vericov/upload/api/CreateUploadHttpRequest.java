@@ -3,6 +3,7 @@ package dev.vericov.upload.api;
 import dev.vericov.upload.domain.CreateUploadCommand;
 import jakarta.json.bind.annotation.JsonbProperty;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -22,6 +23,9 @@ public record CreateUploadHttpRequest(
         String ciBuildUrl,
         List<String> flags,
         List<String> ignore,
+        List<Map<String, Object>> components,
+        @JsonbProperty("config_sha256")
+        String configSha256,
         String component,
         @JsonbProperty("package")
         String packageName,
@@ -29,7 +33,6 @@ public record CreateUploadHttpRequest(
 
     public CreateUploadHttpRequest {
         flags = List.copyOf(flags == null ? List.of() : flags);
-        ignore = List.copyOf(ignore == null ? List.of() : ignore);
         artifacts = List.copyOf(artifacts == null ? List.of() : artifacts);
     }
 
@@ -45,7 +48,10 @@ public record CreateUploadHttpRequest(
                 ciBuildId,
                 ciBuildUrl,
                 flags,
-                ignore,
+                ignore == null ? List.of() : List.copyOf(ignore),
+                ComponentConfigHttpMapper.toDomain(components),
+                configSha256,
+                ignore != null || components != null || configSha256 != null,
                 Optional.ofNullable(blankToNull(component)),
                 Optional.ofNullable(blankToNull(packageName)),
                 artifacts.stream().map(UploadArtifactHttpRequest::toDomain).toList());

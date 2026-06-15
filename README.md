@@ -68,7 +68,30 @@ ignore:
   - generated/**
   - vendor/**
   - "!vendor/maintained/**"
+
+components:
+  - key: commerce
+    name: Commerce
+    owners:
+      - team-commerce
+    gates:
+      line: 80
+    components:
+      - key: payments-api
+        name: Payments API
+        owners:
+          - team-payments
+        gates:
+          line: 90
+        paths:
+          - services/payments/api/**
 ```
+
+Vericov applies exclusions and re-inclusions before component assignment.
+Included files are assigned to the most-specific matching leaf, and unmatched
+files appear under the `unassigned` report component. Parent metrics and gates
+cover all descendants. Component keys are stable repository-owned identities
+and must be unique across the file.
 
 Stop it without deleting data:
 

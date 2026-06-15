@@ -14,7 +14,7 @@ public record CoverageGapFinding(
         UUID tenantId,
         UUID repositoryId,
         UUID coverageReportId,
-        UUID componentId,
+        String componentKey,
         String commitSha,
         Integer pullRequestNumber,
         String filePath,
@@ -53,6 +53,17 @@ public record CoverageGapFinding(
         evidence = copyMap(evidence);
         Objects.requireNonNull(createdAt, "createdAt");
         Objects.requireNonNull(updatedAt, "updatedAt");
+    }
+
+    public UUID componentId() {
+        if (componentKey == null) {
+            return null;
+        }
+        try {
+            return UUID.fromString(componentKey);
+        } catch (IllegalArgumentException ignored) {
+            return null;
+        }
     }
 
     private static Map<String, Object> copyMap(Map<String, Object> values) {

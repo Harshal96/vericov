@@ -16,6 +16,15 @@ class CreateUploadHttpRequestJsonTest {
                   "branch": "main",
                   "ci_provider": "local",
                   "ignore": ["generated/**"],
+                  "components": [{
+                    "components": [],
+                    "gates": {"line": 90},
+                    "key": "api",
+                    "name": "API",
+                    "owners": ["team-api"],
+                    "paths": ["services/api/**"]
+                  }],
+                  "config_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
                   "artifacts": [{
                     "name": "coverage.lcov",
                     "kind": "coverage",
@@ -32,6 +41,8 @@ class CreateUploadHttpRequestJsonTest {
             assertNull(request.repositoryId());
             assertEquals("smoke-test", request.commitSha());
             assertEquals(List.of("generated/**"), request.ignore());
+            assertEquals("api", request.components().getFirst().get("key"));
+            assertEquals("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", request.configSha256());
             assertEquals(List.of(), request.flags());
             assertEquals(1, request.artifacts().size());
         } catch (Exception exception) {

@@ -3,7 +3,6 @@ package dev.vericov.analysis.gaps;
 import dev.vericov.analysis.gates.RepositoryPackageNodeContext;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 
 record CoverageGapCandidate(
         String filePath,
@@ -12,7 +11,7 @@ record CoverageGapCandidate(
         Integer lineEnd,
         String symbolName,
         String reasonCode,
-        UUID componentId,
+        String componentKey,
         String componentName,
         String componentCriticality,
         List<String> owners,

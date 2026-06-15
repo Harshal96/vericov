@@ -1,5 +1,9 @@
 package dev.vericov.analysis.application;
 
+import dev.vericov.componentconfig.ComponentConfigJson;
+import dev.vericov.componentconfig.ComponentConfigSnapshot;
+import dev.vericov.componentconfig.ComponentDefinition;
+import dev.vericov.componentconfig.ComponentGates;
 import dev.vericov.analysis.application.port.ArtifactContentStore;
 import dev.vericov.analysis.application.port.CoverageAnalysisInputRepository;
 import dev.vericov.analysis.application.port.CoverageReportRepository;
@@ -259,8 +263,8 @@ class DefaultCoverageAnalysisProcessorTest {
         assertEquals(1, report.componentRollups().getFirst().gapCount());
         assertEquals(new BigDecimal("40.0"), report.componentRollups().getFirst().riskScoreTotal());
         assertEquals("medium", report.componentRollups().getFirst().highestActiveRiskLevel());
-        assertEquals("failed", reports.savedEvaluations.getFirst().status());
-        assertEquals(new BigDecimal("50.0000"), reports.savedEvaluations.getFirst().actual());
+        assertEquals(List.of(), reports.savedEvaluations);
+        assertEquals("not_evaluated", report.gateStatus());
     }
 
     @Test
@@ -515,6 +519,83 @@ class DefaultCoverageAnalysisProcessorTest {
         assertEquals(List.of(), normalizedCoverage.storedReports.getFirst().files());
         assertEquals(List.of(), normalizedCoverage.storedReports.getFirst().lineHits());
         assertEquals(1, testRuns.savedRuns.size());
+    }
+
+    @Test
+    void ignoresFilesBeforeComponentAssignmentAndBuildsHierarchy() {
+        ComponentDefinition first = new ComponentDefinition(
+                "first",
+                "First",
+                null,
+                ComponentGates.empty(),
+                List.of("generated/A*.java"),
+                List.of());
+        ComponentDefinition second = new ComponentDefinition(
+                "second",
+                "Second",
+                null,
+                ComponentGates.empty(),
+                List.of("generated/A?.java"),
+                List.of());
+        ComponentDefinition source = new ComponentDefinition(
+                "source",
+                "Source",
+                List.of("team-source"),
+                new ComponentGates(Map.of("line", BigDecimal.valueOf(100))),
+                List.of("src/**"),
+                List.of());
+        ComponentConfigSnapshot snapshot = new ComponentConfigSnapshot(
+                1,
+                List.of("generated/**"),
+                List.of(first, second, source));
+        CoverageAnalysisInput input = new CoverageAnalysisInput(
+                UPLOAD_ID,
+                TENANT_ID,
+                REPOSITORY_ID,
+                "github",
+                "abc123",
+                "main",
+                null,
+                snapshot.ignore(),
+                ComponentConfigJson.canonicalJson(snapshot),
+                ComponentConfigJson.sha256(snapshot),
+                List.of(new CoverageInputArtifact(
+                        "unit.lcov",
+                        "coverage",
+                        "lcov",
+                        "coverage-raw",
+                        "tenant/upload/coverage/unit.lcov",
+                        "sha-1")));
+        FakeReportRepository reports = new FakeReportRepository();
+        DefaultCoverageAnalysisProcessor processor = new DefaultCoverageAnalysisProcessor(
+                new FakeInputRepository(input),
+                new FakeContentStore(Map.of(
+                        "coverage-raw/tenant/upload/coverage/unit.lcov",
+                        """
+                        TN:
+                        SF:generated/Ab.java
+                        DA:1,0
+                        end_of_record
+                        TN:
+                        SF:src/App.java
+                        DA:1,1
+                        end_of_record
+                        """.getBytes(StandardCharsets.UTF_8))),
+                reports,
+                new FakeNormalizedCoverageStore(),
+                lcovParserRegistry(),
+                Clock.fixed(NOW, ZoneOffset.UTC));
+
+        processor.process(event());
+
+        assertEquals(List.of("src/App.java"), reports.savedReport.files().stream()
+                .map(file -> file.filePath())
+                .toList());
+        assertEquals("source", reports.savedReport.files().getFirst().leafComponentKey());
+        assertEquals(List.of("first", "second", "source"), reports.savedReport.componentRollups().stream()
+                .map(rollup -> rollup.componentKey())
+                .toList());
+        assertEquals("passed", reports.savedReport.gateStatus());
     }
 
     @Test

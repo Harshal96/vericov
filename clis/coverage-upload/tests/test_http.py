@@ -86,6 +86,8 @@ def test_create_upload_sends_authenticated_json_request(monkeypatch) -> None:
     assert request.get_header("Idempotency-key") == "request-key"
     assert json.loads(request.data)["commit_sha"] == "abc123"
     assert json.loads(request.data)["ignore"] == ["generated/**"]
+    assert json.loads(request.data)["components"] == []
+    assert len(json.loads(request.data)["config_sha256"]) == 64
     assert captured["timeout"] == 12
     assert accepted.upload_id == "upload-1"
     assert accepted.analysis_job_id == "job-1"

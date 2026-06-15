@@ -20,6 +20,10 @@ public class AnalysisJsonCodec {
         return jsonObjectBuilder(values).build().toString();
     }
 
+    public String toJsonArray(List<?> values) {
+        return jsonArrayBuilder(values).build().toString();
+    }
+
     public Map<String, Object> fromJsonObject(String raw) {
         if (raw == null || raw.isBlank()) {
             return Map.of();

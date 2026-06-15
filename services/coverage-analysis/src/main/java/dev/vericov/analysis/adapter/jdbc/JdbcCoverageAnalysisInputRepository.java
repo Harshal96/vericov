@@ -1,5 +1,8 @@
 package dev.vericov.analysis.adapter.jdbc;
 
+import dev.vericov.componentconfig.ComponentConfigException;
+import dev.vericov.componentconfig.ComponentConfigJson;
+import dev.vericov.componentconfig.ComponentConfigSnapshot;
 import dev.vericov.analysis.application.port.CoverageAnalysisInputRepository;
 import dev.vericov.analysis.coverage.CoverageAnalysisInput;
 import dev.vericov.analysis.coverage.CoverageInputArtifact;
@@ -37,6 +40,8 @@ public class JdbcCoverageAnalysisInputRepository implements CoverageAnalysisInpu
                     upload.branch(),
                     upload.pullRequestNumber(),
                     upload.ignore(),
+                    upload.configSnapshotJson(),
+                    upload.configSha256(),
                     artifacts);
         } catch (SQLException exception) {
             throw new IllegalStateException("Failed to load coverage analysis input for upload " + uploadId, exception);
@@ -46,7 +51,8 @@ public class JdbcCoverageAnalysisInputRepository implements CoverageAnalysisInpu
     private static UploadRow findUpload(java.sql.Connection connection, UUID uploadId) throws SQLException {
         try (var statement = connection.prepareStatement("""
                 select u.id, u.tenant_id, u.repository_id, r.provider,
-                       u.commit_sha, u.branch, u.pull_request_number, u.ignore_rules
+                       u.commit_sha, u.branch, u.pull_request_number, u.ignore_rules,
+                       u.config_snapshot_json::text as config_snapshot_json, u.config_sha256
                 from vericov.uploads u
                 join vericov.repositories r on r.id = u.repository_id
                 where u.id = ?
@@ -56,6 +62,10 @@ public class JdbcCoverageAnalysisInputRepository implements CoverageAnalysisInpu
                 if (!resultSet.next()) {
                     throw new IllegalStateException("Upload not found: " + uploadId);
                 }
+                SnapshotData snapshot = snapshot(
+                        resultSet.getString("config_snapshot_json"),
+                        resultSet.getString("config_sha256"),
+                        resultSet.getString("ignore_rules"));
                 return new UploadRow(
                         resultSet.getObject("id", UUID.class),
                         resultSet.getObject("tenant_id", UUID.class),
@@ -64,7 +74,9 @@ public class JdbcCoverageAnalysisInputRepository implements CoverageAnalysisInpu
                         resultSet.getString("commit_sha"),
                         resultSet.getString("branch"),
                         nullableInteger(resultSet, "pull_request_number"),
-                        parseAndValidateIgnoreRules(resultSet.getString("ignore_rules")));
+                        snapshot.ignore(),
+                        snapshot.json(),
+                        snapshot.sha256());
             }
         }
     }
@@ -120,6 +132,39 @@ public class JdbcCoverageAnalysisInputRepository implements CoverageAnalysisInpu
         }
     }
 
+    private static SnapshotData snapshot(
+            String snapshotJson,
+            String configSha256,
+            String legacyIgnoreJson) {
+        if (snapshotJson != null && !snapshotJson.isBlank()) {
+            try {
+                ComponentConfigSnapshot snapshot = ComponentConfigJson.parse(snapshotJson);
+                String computed = ComponentConfigJson.sha256(snapshot);
+                if (configSha256 == null || !computed.equals(configSha256)) {
+                    throw new NonRetryableAnalysisException(
+                            "Persisted config snapshot hash does not match config_sha256");
+                }
+                return new SnapshotData(
+                        snapshot.ignore(),
+                        ComponentConfigJson.canonicalJson(snapshot),
+                        computed);
+            } catch (ComponentConfigException exception) {
+                throw new NonRetryableAnalysisException(
+                        "Invalid persisted config snapshot: " + exception.getMessage(),
+                        exception);
+            }
+        }
+        List<String> ignore = parseAndValidateIgnoreRules(legacyIgnoreJson);
+        if (ignore.isEmpty()) {
+            return new SnapshotData(List.of(), null, null);
+        }
+        ComponentConfigSnapshot snapshot = new ComponentConfigSnapshot(1, ignore, List.of());
+        return new SnapshotData(
+                ignore,
+                ComponentConfigJson.canonicalJson(snapshot),
+                ComponentConfigJson.sha256(snapshot));
+    }
+
     private record UploadRow(
             UUID id,
             UUID tenantId,
@@ -128,6 +173,14 @@ public class JdbcCoverageAnalysisInputRepository implements CoverageAnalysisInpu
             String commitSha,
             String branch,
             Integer pullRequestNumber,
-            List<String> ignore) {
+            List<String> ignore,
+            String configSnapshotJson,
+            String configSha256) {
+    }
+
+    private record SnapshotData(
+            List<String> ignore,
+            String json,
+            String sha256) {
     }
 }

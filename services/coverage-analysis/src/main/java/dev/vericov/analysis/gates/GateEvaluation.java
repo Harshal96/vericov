@@ -7,6 +7,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
+import java.util.List;
 
 public record GateEvaluation(
         UUID id,
@@ -24,6 +25,10 @@ public record GateEvaluation(
         String status,
         boolean blocking,
         Map<String, Object> details,
+        String source,
+        String scopeType,
+        String scopeKey,
+        List<String> scopePath,
         Instant evaluatedAt) {
 
     public GateEvaluation {
@@ -38,7 +43,50 @@ public record GateEvaluation(
         Objects.requireNonNull(metric, "metric");
         Objects.requireNonNull(status, "status");
         details = copyMap(details);
+        source = source == null ? "repository" : source;
+        scopeType = scopeType == null ? "repository" : scopeType;
+        scopePath = List.copyOf(scopePath == null ? List.of() : scopePath);
         Objects.requireNonNull(evaluatedAt, "evaluatedAt");
+    }
+
+    public GateEvaluation(
+            UUID id,
+            UUID tenantId,
+            UUID repositoryId,
+            UUID coverageReportId,
+            String commitSha,
+            String branch,
+            Integer pullRequestNumber,
+            String gateName,
+            String gateType,
+            String metric,
+            BigDecimal threshold,
+            BigDecimal actual,
+            String status,
+            boolean blocking,
+            Map<String, Object> details,
+            Instant evaluatedAt) {
+        this(
+                id,
+                tenantId,
+                repositoryId,
+                coverageReportId,
+                commitSha,
+                branch,
+                pullRequestNumber,
+                gateName,
+                gateType,
+                metric,
+                threshold,
+                actual,
+                status,
+                blocking,
+                details,
+                "repository",
+                "repository",
+                null,
+                List.of(),
+                evaluatedAt);
     }
 
     private static Map<String, Object> copyMap(Map<String, Object> values) {

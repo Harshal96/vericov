@@ -163,6 +163,8 @@ CREATE TABLE IF NOT EXISTS vericov.uploads (
     ci_build_url text,
     flags text[] NOT NULL DEFAULT ARRAY[]::text[],
     ignore_rules jsonb NOT NULL DEFAULT '[]'::jsonb,
+    config_snapshot_json jsonb,
+    config_sha256 text,
     component text,
     package_name text,
     status text NOT NULL DEFAULT 'queued'
@@ -178,6 +180,10 @@ CREATE TABLE IF NOT EXISTS vericov.uploads (
 ALTER TABLE vericov.uploads
     ADD COLUMN IF NOT EXISTS ignore_rules jsonb NOT NULL DEFAULT '[]'::jsonb;
 
+ALTER TABLE vericov.uploads
+    ADD COLUMN IF NOT EXISTS config_snapshot_json jsonb,
+    ADD COLUMN IF NOT EXISTS config_sha256 text;
+
 DO $$
 BEGIN
     IF NOT EXISTS (
@@ -189,6 +195,31 @@ BEGIN
         ALTER TABLE vericov.uploads
             ADD CONSTRAINT uploads_ignore_rules_array
             CHECK (jsonb_typeof(ignore_rules) = 'array');
+    END IF;
+END
+$$;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conname = 'uploads_config_snapshot_object'
+          AND conrelid = 'vericov.uploads'::regclass
+    ) THEN
+        ALTER TABLE vericov.uploads
+            ADD CONSTRAINT uploads_config_snapshot_object
+            CHECK (config_snapshot_json IS NULL OR jsonb_typeof(config_snapshot_json) = 'object');
+    END IF;
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conname = 'uploads_config_sha256_format'
+          AND conrelid = 'vericov.uploads'::regclass
+    ) THEN
+        ALTER TABLE vericov.uploads
+            ADD CONSTRAINT uploads_config_sha256_format
+            CHECK (config_sha256 IS NULL OR config_sha256 ~ '^[0-9a-f]{64}$');
     END IF;
 END
 $$;
@@ -265,6 +296,15 @@ CREATE TABLE IF NOT EXISTS vericov.coverage_reports (
     statement_total integer NOT NULL CHECK (statement_total >= 0),
     normalized_storage_bucket text,
     normalized_storage_path text,
+    config_sha256 text
+        CONSTRAINT coverage_reports_config_sha256_format
+        CHECK (config_sha256 IS NULL OR config_sha256 ~ '^[0-9a-f]{64}$'),
+    gate_status text NOT NULL DEFAULT 'not_evaluated'
+        CONSTRAINT coverage_reports_gate_status_valid
+        CHECK (gate_status IN ('passed', 'failed', 'warning', 'not_evaluated')),
+    warnings_json jsonb NOT NULL DEFAULT '[]'::jsonb
+        CONSTRAINT coverage_reports_warnings_array
+        CHECK (jsonb_typeof(warnings_json) = 'array'),
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now(),
     CHECK (line_covered <= line_total),
@@ -273,6 +313,43 @@ CREATE TABLE IF NOT EXISTS vericov.coverage_reports (
     CHECK (statement_covered <= statement_total)
 );
 
+ALTER TABLE vericov.coverage_reports
+    ADD COLUMN IF NOT EXISTS config_sha256 text,
+    ADD COLUMN IF NOT EXISTS gate_status text NOT NULL DEFAULT 'not_evaluated',
+    ADD COLUMN IF NOT EXISTS warnings_json jsonb NOT NULL DEFAULT '[]'::jsonb;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'coverage_reports_config_sha256_format'
+          AND conrelid = 'vericov.coverage_reports'::regclass
+    ) THEN
+        ALTER TABLE vericov.coverage_reports
+            ADD CONSTRAINT coverage_reports_config_sha256_format
+            CHECK (config_sha256 IS NULL OR config_sha256 ~ '^[0-9a-f]{64}$');
+    END IF;
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'coverage_reports_gate_status_valid'
+          AND conrelid = 'vericov.coverage_reports'::regclass
+    ) THEN
+        ALTER TABLE vericov.coverage_reports
+            ADD CONSTRAINT coverage_reports_gate_status_valid
+            CHECK (gate_status IN ('passed', 'failed', 'warning', 'not_evaluated'));
+    END IF;
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'coverage_reports_warnings_array'
+          AND conrelid = 'vericov.coverage_reports'::regclass
+    ) THEN
+        ALTER TABLE vericov.coverage_reports
+            ADD CONSTRAINT coverage_reports_warnings_array
+            CHECK (jsonb_typeof(warnings_json) = 'array');
+    END IF;
+END
+$$;
+
 CREATE TABLE IF NOT EXISTS vericov.coverage_file_summaries (
     id uuid PRIMARY KEY DEFAULT extensions.gen_random_uuid(),
     tenant_id uuid NOT NULL REFERENCES vericov.tenants (id) ON DELETE CASCADE,
@@ -280,7 +357,7 @@ CREATE TABLE IF NOT EXISTS vericov.coverage_file_summaries (
     repository_id uuid NOT NULL REFERENCES vericov.repositories (id) ON DELETE CASCADE,
     commit_sha text NOT NULL,
     file_path text NOT NULL,
-    component_id uuid,
+    leaf_component_key text,
     package_name text,
     owners text[] NOT NULL DEFAULT ARRAY[]::text[],
     line_covered integer NOT NULL CHECK (line_covered >= 0),
@@ -299,13 +376,40 @@ CREATE TABLE IF NOT EXISTS vericov.coverage_file_summaries (
     CHECK (statement_covered <= statement_total)
 );
 
+ALTER TABLE vericov.coverage_file_summaries
+    ADD COLUMN IF NOT EXISTS leaf_component_key text;
+
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'vericov'
+          AND table_name = 'coverage_file_summaries'
+          AND column_name = 'component_id'
+    ) THEN
+        UPDATE vericov.coverage_file_summaries
+        SET leaf_component_key = component_id::text
+        WHERE leaf_component_key IS NULL AND component_id IS NOT NULL;
+        ALTER TABLE vericov.coverage_file_summaries DROP COLUMN component_id;
+    END IF;
+END
+$$;
+
 CREATE TABLE IF NOT EXISTS vericov.component_coverage_rollups (
     id uuid PRIMARY KEY DEFAULT extensions.gen_random_uuid(),
     tenant_id uuid NOT NULL REFERENCES vericov.tenants (id) ON DELETE CASCADE,
     repository_id uuid NOT NULL REFERENCES vericov.repositories (id) ON DELETE CASCADE,
     coverage_report_id uuid NOT NULL REFERENCES vericov.coverage_reports (id) ON DELETE CASCADE,
-    component_id uuid NOT NULL,
-    owner text NOT NULL,
+    component_key text NOT NULL,
+    parent_component_key text,
+    component_path text[] NOT NULL,
+    depth integer NOT NULL CHECK (depth >= 0),
+    position integer NOT NULL CHECK (position >= 0),
+    name text NOT NULL,
+    owners text[] NOT NULL DEFAULT ARRAY[]::text[],
+    effective_gates_json jsonb NOT NULL DEFAULT '{}'::jsonb
+        CONSTRAINT component_coverage_rollups_effective_gates_object
+        CHECK (jsonb_typeof(effective_gates_json) = 'object'),
     line_covered integer NOT NULL CHECK (line_covered >= 0),
     line_total integer NOT NULL CHECK (line_total >= 0),
     branch_covered integer NOT NULL CHECK (branch_covered >= 0),
@@ -314,18 +418,79 @@ CREATE TABLE IF NOT EXISTS vericov.component_coverage_rollups (
     function_total integer NOT NULL CHECK (function_total >= 0),
     statement_covered integer NOT NULL CHECK (statement_covered >= 0),
     statement_total integer NOT NULL CHECK (statement_total >= 0),
+    direct_file_count integer NOT NULL DEFAULT 0 CHECK (direct_file_count >= 0),
+    descendant_file_count integer NOT NULL DEFAULT 0 CHECK (descendant_file_count >= 0),
     gap_count integer NOT NULL DEFAULT 0 CHECK (gap_count >= 0),
     debt_count integer NOT NULL DEFAULT 0 CHECK (debt_count >= 0),
     risk_score_total numeric(12, 4) NOT NULL DEFAULT 0 CHECK (risk_score_total >= 0),
     highest_active_risk_level text
         CHECK (highest_active_risk_level IS NULL OR highest_active_risk_level IN ('critical', 'high', 'medium', 'low')),
     created_at timestamptz NOT NULL DEFAULT now(),
-    UNIQUE (coverage_report_id, component_id, owner),
+    CONSTRAINT component_coverage_rollups_report_component_key
+        UNIQUE (coverage_report_id, component_key),
     CHECK (line_covered <= line_total),
     CHECK (branch_covered <= branch_total),
     CHECK (function_covered <= function_total),
     CHECK (statement_covered <= statement_total)
 );
+
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'vericov'
+          AND table_name = 'component_coverage_rollups'
+          AND column_name = 'component_id'
+    ) THEN
+        DELETE FROM vericov.component_coverage_rollups;
+        ALTER TABLE vericov.component_coverage_rollups
+            DROP CONSTRAINT IF EXISTS component_coverage_rollups_coverage_report_id_component_id_owner_key,
+            DROP COLUMN component_id,
+            DROP COLUMN owner;
+    END IF;
+END
+$$;
+
+ALTER TABLE vericov.component_coverage_rollups
+    ADD COLUMN IF NOT EXISTS component_key text,
+    ADD COLUMN IF NOT EXISTS parent_component_key text,
+    ADD COLUMN IF NOT EXISTS component_path text[] NOT NULL DEFAULT ARRAY[]::text[],
+    ADD COLUMN IF NOT EXISTS depth integer NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS position integer NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS name text NOT NULL DEFAULT '',
+    ADD COLUMN IF NOT EXISTS owners text[] NOT NULL DEFAULT ARRAY[]::text[],
+    ADD COLUMN IF NOT EXISTS effective_gates_json jsonb NOT NULL DEFAULT '{}'::jsonb,
+    ADD COLUMN IF NOT EXISTS direct_file_count integer NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS descendant_file_count integer NOT NULL DEFAULT 0;
+
+DELETE FROM vericov.component_coverage_rollups
+WHERE component_key IS NULL;
+
+ALTER TABLE vericov.component_coverage_rollups
+    ALTER COLUMN component_key SET NOT NULL;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'component_coverage_rollups_report_component_key'
+          AND conrelid = 'vericov.component_coverage_rollups'::regclass
+    ) THEN
+        ALTER TABLE vericov.component_coverage_rollups
+            ADD CONSTRAINT component_coverage_rollups_report_component_key
+            UNIQUE (coverage_report_id, component_key);
+    END IF;
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'component_coverage_rollups_effective_gates_object'
+          AND conrelid = 'vericov.component_coverage_rollups'::regclass
+    ) THEN
+        ALTER TABLE vericov.component_coverage_rollups
+            ADD CONSTRAINT component_coverage_rollups_effective_gates_object
+            CHECK (jsonb_typeof(effective_gates_json) = 'object');
+    END IF;
+END
+$$;
 
 CREATE TABLE IF NOT EXISTS vericov.coverage_line_hits (
     id uuid PRIMARY KEY DEFAULT extensions.gen_random_uuid(),
@@ -422,7 +587,7 @@ CREATE TABLE IF NOT EXISTS vericov.coverage_gap_findings (
     repository_id uuid NOT NULL REFERENCES vericov.repositories (id) ON DELETE CASCADE,
     coverage_report_id uuid NOT NULL REFERENCES vericov.coverage_reports (id) ON DELETE CASCADE,
     pr_diff_id uuid REFERENCES vericov.pull_request_coverage_diffs (id) ON DELETE SET NULL,
-    component_id uuid,
+    component_key text,
     commit_sha text NOT NULL,
     pull_request_number integer CHECK (pull_request_number IS NULL OR pull_request_number > 0),
     file_path text NOT NULL,
@@ -448,6 +613,25 @@ CREATE TABLE IF NOT EXISTS vericov.coverage_gap_findings (
     CHECK (line_end IS NULL OR line_start IS NULL OR line_end >= line_start)
 );
 
+ALTER TABLE vericov.coverage_gap_findings
+    ADD COLUMN IF NOT EXISTS component_key text;
+
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'vericov'
+          AND table_name = 'coverage_gap_findings'
+          AND column_name = 'component_id'
+    ) THEN
+        UPDATE vericov.coverage_gap_findings
+        SET component_key = component_id::text
+        WHERE component_key IS NULL AND component_id IS NOT NULL;
+        ALTER TABLE vericov.coverage_gap_findings DROP COLUMN component_id;
+    END IF;
+END
+$$;
+
 CREATE TABLE IF NOT EXISTS vericov.gate_evaluations (
     id uuid PRIMARY KEY DEFAULT extensions.gen_random_uuid(),
     tenant_id uuid NOT NULL REFERENCES vericov.tenants (id) ON DELETE CASCADE,
@@ -463,10 +647,53 @@ CREATE TABLE IF NOT EXISTS vericov.gate_evaluations (
     actual numeric(12, 4),
     status text NOT NULL CHECK (status IN ('passed', 'failed', 'warning')),
     blocking boolean NOT NULL DEFAULT true,
+    source text NOT NULL DEFAULT 'repository'
+        CONSTRAINT gate_evaluations_source_valid
+        CHECK (source IN ('repository', 'component_config')),
+    scope_type text NOT NULL DEFAULT 'repository'
+        CONSTRAINT gate_evaluations_scope_type_valid
+        CHECK (scope_type IN ('repository', 'component')),
+    scope_key text,
+    scope_path text[] NOT NULL DEFAULT ARRAY[]::text[],
     details_json jsonb NOT NULL DEFAULT '{}'::jsonb
         CHECK (jsonb_typeof(details_json) = 'object'),
     evaluated_at timestamptz NOT NULL DEFAULT now()
 );
+
+ALTER TABLE vericov.gate_evaluations
+    ADD COLUMN IF NOT EXISTS source text NOT NULL DEFAULT 'repository',
+    ADD COLUMN IF NOT EXISTS scope_type text NOT NULL DEFAULT 'repository',
+    ADD COLUMN IF NOT EXISTS scope_key text,
+    ADD COLUMN IF NOT EXISTS scope_path text[] NOT NULL DEFAULT ARRAY[]::text[];
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'gate_evaluations_source_valid'
+          AND conrelid = 'vericov.gate_evaluations'::regclass
+    ) THEN
+        ALTER TABLE vericov.gate_evaluations
+            ADD CONSTRAINT gate_evaluations_source_valid
+            CHECK (source IN ('repository', 'component_config'));
+    END IF;
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'gate_evaluations_scope_type_valid'
+          AND conrelid = 'vericov.gate_evaluations'::regclass
+    ) THEN
+        ALTER TABLE vericov.gate_evaluations
+            ADD CONSTRAINT gate_evaluations_scope_type_valid
+            CHECK (scope_type IN ('repository', 'component'));
+    END IF;
+END
+$$;
+
+UPDATE vericov.repository_gate_configurations
+SET status = 'disabled',
+    updated_at = now()
+WHERE gate_type = 'component_coverage'
+  AND status = 'active';
 
 CREATE TABLE IF NOT EXISTS vericov.upload_events (
     id uuid PRIMARY KEY DEFAULT extensions.gen_random_uuid(),

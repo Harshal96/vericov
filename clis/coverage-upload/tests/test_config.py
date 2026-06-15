@@ -12,6 +12,7 @@ def test_loads_no_config_with_defaults(tmp_path: Path) -> None:
     assert resolved.path is None
     assert resolved.upload.api_url == "https://api.vericov.dev"
     assert resolved.upload.ignore == ()
+    assert resolved.upload.components == ()
 
 
 def test_rejects_legacy_config_name_with_rename_instruction(tmp_path: Path) -> None:
@@ -73,6 +74,10 @@ ignore:
   - generated/**
   - vendor/**
   - "!vendor/maintained/**"
+components:
+  - key: api
+    owners: [team-api]
+    paths: [services/api/**]
 api:
   url: http://localhost:8080
 upload:
@@ -94,6 +99,17 @@ upload:
         "vendor/**",
         "!vendor/maintained/**",
     )
+    assert resolved.upload.components[0].key == "api"
+
+
+def test_rejects_oversized_config_before_yaml_parsing(tmp_path: Path) -> None:
+    config = tmp_path / ".vericov.yml"
+    config.write_bytes(b"x" * (256 * 1024 + 1))
+
+    with pytest.raises(VericovCliError) as error:
+        load_config(tmp_path)
+
+    assert error.value.code == "config_too_large"
 
 
 def test_rejects_non_list_ignore_value(tmp_path: Path) -> None:
