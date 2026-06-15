@@ -182,6 +182,12 @@ def test_java_modules_enforce_eighty_percent_line_coverage() -> None:
         assert "<minimum>0.80</minimum>" in pom
 
 
+def test_service_container_build_includes_shared_java_libraries() -> None:
+    dockerfile = read("infra/docker/helidon-service.Dockerfile")
+
+    assert "COPY libraries libraries" in dockerfile
+
+
 def test_upload_cli_declares_coverage_test_tooling() -> None:
     pyproject = read("clis/coverage-upload/pyproject.toml")
 

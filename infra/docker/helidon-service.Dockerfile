@@ -4,6 +4,7 @@ ARG SERVICE_DIR
 WORKDIR /workspace
 
 COPY pom.xml pom.xml
+COPY libraries libraries
 COPY services services
 RUN mvn -q -pl "${SERVICE_DIR}" -am -DskipTests package
 
