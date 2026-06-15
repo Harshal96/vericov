@@ -2,8 +2,11 @@ package dev.vericov.upload.api;
 
 import dev.vericov.upload.application.InMemoryUploadRepository;
 import dev.vericov.upload.application.AnalysisJob;
+import dev.vericov.upload.application.ComponentCoverageDetails;
+import dev.vericov.upload.application.CoverageGateDetails;
 import dev.vericov.upload.application.CoverageMetricDetails;
 import dev.vericov.upload.application.CoverageReportDetails;
+import dev.vericov.upload.application.CoverageWarningDetails;
 import dev.vericov.upload.application.StoredArtifact;
 import dev.vericov.upload.application.UploadApplicationService;
 import dev.vericov.upload.application.port.ArtifactStorage;
@@ -16,11 +19,13 @@ import dev.vericov.upload.domain.CreateUploadCommand;
 import dev.vericov.upload.domain.RepositoryApiKeyPrincipal;
 import dev.vericov.upload.domain.UploadArtifactInput;
 import jakarta.ws.rs.core.Response;
+import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -78,6 +83,34 @@ class UploadResourceTest {
                 new CoverageMetricDetails(8, 10),
                 "coverage-normalized",
                 "report.json.gz",
+                "a".repeat(64),
+                "failed",
+                List.of(new CoverageWarningDetails("unassigned_files", 1)),
+                List.of(new ComponentCoverageDetails(
+                        "payments-api",
+                        "Payments API",
+                        List.of("payments-api"),
+                        0,
+                        0,
+                        List.of("team-payments"),
+                        Map.of("line", new BigDecimal("90")),
+                        new CoverageMetricDetails(8, 10),
+                        new CoverageMetricDetails(1, 2),
+                        new CoverageMetricDetails(3, 4),
+                        new CoverageMetricDetails(8, 10),
+                        2,
+                        2,
+                        1,
+                        0,
+                        new BigDecimal("72.5"),
+                        "high",
+                        List.of(new CoverageGateDetails(
+                                "line",
+                                new BigDecimal("90"),
+                                new BigDecimal("80"),
+                                "failed",
+                                true)),
+                        List.of())),
                 Instant.parse("2026-05-22T10:05:00Z"));
 
         Response response = resource.getCoverageReport("Bearer vc_live_test", accepted.uploadId());
@@ -89,6 +122,10 @@ class UploadResourceTest {
         assertEquals("complete", body.status());
         assertEquals(8, body.line().covered());
         assertEquals("coverage-normalized", body.normalizedStorageBucket());
+        assertEquals("failed", body.gateStatus());
+        assertEquals("unassigned_files", body.warnings().getFirst().code());
+        assertEquals("payments-api", body.components().getFirst().key());
+        assertEquals("failed", body.components().getFirst().gates().getFirst().status());
     }
 
     private static UploadApplicationService service() {
@@ -148,6 +185,8 @@ class UploadResourceTest {
                 "https://github.com/acme/payments-api/actions/runs/987654321",
                 List.of("unit"),
                 List.of(),
+                null,
+                null,
                 "api",
                 "services/api",
                 List.of(new UploadArtifactHttpRequest(

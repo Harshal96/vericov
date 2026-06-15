@@ -9,7 +9,7 @@ public record CoverageFileSummary(
         CoverageMetric branch,
         CoverageMetric function,
         CoverageMetric statement,
-        UUID componentId,
+        String leafComponentKey,
         String packageName,
         List<String> owners) {
 
@@ -23,6 +23,37 @@ public record CoverageFileSummary(
             CoverageMetric branch,
             CoverageMetric function,
             CoverageMetric statement) {
-        this(filePath, line, branch, function, statement, null, null, List.of());
+        this(filePath, line, branch, function, statement, (String) null, null, List.of());
+    }
+
+    public CoverageFileSummary(
+            String filePath,
+            CoverageMetric line,
+            CoverageMetric branch,
+            CoverageMetric function,
+            CoverageMetric statement,
+            UUID componentId,
+            String packageName,
+            List<String> owners) {
+        this(
+                filePath,
+                line,
+                branch,
+                function,
+                statement,
+                componentId == null ? null : componentId.toString(),
+                packageName,
+                owners);
+    }
+
+    public UUID componentId() {
+        if (leafComponentKey == null) {
+            return null;
+        }
+        try {
+            return UUID.fromString(leafComponentKey);
+        } catch (IllegalArgumentException ignored) {
+            return null;
+        }
     }
 }

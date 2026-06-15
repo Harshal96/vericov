@@ -17,6 +17,10 @@ from vericov_coverage_upload.domain.config import (
     ResolvedConfig,
     UploadConfig,
 )
+from vericov_coverage_upload.domain.component_config import (
+    InvalidComponentConfig,
+    parse_components,
+)
 from vericov_coverage_upload.domain.coverage_ignore import (
     CoverageIgnoreRules,
     InvalidCoverageIgnoreRule,
@@ -30,7 +34,7 @@ UUID_RE = re.compile(
     r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
 )
 
-TOP_LEVEL_KEYS = {"version", "ignore", "api", "upload"}
+TOP_LEVEL_KEYS = {"version", "ignore", "components", "api", "upload"}
 API_KEYS = {"url"}
 UPLOAD_KEYS = {
     "repository_id",
@@ -58,6 +62,11 @@ def load_config(cwd: Path, explicit_path: Optional[str] = None) -> ResolvedConfi
     path = resolve_config_path(cwd, explicit_path)
     if path is None:
         return ResolvedConfig(None, UploadConfig())
+    if path.stat().st_size > 256 * 1024:
+        raise _config_error(
+            "config_too_large",
+            f"Invalid config {path}: file exceeds 256 KiB.",
+        )
     try:
         raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
     except yaml.YAMLError as error:
@@ -119,6 +128,18 @@ def parse_upload_config(raw: Mapping[str, Any], config_path: str = CANONICAL_CON
     api_url = _optional_string(api, "url") or DEFAULT_API_URL
     validate_api_url(api_url)
 
+    try:
+        components = (
+            parse_components(raw["components"])
+            if "components" in raw
+            else ()
+        )
+    except InvalidComponentConfig as error:
+        raise _config_error(
+            "invalid_component_config",
+            f"Invalid config {config_path}: {error}.",
+        ) from error
+
     return UploadConfig(
         api_url=api_url,
         repository_id=repository_id,
@@ -130,6 +151,7 @@ def parse_upload_config(raw: Mapping[str, Any], config_path: str = CANONICAL_CON
         ci_build_url=_optional_string(upload, "ci_build_url"),
         flags=_string_tuple(upload.get("flags", ()), "upload.flags"),
         ignore=_ignore_tuple(raw.get("ignore"), config_path),
+        components=components,
         component=_optional_string(upload, "component"),
         package=_optional_string(upload, "package"),
         coverage=_string_tuple(upload.get("coverage", ()), "upload.coverage"),
@@ -180,6 +202,7 @@ def merge_environment(config: UploadConfig, env: Mapping[str, str]) -> UploadCon
         ci_build_url=config.ci_build_url,
         flags=config.flags,
         ignore=config.ignore,
+        components=config.components,
         component=config.component,
         package=config.package,
         coverage=config.coverage,

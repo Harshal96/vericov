@@ -1,5 +1,7 @@
 package dev.vericov.analysis.application;
 
+import dev.vericov.componentconfig.ComponentConfigException;
+import dev.vericov.componentconfig.ComponentConfigSnapshot;
 import dev.vericov.analysis.application.port.ArtifactContentStore;
 import dev.vericov.analysis.application.port.CoverageAnalysisInputRepository;
 import dev.vericov.analysis.application.port.CoverageAnalysisProcessor;
@@ -11,6 +13,7 @@ import dev.vericov.analysis.application.port.RepositoryContextRepository;
 import dev.vericov.analysis.application.port.TestRunRepository;
 import dev.vericov.analysis.coverage.CoverageAnalysisInput;
 import dev.vericov.analysis.coverage.CoverageComponentRollup;
+import dev.vericov.analysis.coverage.ComponentCoverageCalculator;
 import dev.vericov.analysis.coverage.CoverageFileFilter;
 import dev.vericov.analysis.coverage.CoverageFileSummary;
 import dev.vericov.analysis.coverage.CoverageInputArtifact;
@@ -28,6 +31,7 @@ import dev.vericov.analysis.gaps.CoverageGapFinding;
 import dev.vericov.analysis.gates.GateEvaluation;
 import dev.vericov.analysis.gates.GateEvaluator;
 import dev.vericov.analysis.gates.ComponentRollup;
+import dev.vericov.analysis.gates.ComponentGateEvaluator;
 import dev.vericov.analysis.gates.Finding;
 import dev.vericov.analysis.gates.RepositoryContext;
 import dev.vericov.analysis.gates.RepositoryComponentContext;
@@ -63,6 +67,8 @@ public class DefaultCoverageAnalysisProcessor implements CoverageAnalysisProcess
     private final CoverageReportMerger merger = new CoverageReportMerger();
     private final GateEvaluator gateEvaluator = new GateEvaluator();
     private final CoverageGapExtractor gapExtractor = new CoverageGapExtractor();
+    private final ComponentCoverageCalculator componentCoverageCalculator = new ComponentCoverageCalculator();
+    private final ComponentGateEvaluator componentGateEvaluator = new ComponentGateEvaluator();
     private final Clock clock;
 
     public DefaultCoverageAnalysisProcessor(
@@ -260,14 +266,24 @@ public class DefaultCoverageAnalysisProcessor implements CoverageAnalysisProcess
     }
 
     private void processCoverage(CoverageAnalysisInput input, List<ParsedCoverage> parsedCoverages, Instant processedAt) {
-        CoverageReport report = merger.merge(input, parsedCoverages, processedAt);
+        CoverageReport report = merger.merge(input, parsedCoverages, processedAt)
+                .withConfigSha256(input.configSha256());
+        ComponentConfigSnapshot configSnapshot = input.configSnapshot();
+        boolean configuredComponents = configSnapshot != null && !configSnapshot.components().isEmpty();
         RepositoryContext repositoryContext = contextRepository.loadContext(
                 report.tenantId(),
                 report.repositoryId(),
                 report.commitSha(),
                 report.branchName(),
                 report.pullRequestNumber());
-        CoverageReport contextualReport = applyRepositoryContext(report, repositoryContext);
+        CoverageReport contextualReport;
+        try {
+            contextualReport = configuredComponents
+                    ? componentCoverageCalculator.calculate(report, configSnapshot)
+                    : applyRepositoryContext(report, repositoryContext);
+        } catch (ComponentConfigException exception) {
+            throw new NonRetryableAnalysisException(exception.getMessage(), exception);
+        }
 
         NormalizedCoverageLocation location = normalizedCoverageStore.store(contextualReport);
         CoverageReport reportWithStorage = contextualReport.withNormalizedStorage(location.bucket(), location.path());
@@ -279,23 +295,58 @@ public class DefaultCoverageAnalysisProcessor implements CoverageAnalysisProcess
                 repositoryContext,
                 diffCoverage,
                 reportWithStorage.generatedAt());
-        CoverageReport reportWithFindings = reportWithStorage
-                .withGapFindings(gapFindings)
-                .withComponentRollups(coverageComponentRollups(reportWithStorage.files(), gapFindings));
-        RepositoryContext gateContext = repositoryContext
-                .withComponentRollups(gateComponentRollups(reportWithFindings))
-                .withFindings(gateFindings(gapFindings));
+        CoverageReport reportWithFindings = reportWithStorage.withGapFindings(gapFindings);
+        reportWithFindings = configuredComponents
+                ? componentCoverageCalculator.applyFindings(reportWithFindings)
+                : reportWithFindings.withComponentRollups(
+                        coverageComponentRollups(reportWithStorage.files(), gapFindings));
+        RepositoryContext gateContext = configuredComponents
+                ? repositoryContext.withFindings(gateFindings(gapFindings))
+                : repositoryContext
+                        .withComponentRollups(gateComponentRollups(reportWithFindings))
+                        .withFindings(gateFindings(gapFindings));
 
         // 3. Evaluate gates with report, context, and diff coverage
-        List<GateEvaluation> evaluations = gateEvaluator.evaluate(
+        List<GateEvaluation> repositoryEvaluations = gateEvaluator.evaluate(
                 reportWithFindings,
-                gates.listActiveForRepository(reportWithFindings.tenantId(), reportWithFindings.repositoryId()),
+                gates.listActiveForRepository(reportWithFindings.tenantId(), reportWithFindings.repositoryId())
+                        .stream()
+                        .filter(DefaultCoverageAnalysisProcessor::repositoryGate)
+                        .toList(),
                 gateContext,
                 diffCoverage,
                 reportWithFindings.generatedAt());
+        List<GateEvaluation> evaluations = new ArrayList<>(repositoryEvaluations);
+        if (configuredComponents) {
+            evaluations.addAll(componentGateEvaluator.evaluate(
+                    reportWithFindings,
+                    input.configSha256(),
+                    reportWithFindings.generatedAt()));
+        }
 
         // 4. Save report and evaluations
-        reports.save(reportWithFindings, evaluations);
+        reports.save(reportWithFindings.withGateStatus(gateStatus(evaluations)), List.copyOf(evaluations));
+    }
+
+    private static boolean repositoryGate(dev.vericov.analysis.gates.GateConfiguration gate) {
+        if ("component_coverage".equals(gate.gateType())) {
+            return false;
+        }
+        Object scope = gate.config().get("scope");
+        return !(scope instanceof Map<?, ?> values && values.containsKey("component_id"));
+    }
+
+    private static String gateStatus(List<GateEvaluation> evaluations) {
+        if (evaluations.isEmpty()) {
+            return "not_evaluated";
+        }
+        if (evaluations.stream().anyMatch(evaluation -> "failed".equals(evaluation.status()))) {
+            return "failed";
+        }
+        if (evaluations.stream().anyMatch(evaluation -> "warning".equals(evaluation.status()))) {
+            return "warning";
+        }
+        return "passed";
     }
 
     private CoverageReport applyRepositoryContext(CoverageReport report, RepositoryContext context) {

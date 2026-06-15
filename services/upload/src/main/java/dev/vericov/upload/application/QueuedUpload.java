@@ -1,5 +1,7 @@
 package dev.vericov.upload.application;
 
+import dev.vericov.componentconfig.ComponentConfigJson;
+import dev.vericov.componentconfig.ComponentConfigSnapshot;
 import dev.vericov.upload.domain.UploadStatus;
 import java.time.Instant;
 import java.util.List;
@@ -19,6 +21,8 @@ public record QueuedUpload(
         String ciBuildUrl,
         List<String> flags,
         List<String> ignore,
+        String configSnapshotJson,
+        String configSha256,
         Optional<String> component,
         Optional<String> packageName,
         UploadStatus status,
@@ -33,6 +37,48 @@ public record QueuedUpload(
         component = component == null ? Optional.empty() : component;
         packageName = packageName == null ? Optional.empty() : packageName;
         analysisJobId = analysisJobId == null ? Optional.empty() : analysisJobId;
+    }
+
+    public QueuedUpload(
+            UUID uploadId,
+            UUID tenantId,
+            UUID repositoryId,
+            Optional<UUID> apiKeyId,
+            String commitSha,
+            String branch,
+            Integer pullRequestNumber,
+            String ciProvider,
+            String ciBuildId,
+            String ciBuildUrl,
+            List<String> flags,
+            List<String> ignore,
+            Optional<String> component,
+            Optional<String> packageName,
+            UploadStatus status,
+            String idempotencyKey,
+            Instant acceptedAt,
+            Optional<UUID> analysisJobId) {
+        this(
+                uploadId,
+                tenantId,
+                repositoryId,
+                apiKeyId,
+                commitSha,
+                branch,
+                pullRequestNumber,
+                ciProvider,
+                ciBuildId,
+                ciBuildUrl,
+                flags,
+                ignore,
+                canonicalSnapshot(ignore),
+                snapshotHash(ignore),
+                component,
+                packageName,
+                status,
+                idempotencyKey,
+                acceptedAt,
+                analysisJobId);
     }
 
     public QueuedUpload(
@@ -66,12 +112,18 @@ public record QueuedUpload(
                 ciBuildUrl,
                 flags,
                 List.of(),
+                null,
+                null,
                 component,
                 packageName,
                 status,
                 idempotencyKey,
                 acceptedAt,
                 analysisJobId);
+    }
+
+    public ComponentConfigSnapshot configSnapshot() {
+        return configSnapshotJson == null ? null : ComponentConfigJson.parse(configSnapshotJson);
     }
 
     public QueuedUpload withAnalysisJobId(UUID analysisJobId) {
@@ -88,11 +140,27 @@ public record QueuedUpload(
                 ciBuildUrl,
                 flags,
                 ignore,
+                configSnapshotJson,
+                configSha256,
                 component,
                 packageName,
                 status,
                 idempotencyKey,
                 acceptedAt,
                 Optional.of(analysisJobId));
+    }
+
+    private static String canonicalSnapshot(List<String> ignore) {
+        if (ignore == null) {
+            return null;
+        }
+        return ComponentConfigJson.canonicalJson(new ComponentConfigSnapshot(1, ignore, List.of()));
+    }
+
+    private static String snapshotHash(List<String> ignore) {
+        if (ignore == null) {
+            return null;
+        }
+        return ComponentConfigJson.sha256(new ComponentConfigSnapshot(1, ignore, List.of()));
     }
 }

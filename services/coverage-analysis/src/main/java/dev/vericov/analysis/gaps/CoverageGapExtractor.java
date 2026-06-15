@@ -172,7 +172,7 @@ public class CoverageGapExtractor {
                 lineEnd,
                 symbolName,
                 reasonCode,
-                fileContext.componentId(),
+                fileContext.componentKey(),
                 fileContext.componentName(),
                 fileContext.criticality(),
                 fileContext.owners(),
@@ -186,7 +186,7 @@ public class CoverageGapExtractor {
         evidenceJson.put("schema_version", 1);
         evidenceJson.put("coverage_report_id", report.reportId().toString());
         evidenceJson.put("context_version", context.contextVersion());
-        evidenceJson.put("component_id", fileContext.componentId() == null ? null : fileContext.componentId().toString());
+        evidenceJson.put("component_key", fileContext.componentKey());
         evidenceJson.putAll(evidence);
         if (!activeDebt.isEmpty()) {
             evidenceJson.put("debt_item_ids", activeDebt.stream().map(item -> item.id().toString()).toList());
@@ -201,7 +201,7 @@ public class CoverageGapExtractor {
                 report.tenantId(),
                 report.repositoryId(),
                 report.reportId(),
-                fileContext.componentId(),
+                fileContext.componentKey(),
                 report.commitSha(),
                 report.pullRequestNumber(),
                 filePath,
@@ -254,9 +254,11 @@ public class CoverageGapExtractor {
         if (owners.isEmpty()) {
             owners = List.of("unowned");
         }
-        UUID componentId = component != null ? component.componentId() : file == null ? null : file.componentId();
+        String componentKey = component != null
+                ? component.componentId().toString()
+                : file == null ? null : file.leafComponentKey();
         return new FileContext(
-                componentId,
+                componentKey,
                 component == null ? null : component.name(),
                 component == null ? "medium" : component.criticality(),
                 owners,
@@ -447,7 +449,7 @@ public class CoverageGapExtractor {
     private static boolean canGroup(CoverageGapFinding previous, CoverageGapFinding next) {
         return Objects.equals(previous.filePath(), next.filePath())
                 && Objects.equals(previous.reasonCode(), next.reasonCode())
-                && Objects.equals(previous.componentId(), next.componentId())
+                && Objects.equals(previous.componentKey(), next.componentKey())
                 && Objects.equals(previous.owners(), next.owners())
                 && Objects.equals(previous.nextAction(), next.nextAction())
                 && Objects.equals(previous.status(), next.status())
@@ -477,7 +479,7 @@ public class CoverageGapExtractor {
                 first.tenantId(),
                 first.repositoryId(),
                 first.coverageReportId(),
-                first.componentId(),
+                first.componentKey(),
                 first.commitSha(),
                 first.pullRequestNumber(),
                 first.filePath(),
@@ -617,7 +619,7 @@ public class CoverageGapExtractor {
     }
 
     private record FileContext(
-            UUID componentId,
+            String componentKey,
             String componentName,
             String criticality,
             List<String> owners,

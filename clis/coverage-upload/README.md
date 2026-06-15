@@ -74,6 +74,31 @@ ignore:
   - vendor/**
   - "!vendor/maintained/**"
 
+components:
+  - key: commerce
+    name: Commerce
+    owners:
+      - team-commerce
+    gates:
+      line: 80
+      branch: 70
+    components:
+      - key: payments
+        name: Payments
+        components:
+          - key: payments-api
+            name: Payments API
+            owners:
+              - team-payments
+            gates:
+              line: 90
+            paths:
+              - services/payments/api/**
+          - key: payments-web
+            name: Payments Web
+            paths:
+              - services/payments/web/**
+
 api:
   url: https://vericov.example.internal
 
@@ -96,6 +121,24 @@ a later rule overrides an earlier one; a leading `!` re-includes a path. A
 leading `/` anchors a rule at the repository root, a trailing `/` matches a
 directory and its descendants, and patterns without `/` match at any depth.
 The `*`, `?`, character-range, and `**` wildcards use gitignore-style behavior.
+
+The optional top-level `components` list defines a hierarchy for monorepos.
+Parent components contain only nested `components`; leaf components contain
+only `paths`. Keys must be stable, globally unique lowercase identifiers.
+Owners inherit from the nearest ancestor unless replaced, and `line`, `branch`,
+`function`, and `statement` gates inherit per metric.
+
+Vericov applies `ignore` rules before component matching. Every remaining file
+is assigned to the most-specific matching leaf. Equal-specificity matches fail
+the upload analysis as ambiguous; unmatched files are reported in a synthetic
+root component named `unassigned`. Parent coverage and gates include all
+descendant files, while leaf coverage includes directly assigned files.
+
+The upload stores a canonical snapshot and `config_sha256`, so reports remain
+reproducible even after `.vericov.yml` changes. Report gate failures do not make
+analysis fail: the upload completes and the report returns
+`gate_status: failed`, component evaluations, and any `unassigned_files`
+warning.
 
 This is separate from `upload.discover.exclude`: `ignore` removes source files
 from coverage analysis, while `upload.discover.exclude` prevents artifact files

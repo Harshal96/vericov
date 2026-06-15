@@ -1,0 +1,11 @@
+# name	pattern	path	matches	literal_segments	literal_characters
+root_directory	/services/**	services/api/App.java	true	1	9
+root_directory_at_depth	/services/**	src/services/api/App.java	false	1	9
+directory_at_any_depth	services/**	src/services/api/App.java	true	1	9
+more_specific_directory	services/payments/**	services/payments/api/App.java	true	2	18
+single_segment_star	src/*.py	src/app.py	true	1	4
+single_segment_star_nested	src/*.py	src/nested/app.py	false	1	4
+question_mark	src/file?.py	src/file1.py	true	1	8
+character_range	src/[a-c].py	src/b.py	true	1	4
+escaped_wildcard	literal/\*.py	literal/*.py	true	2	12
+normalized_backslashes	src/**	.\src\App.java	true	1	4

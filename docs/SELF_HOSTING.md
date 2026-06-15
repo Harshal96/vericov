@@ -78,6 +78,19 @@ SUPABASE_SERVICE_ROLE_KEY=...
 
 Supabase Auth is not required by Vericov services in the self-host flow.
 
+## Monorepo Components
+
+Repositories can define hierarchical components, owners, path patterns, and
+coverage gates in `.vericov.yml`. The upload CLI sends a canonical immutable
+snapshot, and both services persist its `config_sha256` with the resulting
+report. Apply `./vericov migrate` before using component reports so the
+string-key rollups and gate scope columns are available.
+
+Top-level coverage exclusions are evaluated before component assignment.
+Component configuration changes affect future uploads only; existing reports
+are not recomputed. A failed component gate leaves the upload processed and is
+reported through `gate_status`.
+
 ## Gateway
 
 Vericov no longer bundles a product Kong gateway. Put your own gateway or

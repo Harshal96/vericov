@@ -144,7 +144,7 @@ public class JdbcCoverageReportRepository implements CoverageReportRepository {
         }
     }
 
-    private static void insertCoverageReport(java.sql.Connection connection, CoverageReport report) throws SQLException {
+    private void insertCoverageReport(java.sql.Connection connection, CoverageReport report) throws SQLException {
         try (var statement = connection.prepareStatement("""
                 insert into vericov.coverage_reports (
                     id,
@@ -165,10 +165,13 @@ public class JdbcCoverageReportRepository implements CoverageReportRepository {
                     statement_total,
                     normalized_storage_bucket,
                     normalized_storage_path,
+                    config_sha256,
+                    gate_status,
+                    warnings_json,
                     created_at,
                     updated_at
                 )
-                values (?, ?, ?, ?, ?, ?, ?, 'complete', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                values (?, ?, ?, ?, ?, ?, ?, 'complete', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?, ?)
                 """)) {
             int index = 1;
             statement.setObject(index++, report.reportId());
@@ -192,6 +195,9 @@ public class JdbcCoverageReportRepository implements CoverageReportRepository {
             index += 2;
             statement.setString(index++, report.normalizedStorageBucket());
             statement.setString(index++, report.normalizedStoragePath());
+            setNullableString(statement, index++, report.configSha256());
+            statement.setString(index++, report.gateStatus());
+            statement.setString(index++, codec.toJsonArray(report.warnings()));
             statement.setObject(index++, utc(report.generatedAt()));
             statement.setObject(index, utc(report.generatedAt()));
             statement.executeUpdate();
@@ -207,7 +213,7 @@ public class JdbcCoverageReportRepository implements CoverageReportRepository {
                     repository_id,
                     commit_sha,
                     file_path,
-                    component_id,
+                    leaf_component_key,
                     package_name,
                     owners,
                     line_covered,
@@ -228,7 +234,7 @@ public class JdbcCoverageReportRepository implements CoverageReportRepository {
                 statement.setObject(index++, report.repositoryId());
                 statement.setString(index++, report.commitSha());
                 statement.setString(index++, file.filePath());
-                statement.setObject(index++, file.componentId());
+                setNullableString(statement, index++, file.leafComponentKey());
                 statement.setString(index++, file.packageName());
                 statement.setArray(index++, connection.createArrayOf("text", file.owners().toArray(String[]::new)));
                 setMetric(statement, index, file.line());
@@ -244,7 +250,7 @@ public class JdbcCoverageReportRepository implements CoverageReportRepository {
         }
     }
 
-    private static void insertComponentRollups(java.sql.Connection connection, CoverageReport report) throws SQLException {
+    private void insertComponentRollups(java.sql.Connection connection, CoverageReport report) throws SQLException {
         if (report.componentRollups().isEmpty()) {
             return;
         }
@@ -254,8 +260,14 @@ public class JdbcCoverageReportRepository implements CoverageReportRepository {
                     tenant_id,
                     repository_id,
                     coverage_report_id,
-                    component_id,
-                    owner,
+                    component_key,
+                    parent_component_key,
+                    component_path,
+                    depth,
+                    position,
+                    name,
+                    owners,
+                    effective_gates_json,
                     line_covered,
                     line_total,
                     branch_covered,
@@ -264,6 +276,8 @@ public class JdbcCoverageReportRepository implements CoverageReportRepository {
                     function_total,
                     statement_covered,
                     statement_total,
+                    direct_file_count,
+                    descendant_file_count,
                     gap_count,
                     debt_count,
                     risk_score_total,
@@ -273,22 +287,8 @@ public class JdbcCoverageReportRepository implements CoverageReportRepository {
                 values (
                     extensions.gen_random_uuid(),
                     ?,
-                    ?,
-                    ?,
-                    ?,
-                    ?,
-                    ?,
-                    ?,
-                    ?,
-                    ?,
-                    ?,
-                    ?,
-                    ?,
-                    ?,
-                    ?,
-                    ?,
-                    ?,
-                    ?
+                    ?, ?, ?, ?, ?, ?, ?, ?::jsonb,
+                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
                 )
                 """)) {
             for (CoverageComponentRollup rollup : report.componentRollups()) {
@@ -296,8 +296,14 @@ public class JdbcCoverageReportRepository implements CoverageReportRepository {
                 statement.setObject(index++, report.tenantId());
                 statement.setObject(index++, report.repositoryId());
                 statement.setObject(index++, report.reportId());
-                statement.setObject(index++, rollup.componentId());
-                statement.setString(index++, rollup.owner());
+                statement.setString(index++, rollup.componentKey());
+                setNullableString(statement, index++, rollup.parentComponentKey());
+                statement.setArray(index++, connection.createArrayOf("text", rollup.componentPath().toArray(String[]::new)));
+                statement.setInt(index++, rollup.depth());
+                statement.setInt(index++, rollup.position());
+                statement.setString(index++, rollup.name());
+                statement.setArray(index++, connection.createArrayOf("text", rollup.owners().toArray(String[]::new)));
+                statement.setString(index++, gatesJson(rollup));
                 setMetric(statement, index, rollup.line());
                 index += 2;
                 setMetric(statement, index, rollup.branch());
@@ -306,6 +312,8 @@ public class JdbcCoverageReportRepository implements CoverageReportRepository {
                 index += 2;
                 setMetric(statement, index, rollup.statement());
                 index += 2;
+                statement.setInt(index++, rollup.directFileCount());
+                statement.setInt(index++, rollup.descendantFileCount());
                 statement.setInt(index++, rollup.gapCount());
                 statement.setInt(index++, rollup.debtCount());
                 statement.setBigDecimal(index++, rollup.riskScoreTotal());
@@ -315,6 +323,12 @@ public class JdbcCoverageReportRepository implements CoverageReportRepository {
             }
             statement.executeBatch();
         }
+    }
+
+    private String gatesJson(CoverageComponentRollup rollup) {
+        java.util.Map<String, Object> values = new java.util.LinkedHashMap<>();
+        values.putAll(rollup.effectiveGates());
+        return codec.toJsonObject(values);
     }
 
     private void insertGapFindings(java.sql.Connection connection, CoverageReport report) throws SQLException {
@@ -328,7 +342,7 @@ public class JdbcCoverageReportRepository implements CoverageReportRepository {
                     repository_id,
                     coverage_report_id,
                     pr_diff_id,
-                    component_id,
+                    component_key,
                     commit_sha,
                     pull_request_number,
                     file_path,
@@ -382,7 +396,7 @@ public class JdbcCoverageReportRepository implements CoverageReportRepository {
                 statement.setObject(index++, finding.repositoryId());
                 statement.setObject(index++, finding.coverageReportId());
                 statement.setObject(index++, finding.coverageReportId());
-                statement.setObject(index++, finding.componentId());
+                setNullableString(statement, index++, finding.componentKey());
                 statement.setString(index++, finding.commitSha());
                 if (finding.pullRequestNumber() == null) {
                     statement.setNull(index++, Types.INTEGER);
@@ -464,10 +478,14 @@ public class JdbcCoverageReportRepository implements CoverageReportRepository {
                     actual,
                     status,
                     blocking,
+                    source,
+                    scope_type,
+                    scope_key,
+                    scope_path,
                     details_json,
                     evaluated_at
                 )
-                values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?)
+                values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?)
                 """)) {
             for (GateEvaluation evaluation : evaluations) {
                 int index = 1;
@@ -489,6 +507,12 @@ public class JdbcCoverageReportRepository implements CoverageReportRepository {
                 statement.setBigDecimal(index++, evaluation.actual());
                 statement.setString(index++, evaluation.status());
                 statement.setBoolean(index++, evaluation.blocking());
+                statement.setString(index++, evaluation.source());
+                statement.setString(index++, evaluation.scopeType());
+                setNullableString(statement, index++, evaluation.scopeKey());
+                statement.setArray(index++, connection.createArrayOf(
+                        "text",
+                        evaluation.scopePath().toArray(String[]::new)));
                 statement.setString(index++, codec.toJsonObject(evaluation.details()));
                 statement.setObject(index++, utc(evaluation.evaluatedAt()));
                 statement.addBatch();

@@ -24,6 +24,9 @@ public record CoverageReport(
         List<CoverageGapFinding> gapFindings,
         String normalizedStorageBucket,
         String normalizedStoragePath,
+        String configSha256,
+        String gateStatus,
+        List<String> warnings,
         Instant generatedAt) {
 
     public CoverageReport {
@@ -31,6 +34,8 @@ public record CoverageReport(
         lineHits = List.copyOf(lineHits == null ? List.of() : lineHits);
         componentRollups = List.copyOf(componentRollups == null ? List.of() : componentRollups);
         gapFindings = List.copyOf(gapFindings == null ? List.of() : gapFindings);
+        gateStatus = gateStatus == null ? "not_evaluated" : gateStatus;
+        warnings = List.copyOf(warnings == null ? List.of() : warnings);
     }
 
     public CoverageReport(
@@ -66,6 +71,9 @@ public record CoverageReport(
                 List.of(),
                 null,
                 null,
+                null,
+                "not_evaluated",
+                List.of(),
                 generatedAt);
     }
 
@@ -96,6 +104,9 @@ public record CoverageReport(
                 gapFindings,
                 bucket,
                 path,
+                configSha256,
+                gateStatus,
+                warnings,
                 generatedAt);
     }
 
@@ -118,6 +129,9 @@ public record CoverageReport(
                 gapFindings,
                 normalizedStorageBucket,
                 normalizedStoragePath,
+                configSha256,
+                gateStatus,
+                warnings,
                 generatedAt);
     }
 
@@ -140,6 +154,9 @@ public record CoverageReport(
                 gapFindings,
                 normalizedStorageBucket,
                 normalizedStoragePath,
+                configSha256,
+                gateStatus,
+                warnings,
                 generatedAt);
     }
 
@@ -162,6 +179,73 @@ public record CoverageReport(
                 findings,
                 normalizedStorageBucket,
                 normalizedStoragePath,
+                configSha256,
+                gateStatus,
+                warnings,
+                generatedAt);
+    }
+
+    public CoverageReport withConfigSha256(String hash) {
+        return copy(files, componentRollups, gapFindings, normalizedStorageBucket, normalizedStoragePath, hash, gateStatus, warnings);
+    }
+
+    public CoverageReport withComponentCoverage(
+            List<CoverageFileSummary> resolvedFiles,
+            List<CoverageComponentRollup> rollups,
+            List<String> reportWarnings) {
+        return copy(
+                resolvedFiles,
+                rollups,
+                gapFindings,
+                normalizedStorageBucket,
+                normalizedStoragePath,
+                configSha256,
+                gateStatus,
+                reportWarnings);
+    }
+
+    public CoverageReport withGateStatus(String status) {
+        return copy(
+                files,
+                componentRollups,
+                gapFindings,
+                normalizedStorageBucket,
+                normalizedStoragePath,
+                configSha256,
+                status,
+                warnings);
+    }
+
+    private CoverageReport copy(
+            List<CoverageFileSummary> copiedFiles,
+            List<CoverageComponentRollup> rollups,
+            List<CoverageGapFinding> findings,
+            String bucket,
+            String path,
+            String hash,
+            String status,
+            List<String> reportWarnings) {
+        return new CoverageReport(
+                reportId,
+                uploadId,
+                tenantId,
+                repositoryId,
+                commitSha,
+                branchName,
+                pullRequestNumber,
+                line,
+                branch,
+                function,
+                statement,
+                copiedFiles,
+                lineHits,
+                rollups,
+                findings,
+                bucket,
+                path,
+                hash,
+                status,
+                reportWarnings,
                 generatedAt);
     }
 }

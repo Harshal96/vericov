@@ -1,5 +1,8 @@
 package dev.vericov.upload.application;
 
+import dev.vericov.componentconfig.ComponentConfigException;
+import dev.vericov.componentconfig.ComponentConfigJson;
+import dev.vericov.componentconfig.ComponentConfigSnapshot;
 import dev.vericov.upload.application.port.ArtifactStorage;
 import dev.vericov.upload.application.port.RepositoryApiKeyAuthenticator;
 import dev.vericov.upload.application.port.RunnerUploadTokenIssuer;
@@ -155,6 +158,8 @@ public class UploadApplicationService {
                 command.ciBuildUrl(),
                 command.flags(),
                 command.ignore(),
+                configSnapshotJson(command),
+                configSnapshotHash(command),
                 command.component(),
                 command.packageName(),
                 UploadStatus.QUEUED,
@@ -201,8 +206,8 @@ public class UploadApplicationService {
             throw new InvalidUploadException("validation_error", "at least one artifact is required");
         }
         try {
-            CoverageIgnoreRules.validate(command.ignore());
-        } catch (InvalidCoverageIgnoreRuleException exception) {
+            validatedSnapshot(command);
+        } catch (ComponentConfigException | InvalidCoverageIgnoreRuleException exception) {
             throw new InvalidUploadException("validation_error", exception.getMessage());
         }
         command.artifacts().forEach(this::validateArtifact);
@@ -224,9 +229,38 @@ public class UploadApplicationService {
                 command.ciBuildUrl(),
                 command.flags(),
                 command.ignore(),
+                command.components(),
+                command.configSha256(),
+                command.configSnapshotPresent(),
                 command.component(),
                 command.packageName(),
                 command.artifacts());
+    }
+
+    private static ComponentConfigSnapshot validatedSnapshot(CreateUploadCommand command) {
+        CoverageIgnoreRules.validate(command.ignore());
+        if (!command.configSnapshotPresent()) {
+            return null;
+        }
+        ComponentConfigSnapshot snapshot = new ComponentConfigSnapshot(
+                1,
+                command.ignore(),
+                command.components());
+        String computed = ComponentConfigJson.sha256(snapshot);
+        if (command.configSha256() != null && !computed.equals(command.configSha256())) {
+            throw new ComponentConfigException("config_sha256 does not match the canonical config snapshot");
+        }
+        return snapshot;
+    }
+
+    private static String configSnapshotJson(CreateUploadCommand command) {
+        ComponentConfigSnapshot snapshot = validatedSnapshot(command);
+        return snapshot == null ? null : ComponentConfigJson.canonicalJson(snapshot);
+    }
+
+    private static String configSnapshotHash(CreateUploadCommand command) {
+        ComponentConfigSnapshot snapshot = validatedSnapshot(command);
+        return snapshot == null ? null : ComponentConfigJson.sha256(snapshot);
     }
 
     private void validateArtifact(dev.vericov.upload.domain.UploadArtifactInput artifact) {

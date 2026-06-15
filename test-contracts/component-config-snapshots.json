@@ -1,0 +1,65 @@
+{
+  "cases": [
+    {
+      "name": "repository-only",
+      "snapshot": {
+        "components": [],
+        "ignore": [],
+        "version": 1
+      },
+      "canonical": "{\"components\":[],\"ignore\":[],\"version\":1}",
+      "sha256": "0530b868a1c86efb1015ec13a8bf90876b453e3cac998033af4f6a13221a3c2a"
+    },
+    {
+      "name": "nested-components",
+      "snapshot": {
+        "components": [
+          {
+            "components": [
+              {
+                "components": [
+                  {
+                    "components": [],
+                    "gates": {},
+                    "key": "payments-api",
+                    "name": "payments-api",
+                    "owners": [
+                      "team-payments"
+                    ],
+                    "paths": [
+                      "services/payments/api/**"
+                    ]
+                  }
+                ],
+                "gates": {
+                  "line": 90
+                },
+                "key": "payments",
+                "name": "payments",
+                "owners": null,
+                "paths": []
+              }
+            ],
+            "gates": {
+              "branch": 70,
+              "line": 80
+            },
+            "key": "commerce",
+            "name": "Commerce",
+            "owners": [
+              "team-commerce"
+            ],
+            "paths": []
+          }
+        ],
+        "ignore": [
+          "generated/**",
+          "!generated/kept/**"
+        ],
+        "version": 1
+      },
+      "canonical": "{\"components\":[{\"components\":[{\"components\":[{\"components\":[],\"gates\":{},\"key\":\"payments-api\",\"name\":\"payments-api\",\"owners\":[\"team-payments\"],\"paths\":[\"services/payments/api/**\"]}],\"gates\":{\"line\":90},\"key\":\"payments\",\"name\":\"payments\",\"owners\":null,\"paths\":[]}],\"gates\":{\"branch\":70,\"line\":80},\"key\":\"commerce\",\"name\":\"Commerce\",\"owners\":[\"team-commerce\"],\"paths\":[]}],\"ignore\":[\"generated/**\",\"!generated/kept/**\"],\"version\":1}",
+      "sha256": "31ffc6727c4d6670af35b93b52f595cebb3022981899285cb6401015052ef00e"
+    }
+  ]
+}

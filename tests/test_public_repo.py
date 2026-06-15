@@ -219,11 +219,32 @@ def test_public_docs_define_the_coverage_file_exclusion_contract() -> None:
     assert "`.vericov.yml` is also accepted" not in cli_readme
 
 
-def test_upload_schema_persists_immutable_ignore_snapshot() -> None:
+def test_public_docs_define_hierarchical_component_coverage() -> None:
+    root_readme = read("README.md")
+    cli_readme = read("clis/coverage-upload/README.md")
+    self_hosting = read("docs/SELF_HOSTING.md")
+
+    assert "components:" in root_readme
+    assert "key: payments-api" in cli_readme
+    assert "applies `ignore` rules before component matching" in cli_readme
+    assert "most-specific matching leaf" in cli_readme
+    assert "stable, globally unique lowercase identifiers" in cli_readme
+    assert "Parent coverage and gates include all" in cli_readme
+    assert "descendant files" in cli_readme
+    assert "`gate_status: failed`" in cli_readme
+    assert "future uploads only" in cli_readme
+    assert "config_sha256" in self_hosting
+
+
+def test_upload_schema_persists_immutable_configuration_snapshot() -> None:
     schema = read("infra/supabase/volumes/db/vericov.sql")
 
     assert "ignore_rules jsonb NOT NULL DEFAULT '[]'::jsonb" in schema
     assert "uploads_ignore_rules_array" in schema
+    assert "config_snapshot_json jsonb" in schema
+    assert "config_sha256 text" in schema
+    assert "component_key text NOT NULL" in schema
+    assert "leaf_component_key text" in schema
 
 
 def test_release_builds_the_real_upload_cli_package() -> None:

@@ -115,6 +115,8 @@ class UploadResourceIntegrationTest {
                 "https://github.com/acme/payments-api/actions/runs/987654321",
                 List.of("unit"),
                 List.of(),
+                null,
+                null,
                 "api",
                 "services/api",
                 List.of(new UploadArtifactHttpRequest(
@@ -259,6 +261,8 @@ class UploadResourceIntegrationTest {
                 "https://github.com/acme/payments-api/actions/runs/987654321",
                 List.of("unit", "linux"),
                 ignore,
+                null,
+                null,
                 "api",
                 "services/api",
                 List.of(

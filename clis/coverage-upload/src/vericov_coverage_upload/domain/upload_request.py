@@ -6,6 +6,10 @@ from dataclasses import dataclass
 from typing import Any, Dict, Optional, Tuple
 
 from vericov_coverage_upload.domain.artifacts import UploadArtifact
+from vericov_coverage_upload.domain.component_config import (
+    ComponentDefinition,
+    ConfigSnapshot,
+)
 from vericov_coverage_upload.domain.metadata import UploadMetadata
 
 
@@ -19,12 +23,18 @@ class UploadRequest:
     package: Optional[str]
     artifacts: Tuple[UploadArtifact, ...]
     ignore: Tuple[str, ...] = ()
+    components: Tuple[ComponentDefinition, ...] = ()
     idempotency_key: Optional[str] = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "flags", tuple(self.flags))
         object.__setattr__(self, "artifacts", tuple(self.artifacts))
         object.__setattr__(self, "ignore", tuple(self.ignore))
+        object.__setattr__(self, "components", tuple(self.components))
+
+    @property
+    def config_snapshot(self) -> ConfigSnapshot:
+        return ConfigSnapshot(1, self.ignore, self.components)
 
     def to_json(self) -> Dict[str, Any]:
         payload: Dict[str, Any] = {
@@ -37,6 +47,8 @@ class UploadRequest:
             "ci_build_url": self.metadata.ci_build_url,
             "flags": list(self.flags),
             "ignore": list(self.ignore),
+            "components": [component.to_data() for component in self.components],
+            "config_sha256": self.config_snapshot.sha256,
             "component": self.component,
             "package": self.package,
             "artifacts": [artifact.to_request() for artifact in self.artifacts],
@@ -56,6 +68,8 @@ class UploadRequest:
             "ci_build_id": self.metadata.ci_build_id,
             "flags": list(self.flags),
             "ignore": list(self.ignore),
+            "components": [component.to_data() for component in self.components],
+            "config_sha256": self.config_snapshot.sha256,
             "component": self.component,
             "package": self.package,
             "artifacts": [

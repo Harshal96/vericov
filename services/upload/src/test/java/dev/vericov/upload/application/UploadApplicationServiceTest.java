@@ -1,5 +1,9 @@
 package dev.vericov.upload.application;
 
+import dev.vericov.componentconfig.ComponentConfigJson;
+import dev.vericov.componentconfig.ComponentConfigSnapshot;
+import dev.vericov.componentconfig.ComponentDefinition;
+import dev.vericov.componentconfig.ComponentGates;
 import dev.vericov.upload.application.port.ArtifactStorage;
 import dev.vericov.upload.application.port.RepositoryApiKeyAuthenticator;
 import dev.vericov.upload.application.port.UploadEventPublisher;
@@ -19,6 +23,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -52,6 +57,9 @@ class UploadApplicationServiceTest {
         assertEquals(UploadStatus.QUEUED, storedUpload.status());
         assertEquals(NOW, storedUpload.acceptedAt());
         assertEquals(List.of("generated/**", "!generated/maintained/**"), storedUpload.ignore());
+        assertEquals(
+                ComponentConfigJson.sha256(storedUpload.configSnapshot()),
+                storedUpload.configSha256());
 
         assertEquals(2, fixture.artifactStorage.storedArtifacts.size());
         assertEquals(1, fixture.eventPublisher.events.size());
@@ -250,6 +258,50 @@ class UploadApplicationServiceTest {
                 valid.component(),
                 valid.packageName(),
                 valid.artifacts());
+
+        InvalidUploadException exception = assertThrows(
+                InvalidUploadException.class,
+                () -> fixture.service.acceptUpload(command));
+
+        assertEquals("validation_error", exception.code());
+        assertEquals(0, fixture.authenticator.calls);
+        assertEquals(0, fixture.artifactStorage.storedArtifacts.size());
+        assertEquals(0, fixture.workQueue.jobs.size());
+    }
+
+    @Test
+    void acceptsComponentSnapshotAndPersistsCanonicalHash() {
+        TestFixture fixture = new TestFixture();
+        CreateUploadCommand valid = command("components");
+        ComponentDefinition component = new ComponentDefinition(
+                "api",
+                "API",
+                List.of("team-api"),
+                new ComponentGates(Map.of("line", java.math.BigDecimal.valueOf(90))),
+                List.of("services/api/**"),
+                List.of());
+        ComponentConfigSnapshot snapshot = new ComponentConfigSnapshot(
+                1,
+                valid.ignore(),
+                List.of(component));
+        CreateUploadCommand command = valid.withConfig(
+                snapshot.components(),
+                ComponentConfigJson.sha256(snapshot),
+                true);
+
+        var accepted = fixture.service.acceptUpload(command);
+
+        QueuedUpload stored = fixture.uploadRepository.findById(accepted.uploadId()).orElseThrow();
+        assertEquals("api", stored.configSnapshot().components().getFirst().key());
+        assertEquals(ComponentConfigJson.canonicalJson(snapshot), stored.configSnapshotJson());
+        assertEquals(ComponentConfigJson.sha256(snapshot), stored.configSha256());
+    }
+
+    @Test
+    void rejectsConfigHashMismatchBeforeAuthenticationOrSideEffects() {
+        TestFixture fixture = new TestFixture();
+        CreateUploadCommand command = command("hash-mismatch")
+                .withConfig(List.of(), "0".repeat(64), true);
 
         InvalidUploadException exception = assertThrows(
                 InvalidUploadException.class,

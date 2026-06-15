@@ -11,6 +11,7 @@
 
     <modules>
         <module>libraries/coverage-ignore</module>
+        <module>libraries/component-config</module>
         <module>services/upload</module>
         <module>services/coverage-analysis</module>
     </modules>

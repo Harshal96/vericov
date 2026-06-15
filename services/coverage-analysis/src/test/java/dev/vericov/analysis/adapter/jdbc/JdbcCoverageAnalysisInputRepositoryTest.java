@@ -8,6 +8,8 @@ import java.sql.SQLException;
 import java.util.List;
 import java.util.UUID;
 import dev.vericov.analysis.domain.NonRetryableAnalysisException;
+import dev.vericov.componentconfig.ComponentConfigJson;
+import dev.vericov.componentconfig.ComponentConfigSnapshot;
 import org.junit.jupiter.api.Test;
 
 class JdbcCoverageAnalysisInputRepositoryTest {
@@ -118,5 +120,62 @@ class JdbcCoverageAnalysisInputRepositoryTest {
                 () -> new JdbcCoverageAnalysisInputRepository(dataSource).load(UPLOAD_ID));
 
         assertTrue(exception.getMessage().contains("ignore[0]"));
+    }
+
+    @Test
+    void loadsAndVerifiesCanonicalConfigurationSnapshot() {
+        ComponentConfigSnapshot snapshot = new ComponentConfigSnapshot(
+                1,
+                List.of("generated/**"),
+                List.of());
+        String canonical = ComponentConfigJson.canonicalJson(snapshot);
+        JdbcProxySupport.RecordingDataSource dataSource = dataSourceWithSnapshot(
+                canonical,
+                ComponentConfigJson.sha256(snapshot));
+
+        var input = new JdbcCoverageAnalysisInputRepository(dataSource).load(UPLOAD_ID);
+
+        assertEquals(canonical, input.configSnapshotJson());
+        assertEquals(ComponentConfigJson.sha256(snapshot), input.configSha256());
+        assertEquals(List.of("generated/**"), input.ignore());
+    }
+
+    @Test
+    void rejectsPersistedConfigurationHashMismatchAsNonRetryable() {
+        ComponentConfigSnapshot snapshot = new ComponentConfigSnapshot(
+                1,
+                List.of("generated/**"),
+                List.of());
+        JdbcProxySupport.RecordingDataSource dataSource = dataSourceWithSnapshot(
+                ComponentConfigJson.canonicalJson(snapshot),
+                "0".repeat(64));
+
+        NonRetryableAnalysisException exception = assertThrows(
+                NonRetryableAnalysisException.class,
+                () -> new JdbcCoverageAnalysisInputRepository(dataSource).load(UPLOAD_ID));
+
+        assertTrue(exception.getMessage().contains("does not match config_sha256"));
+    }
+
+    private static JdbcProxySupport.RecordingDataSource dataSourceWithSnapshot(
+            String snapshotJson,
+            String configSha256) {
+        return JdbcProxySupport.dataSource()
+                .whenSqlContains(
+                        "from vericov.uploads u",
+                        new JdbcProxySupport.StatementBehavior().withRows(List.of(JdbcProxySupport.row(
+                                "id", UPLOAD_ID,
+                                "tenant_id", TENANT_ID,
+                                "repository_id", REPOSITORY_ID,
+                                "provider", "github",
+                                "commit_sha", "abc123",
+                                "branch", "main",
+                                "ignore_rules", "[]",
+                                "config_snapshot_json", snapshotJson,
+                                "config_sha256", configSha256,
+                                "pull_request_number", null))))
+                .whenSqlContains(
+                        "from vericov.upload_artifacts",
+                        new JdbcProxySupport.StatementBehavior().withRows(List.of()));
     }
 }

@@ -17,7 +17,8 @@ public final class CoverageIgnoreRules {
         this.rules = List.copyOf(rules == null ? List.of() : rules);
         List<CompiledRule> compiled = new ArrayList<>(this.rules.size());
         for (int index = 0; index < this.rules.size(); index++) {
-            compiled.add(compileRule(this.rules.get(index), index));
+            CompiledPath path = compilePath(this.rules.get(index), index, true, "ignore");
+            compiled.add(new CompiledRule(path.negated(), path.pattern()));
         }
         this.compiledRules = List.copyOf(compiled);
     }
@@ -49,18 +50,25 @@ public final class CoverageIgnoreRules {
         return normalized;
     }
 
-    private static CompiledRule compileRule(String rule, int index) {
+    static CompiledPath compilePath(
+            String rule,
+            int index,
+            boolean allowNegation,
+            String field) {
         if (rule == null || rule.isBlank()) {
-            throw invalid("empty", index, "must be a non-empty string");
+            throw invalid("empty", index, "must be a non-empty string", field);
         }
 
         boolean negated = rule.startsWith("!");
+        if (negated && !allowNegation) {
+            throw invalid("negation_not_allowed", index, "must not use negation", field);
+        }
         String glob = negated ? rule.substring(1) : rule;
         if (glob.isEmpty()) {
-            throw invalid("bare_negation", index, "bare ! is not a valid rule");
+            throw invalid("bare_negation", index, "bare ! is not a valid rule", field);
         }
         if (isAbsoluteFilesystemPath(glob)) {
-            throw invalid("absolute_path", index, "must describe a repository-relative path");
+            throw invalid("absolute_path", index, "must describe a repository-relative path", field);
         }
 
         boolean anchored = glob.startsWith("/");
@@ -72,35 +80,38 @@ public final class CoverageIgnoreRules {
             glob = glob.substring(0, glob.length() - 1);
         }
         if (glob.isEmpty()) {
-            throw invalid("empty", index, "must contain a path pattern");
+            throw invalid("empty", index, "must contain a path pattern", field);
         }
         for (String segment : glob.split("/", -1)) {
             if ("..".equals(segment)) {
-                throw invalid("parent_traversal", index, "must not contain parent traversal");
+                throw invalid("parent_traversal", index, "must not contain parent traversal", field);
             }
         }
 
         String prefix = anchored ? "^" : "^(?:.*/)?";
         String suffix = directoryOnly ? "/.*$" : "(?:/.*)?$";
         try {
-            return new CompiledRule(negated, Pattern.compile(prefix + translateGlob(glob, index) + suffix));
+            return new CompiledPath(
+                    negated,
+                    Pattern.compile(prefix + translateGlob(glob, index, field) + suffix),
+                    specificity(rule));
         } catch (PatternSyntaxException exception) {
-            throw invalid("malformed_range", index, "contains a malformed character range");
+            throw invalid("malformed_range", index, "contains a malformed character range", field);
         }
     }
 
-    private static String translateGlob(String glob, int index) {
+    private static String translateGlob(String glob, int index, String field) {
         StringBuilder translated = new StringBuilder();
         int position = 0;
         while (position < glob.length()) {
             char character = glob.charAt(position);
             if (character == '\\') {
                 if (position + 1 >= glob.length()) {
-                    throw invalid("invalid_escape", index, "ends with an invalid escape");
+                    throw invalid("invalid_escape", index, "ends with an invalid escape", field);
                 }
                 char escaped = glob.charAt(position + 1);
                 if (ALLOWED_ESCAPES.indexOf(escaped) < 0) {
-                    throw invalid("invalid_escape", index, "contains an invalid escape");
+                    throw invalid("invalid_escape", index, "contains an invalid escape", field);
                 }
                 translated.append(Pattern.quote(String.valueOf(escaped)));
                 position += 2;
@@ -134,7 +145,7 @@ public final class CoverageIgnoreRules {
                 continue;
             }
             if (character == '[') {
-                CharacterClass characterClass = translateCharacterClass(glob, position, index);
+                CharacterClass characterClass = translateCharacterClass(glob, position, index, field);
                 translated.append(characterClass.regex());
                 position = characterClass.nextPosition();
                 continue;
@@ -145,18 +156,18 @@ public final class CoverageIgnoreRules {
         return translated.toString();
     }
 
-    private static CharacterClass translateCharacterClass(String glob, int start, int index) {
+    private static CharacterClass translateCharacterClass(String glob, int start, int index, String field) {
         int end = glob.indexOf(']', start + 1);
         if (end < 0) {
-            throw invalid("malformed_range", index, "contains an unclosed character range");
+            throw invalid("malformed_range", index, "contains an unclosed character range", field);
         }
         String content = glob.substring(start + 1, end);
         boolean negated = content.startsWith("!") || content.startsWith("^");
         String body = negated ? content.substring(1) : content;
         if (body.isEmpty()) {
-            throw invalid("malformed_range", index, "contains an empty character range");
+            throw invalid("malformed_range", index, "contains an empty character range", field);
         }
-        validateRanges(body, index);
+        validateRanges(body, index, field);
         String escapedBody = body.replace("\\", "\\\\").replace("]", "\\]");
         if (escapedBody.startsWith("^")) {
             escapedBody = "\\" + escapedBody;
@@ -164,11 +175,11 @@ public final class CoverageIgnoreRules {
         return new CharacterClass("[" + (negated ? "^" : "") + escapedBody + "]", end + 1);
     }
 
-    private static void validateRanges(String body, int index) {
+    private static void validateRanges(String body, int index, String field) {
         for (int position = 1; position < body.length() - 1; position++) {
             if (body.charAt(position) == '-'
                     && body.charAt(position - 1) > body.charAt(position + 1)) {
-                throw invalid("malformed_range", index, "contains a descending character range");
+                throw invalid("malformed_range", index, "contains a descending character range", field);
             }
         }
     }
@@ -180,11 +191,57 @@ public final class CoverageIgnoreRules {
                 || URI.matcher(glob).matches();
     }
 
-    private static InvalidCoverageIgnoreRuleException invalid(String code, int index, String detail) {
-        return new InvalidCoverageIgnoreRuleException(code, index, "ignore[" + index + "] " + detail);
+    private static CoveragePathPattern.Specificity specificity(String rule) {
+        String glob = rule.startsWith("/") ? rule.substring(1) : rule;
+        StringBuilder literal = new StringBuilder();
+        boolean wildcardFound = false;
+        int position = 0;
+        while (position < glob.length()) {
+            char character = glob.charAt(position);
+            if (character == '\\' && position + 1 < glob.length()) {
+                literal.append(glob.charAt(position + 1));
+                position += 2;
+                continue;
+            }
+            if (character == '*' || character == '?' || character == '[') {
+                wildcardFound = true;
+                break;
+            }
+            literal.append(character);
+            position++;
+        }
+        int segments = 0;
+        if (wildcardFound) {
+            for (int index = 0; index < literal.length(); index++) {
+                if (literal.charAt(index) == '/') {
+                    segments++;
+                }
+            }
+        } else {
+            for (String segment : literal.toString().split("/")) {
+                if (!segment.isEmpty()) {
+                    segments++;
+                }
+            }
+        }
+        return new CoveragePathPattern.Specificity(segments, literal.length());
+    }
+
+    private static InvalidCoverageIgnoreRuleException invalid(
+            String code,
+            int index,
+            String detail,
+            String field) {
+        return new InvalidCoverageIgnoreRuleException(code, index, field + "[" + index + "] " + detail);
     }
 
     private record CompiledRule(boolean negated, Pattern pattern) {
+    }
+
+    record CompiledPath(
+            boolean negated,
+            Pattern pattern,
+            CoveragePathPattern.Specificity specificity) {
     }
 
     private record CharacterClass(String regex, int nextPosition) {

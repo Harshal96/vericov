@@ -1,5 +1,7 @@
 package dev.vericov.upload.adapter.jdbc;
 
+import dev.vericov.componentconfig.ComponentConfigJson;
+import dev.vericov.componentconfig.ComponentConfigSnapshot;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -13,6 +15,7 @@ import java.io.PrintWriter;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
+import java.math.BigDecimal;
 import java.sql.Array;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -37,6 +40,7 @@ class JdbcUploadRepositoryTest {
     private static final UUID TENANT_ID = UUID.fromString("22222222-2222-2222-2222-222222222222");
     private static final UUID REPOSITORY_ID = UUID.fromString("33333333-3333-3333-3333-333333333333");
     private static final UUID JOB_ID = UUID.fromString("44444444-4444-4444-4444-444444444444");
+    private static final UUID REPORT_ID = UUID.fromString("55555555-5555-5555-5555-555555555555");
 
     @Test
     void savesUploadArtifactsJobEventAndQueueMessageInOneTransaction() {
@@ -77,7 +81,8 @@ class JdbcUploadRepositoryTest {
         assertTrue(dataSource.committed);
         assertFalse(dataSource.rolledBack);
         assertTrue(dataSource.containsSql("insert into vericov.uploads"));
-        assertTrue(dataSource.containsSql("ignore_rules"));
+        assertTrue(dataSource.containsSql("config_snapshot_json"));
+        assertTrue(dataSource.containsSql("config_sha256"));
         assertTrue(dataSource.containsSql("insert into vericov.upload_artifacts"));
         assertTrue(dataSource.containsSql("insert into vericov.analysis_jobs"));
         assertTrue(dataSource.containsSql("insert into vericov.upload_events"));
@@ -100,6 +105,8 @@ class JdbcUploadRepositoryTest {
                 "ci_build_url", "https://ci.example/build-1",
                 "flags", new String[] {"unit"},
                 "ignore_rules", "[\"vendor/**\",\"!vendor/maintained/**\"]",
+                "config_snapshot_json", "{\"components\":[],\"ignore\":[\"vendor/**\",\"!vendor/maintained/**\"],\"version\":1}",
+                "config_sha256", "b35908e7712292f17a4a365c09223939366043bbf48dfa70705d5a403de43c90",
                 "component", "api",
                 "package_name", null,
                 "status", "processed",
@@ -117,6 +124,7 @@ class JdbcUploadRepositoryTest {
                 "storage_path", "tenant/upload/coverage.lcov",
                 "sha256_hex", "a".repeat(64)));
         dataSource.reportRows.add(row(
+                "id", REPORT_ID,
                 "upload_id", UPLOAD_ID,
                 "repository_id", REPOSITORY_ID,
                 "commit_sha", "abc123",
@@ -133,8 +141,86 @@ class JdbcUploadRepositoryTest {
                 "statement_total", 12L,
                 "normalized_storage_bucket", "coverage-normalized",
                 "normalized_storage_path", "tenant/upload/coverage.json.gz",
+                "config_sha256", "c".repeat(64),
+                "gate_status", "failed",
                 "created_at", OffsetDateTime.ofInstant(
                         Instant.parse("2026-06-05T12:01:00Z"), ZoneOffset.UTC)));
+        dataSource.componentRows.add(row(
+                "component_key", "commerce",
+                "parent_component_key", null,
+                "component_path", new String[] {"commerce"},
+                "depth", 0,
+                "position", 0,
+                "name", "Commerce",
+                "owners", new String[] {"team-commerce"},
+                "effective_gates_json", "{\"line\":80}",
+                "line_covered", 8L,
+                "line_total", 10L,
+                "branch_covered", 3L,
+                "branch_total", 4L,
+                "function_covered", 2L,
+                "function_total", 2L,
+                "statement_covered", 9L,
+                "statement_total", 12L,
+                "direct_file_count", 0,
+                "descendant_file_count", 2,
+                "gap_count", 1,
+                "debt_count", 0,
+                "risk_score_total", new BigDecimal("72.5"),
+                "highest_active_risk_level", "high"));
+        dataSource.componentRows.add(row(
+                "component_key", "payments-api",
+                "parent_component_key", "commerce",
+                "component_path", new String[] {"commerce", "payments-api"},
+                "depth", 1,
+                "position", 0,
+                "name", "Payments API",
+                "owners", new String[] {"team-payments"},
+                "effective_gates_json", "{\"line\":90}",
+                "line_covered", 8L,
+                "line_total", 10L,
+                "branch_covered", 3L,
+                "branch_total", 4L,
+                "function_covered", 2L,
+                "function_total", 2L,
+                "statement_covered", 9L,
+                "statement_total", 12L,
+                "direct_file_count", 2,
+                "descendant_file_count", 2,
+                "gap_count", 1,
+                "debt_count", 0,
+                "risk_score_total", new BigDecimal("72.5"),
+                "highest_active_risk_level", "high"));
+        dataSource.componentRows.add(row(
+                "component_key", "unassigned",
+                "parent_component_key", null,
+                "component_path", new String[] {"unassigned"},
+                "depth", 0,
+                "position", Integer.MAX_VALUE,
+                "name", "Unassigned",
+                "owners", new String[0],
+                "effective_gates_json", "{}",
+                "line_covered", 0L,
+                "line_total", 0L,
+                "branch_covered", 0L,
+                "branch_total", 0L,
+                "function_covered", 0L,
+                "function_total", 0L,
+                "statement_covered", 0L,
+                "statement_total", 0L,
+                "direct_file_count", 1,
+                "descendant_file_count", 1,
+                "gap_count", 0,
+                "debt_count", 0,
+                "risk_score_total", BigDecimal.ZERO,
+                "highest_active_risk_level", null));
+        dataSource.gateRows.add(row(
+                "scope_key", "payments-api",
+                "metric", "line",
+                "threshold", new BigDecimal("90"),
+                "actual", new BigDecimal("80"),
+                "status", "failed",
+                "blocking", true));
         JdbcUploadRepository repository = new JdbcUploadRepository(dataSource);
 
         QueuedUpload byId = repository.findById(UPLOAD_ID).orElseThrow();
@@ -146,12 +232,25 @@ class JdbcUploadRepositoryTest {
         assertEquals(byId, byKey);
         assertEquals(List.of("unit"), byId.flags());
         assertEquals(List.of("vendor/**", "!vendor/maintained/**"), byId.ignore());
+        assertEquals(
+                ComponentConfigJson.canonicalJson(new ComponentConfigSnapshot(
+                        1,
+                        List.of("vendor/**", "!vendor/maintained/**"),
+                        List.of())),
+                byId.configSnapshotJson());
         assertEquals(ArtifactKind.COVERAGE, artifact.kind());
         assertEquals(7L, artifact.sizeBytes());
         assertEquals(42, report.pullRequestNumber());
         assertEquals(8L, report.line().covered());
         assertEquals(10L, report.line().total());
         assertEquals("coverage-normalized", report.normalizedStorageBucket());
+        assertEquals("c".repeat(64), report.configSha256());
+        assertEquals("failed", report.gateStatus());
+        assertEquals("commerce", report.components().getFirst().key());
+        assertEquals("payments-api", report.components().getFirst().components().getFirst().key());
+        assertEquals("failed", report.components().getFirst().components().getFirst().gates().getFirst().status());
+        assertEquals("unassigned_files", report.warnings().getFirst().code());
+        assertEquals(1, report.warnings().getFirst().count());
     }
 
     @Test
@@ -194,6 +293,8 @@ class JdbcUploadRepositoryTest {
         private final List<Map<String, Object>> uploadRows = new ArrayList<>();
         private final List<Map<String, Object>> artifactRows = new ArrayList<>();
         private final List<Map<String, Object>> reportRows = new ArrayList<>();
+        private final List<Map<String, Object>> componentRows = new ArrayList<>();
+        private final List<Map<String, Object>> gateRows = new ArrayList<>();
         private boolean autoCommit = true;
         private boolean committed;
         private boolean rolledBack;
@@ -259,6 +360,12 @@ class JdbcUploadRepositoryTest {
                     if (statementSql.contains("from vericov.coverage_reports")) {
                         yield resultSet(reportRows);
                     }
+                    if (statementSql.contains("from vericov.component_coverage_rollups")) {
+                        yield resultSet(componentRows);
+                    }
+                    if (statementSql.contains("from vericov.gate_evaluations")) {
+                        yield resultSet(gateRows);
+                    }
                     yield resultSet(List.of());
                 }
                 case "executeUpdate" -> 1;
@@ -288,6 +395,16 @@ class JdbcUploadRepositoryTest {
                     Object value = rows.get(index[0]).get((String) args[0]);
                     wasNull[0] = value == null;
                     yield value == null ? 0 : ((Number) value).intValue();
+                }
+                case "getBigDecimal" -> {
+                    Object value = rows.get(index[0]).get((String) args[0]);
+                    wasNull[0] = value == null;
+                    yield value;
+                }
+                case "getBoolean" -> {
+                    Object value = rows.get(index[0]).get((String) args[0]);
+                    wasNull[0] = value == null;
+                    yield value != null && (boolean) value;
                 }
                 case "getObject" -> {
                     Object value = rows.get(index[0]).get((String) args[0]);

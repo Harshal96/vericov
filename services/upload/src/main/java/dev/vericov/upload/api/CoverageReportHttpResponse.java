@@ -3,6 +3,7 @@ package dev.vericov.upload.api;
 import dev.vericov.upload.application.CoverageReportDetails;
 import jakarta.json.bind.annotation.JsonbProperty;
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 
 public record CoverageReportHttpResponse(
@@ -18,6 +19,10 @@ public record CoverageReportHttpResponse(
         CoverageMetricHttpResponse statement,
         @JsonbProperty("normalized_storage_bucket") String normalizedStorageBucket,
         @JsonbProperty("normalized_storage_path") String normalizedStoragePath,
+        @JsonbProperty("config_sha256") String configSha256,
+        @JsonbProperty("gate_status") String gateStatus,
+        List<CoverageWarningHttpResponse> warnings,
+        List<ComponentCoverageHttpResponse> components,
         @JsonbProperty("created_at") Instant createdAt) {
 
     public static CoverageReportHttpResponse from(CoverageReportDetails report) {
@@ -34,6 +39,10 @@ public record CoverageReportHttpResponse(
                 CoverageMetricHttpResponse.from(report.statement()),
                 report.normalizedStorageBucket(),
                 report.normalizedStoragePath(),
+                report.configSha256(),
+                report.gateStatus(),
+                report.warnings().stream().map(CoverageWarningHttpResponse::from).toList(),
+                report.components().stream().map(ComponentCoverageHttpResponse::from).toList(),
                 report.createdAt());
     }
 }
