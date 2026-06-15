@@ -33,33 +33,6 @@ public record CreateUploadHttpRequest(
         artifacts = List.copyOf(artifacts == null ? List.of() : artifacts);
     }
 
-    public CreateUploadHttpRequest(
-            UUID repositoryId,
-            String commitSha,
-            String branch,
-            Integer pullRequestNumber,
-            String ciProvider,
-            String ciBuildId,
-            String ciBuildUrl,
-            List<String> flags,
-            String component,
-            String packageName,
-            List<UploadArtifactHttpRequest> artifacts) {
-        this(
-                repositoryId,
-                commitSha,
-                branch,
-                pullRequestNumber,
-                ciProvider,
-                ciBuildId,
-                ciBuildUrl,
-                flags,
-                List.of(),
-                component,
-                packageName,
-                artifacts);
-    }
-
     public CreateUploadCommand toCommand(String authorizationHeader, String idempotencyKey) {
         return new CreateUploadCommand(
                 authorizationHeader,
