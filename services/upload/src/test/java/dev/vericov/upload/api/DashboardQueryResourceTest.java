@@ -23,6 +23,10 @@ import dev.vericov.upload.application.DashboardRepositoryOverview;
 import dev.vericov.upload.application.DashboardQueryService;
 import dev.vericov.upload.application.DashboardTestRun;
 import dev.vericov.upload.application.DashboardTrendPoint;
+import dev.vericov.upload.application.DashboardUploadArtifact;
+import dev.vericov.upload.application.DashboardUploadDetails;
+import dev.vericov.upload.application.DashboardUploadEvent;
+import dev.vericov.upload.application.DashboardUploadListItem;
 import dev.vericov.upload.application.InvalidUploadException;
 import dev.vericov.upload.application.port.DashboardQueryRepository;
 import dev.vericov.upload.application.port.TenantAuthenticator;
@@ -567,6 +571,75 @@ class DashboardQueryResourceTest {
         assertEquals("repo_not_found", error.error().code());
     }
 
+    @Test
+    void uploadsReturnsTenantScopedListingWithDefaultLimit() {
+        RecordingRepository repository = new RecordingRepository();
+        DashboardQueryResource resource = resource(authorizationHeader -> principal(), repository);
+
+        Response response = resource.uploads("Bearer internal-token", REPOSITORY_ID, "processed", null);
+
+        assertEquals(200, response.getStatus());
+        assertEquals(TENANT_ID, repository.tenantId);
+        assertEquals(REPOSITORY_ID, repository.uploadRepositoryId);
+        assertEquals("processed", repository.uploadStatus);
+        assertEquals(50, repository.uploadLimit);
+        var body = (ApiResponse<DashboardUploadListHttpResponse>) response.getEntity();
+        DashboardUploadListItemHttpResponse upload = body.data().uploads().getFirst();
+        assertEquals(UPLOAD_ID, upload.id());
+        assertEquals("processed", upload.status());
+        assertEquals(REPORT_ID, upload.coverageReportId());
+    }
+
+    @Test
+    void uploadReturnsDetailsWithLifecycleEvents() {
+        DashboardQueryResource resource = resource(authorizationHeader -> principal(), new RecordingRepository());
+
+        Response response = resource.upload("Bearer internal-token", UPLOAD_ID);
+
+        assertEquals(200, response.getStatus());
+        var body = (ApiResponse<DashboardUploadDetailsHttpResponse>) response.getEntity();
+        assertEquals(UPLOAD_ID, body.data().upload().id());
+        assertEquals(1, body.data().events().size());
+        assertEquals("upload.received", body.data().events().getFirst().eventType());
+    }
+
+    @Test
+    void uploadReturns404WhenUploadMissing() {
+        DashboardQueryResource resource = resource(authorizationHeader -> principal(), new OverviewRepository(
+                new DashboardOverview(0, 0, null, 0, 0, 0, 0)));
+
+        Response response = resource.upload("Bearer internal-token", UPLOAD_ID);
+
+        assertEquals(404, response.getStatus());
+        ApiError error = assertInstanceOf(ApiError.class, response.getEntity());
+        assertEquals("upload_not_found", error.error().code());
+    }
+
+    @Test
+    void uploadArtifactsReturnsArtifactMetadata() {
+        DashboardQueryResource resource = resource(authorizationHeader -> principal(), new RecordingRepository());
+
+        Response response = resource.uploadArtifacts("Bearer internal-token", UPLOAD_ID);
+
+        assertEquals(200, response.getStatus());
+        var body = (ApiResponse<DashboardUploadArtifactListHttpResponse>) response.getEntity();
+        DashboardUploadArtifactHttpResponse artifact = body.data().artifacts().getFirst();
+        assertEquals("coverage.xml", artifact.name());
+        assertEquals("coverage", artifact.kind());
+    }
+
+    @Test
+    void uploadArtifactsReturns404WhenUploadMissing() {
+        DashboardQueryResource resource = resource(authorizationHeader -> principal(), new OverviewRepository(
+                new DashboardOverview(0, 0, null, 0, 0, 0, 0)));
+
+        Response response = resource.uploadArtifacts("Bearer internal-token", UPLOAD_ID);
+
+        assertEquals(404, response.getStatus());
+        ApiError error = assertInstanceOf(ApiError.class, response.getEntity());
+        assertEquals("upload_not_found", error.error().code());
+    }
+
     private static DashboardQueryResource resource(
             TenantAuthenticator authenticator,
             DashboardQueryRepository repository) {
@@ -637,6 +710,9 @@ class DashboardQueryResourceTest {
         private UUID pullRequestDiffId;
         private UUID testRunRepositoryId;
         private int testRunLimit;
+        private UUID uploadRepositoryId;
+        private String uploadStatus;
+        private int uploadLimit;
         private final boolean fileExists;
 
         private RecordingRepository() {
@@ -938,6 +1014,53 @@ class DashboardQueryResourceTest {
                     new CoverageMetricDetails(8, 12),
                     4,
                     0);
+        }
+
+        @Override
+        public List<DashboardUploadListItem> listUploads(UUID tenantId, UUID repositoryId, String status, int limit) {
+            this.tenantId = tenantId;
+            this.uploadRepositoryId = repositoryId;
+            this.uploadStatus = status;
+            this.uploadLimit = limit;
+            return List.of(uploadListItem());
+        }
+
+        @Override
+        public Optional<DashboardUploadDetails> uploadDetails(UUID tenantId, UUID uploadId) {
+            this.tenantId = tenantId;
+            if (!UPLOAD_ID.equals(uploadId)) {
+                return Optional.empty();
+            }
+            return Optional.of(new DashboardUploadDetails(
+                    uploadListItem(),
+                    List.of(new DashboardUploadEvent(
+                            "upload.received",
+                            "{\"analysis_job_id\":\"abc\"}",
+                            Instant.parse("2026-07-04T19:00:00Z")))));
+        }
+
+        @Override
+        public List<DashboardUploadArtifact> uploadArtifacts(UUID tenantId, UUID uploadId) {
+            this.tenantId = tenantId;
+            return List.of(new DashboardUploadArtifact(
+                    "coverage.xml", "coverage", "cobertura", 2048, Instant.parse("2026-07-04T19:00:00Z")));
+        }
+
+        private static DashboardUploadListItem uploadListItem() {
+            return new DashboardUploadListItem(
+                    UPLOAD_ID,
+                    REPOSITORY_ID,
+                    "abc123",
+                    "main",
+                    null,
+                    "github_actions",
+                    "https://ci.example/build-1",
+                    "processed",
+                    Instant.parse("2026-07-04T18:55:00Z"),
+                    Instant.parse("2026-07-04T19:00:00Z"),
+                    REPORT_ID,
+                    null,
+                    null);
         }
 
         private static DashboardTestRun testRun() {

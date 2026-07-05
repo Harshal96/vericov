@@ -19,6 +19,10 @@ import dev.vericov.upload.application.DashboardRepository;
 import dev.vericov.upload.application.DashboardRepositoryOverview;
 import dev.vericov.upload.application.DashboardTestRun;
 import dev.vericov.upload.application.DashboardTrendPoint;
+import dev.vericov.upload.application.DashboardUploadArtifact;
+import dev.vericov.upload.application.DashboardUploadDetails;
+import dev.vericov.upload.application.DashboardUploadEvent;
+import dev.vericov.upload.application.DashboardUploadListItem;
 import dev.vericov.upload.application.InvalidUploadException;
 import dev.vericov.upload.application.port.DashboardQueryRepository;
 import java.math.BigDecimal;
@@ -228,6 +232,160 @@ public class JdbcDashboardQueryRepository implements DashboardQueryRepository {
         } catch (SQLException exception) {
             throw new InvalidUploadException("dashboard_query_failed", "Test run lookup failed");
         }
+    }
+
+    @Override
+    public List<DashboardUploadListItem> listUploads(UUID tenantId, UUID repositoryId, String status, int limit) {
+        try {
+            return tenantUploads(tenantId, repositoryId, status, limit);
+        } catch (SQLException exception) {
+            throw new InvalidUploadException("dashboard_query_failed", "Upload lookup failed");
+        }
+    }
+
+    @Override
+    public Optional<DashboardUploadDetails> uploadDetails(UUID tenantId, UUID uploadId) {
+        try {
+            return uploadWithEvents(tenantId, uploadId);
+        } catch (SQLException exception) {
+            throw new InvalidUploadException("dashboard_query_failed", "Upload detail lookup failed");
+        }
+    }
+
+    @Override
+    public List<DashboardUploadArtifact> uploadArtifacts(UUID tenantId, UUID uploadId) {
+        try {
+            return tenantUploadArtifacts(tenantId, uploadId);
+        } catch (SQLException exception) {
+            throw new InvalidUploadException("dashboard_query_failed", "Upload artifact lookup failed");
+        }
+    }
+
+    private List<DashboardUploadListItem> tenantUploads(UUID tenantId, UUID repositoryId, String status, int limit)
+            throws SQLException {
+        try (var connection = dataSource.getConnection();
+                var statement = connection.prepareStatement("""
+                        select uploads.id, uploads.repository_id, uploads.commit_sha, uploads.branch,
+                               uploads.pull_request_number, uploads.ci_provider, uploads.ci_build_url,
+                               uploads.status, uploads.accepted_at, uploads.completed_at,
+                               uploads.error_code, uploads.error_message,
+                               reports.id as coverage_report_id
+                        from vericov.uploads uploads
+                        left join vericov.coverage_reports reports
+                          on reports.upload_id = uploads.id
+                        where uploads.tenant_id = ?
+                          and (?::uuid is null or uploads.repository_id = ?)
+                          and (?::text is null or uploads.status = ?)
+                        order by uploads.accepted_at desc
+                        limit ?
+                        """)) {
+            statement.setObject(1, tenantId);
+            statement.setObject(2, repositoryId);
+            statement.setObject(3, repositoryId);
+            statement.setObject(4, status);
+            statement.setObject(5, status);
+            statement.setInt(6, limit);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                List<DashboardUploadListItem> uploads = new ArrayList<>();
+                while (resultSet.next()) {
+                    uploads.add(dashboardUploadListItem(resultSet));
+                }
+                return List.copyOf(uploads);
+            }
+        }
+    }
+
+    private Optional<DashboardUploadDetails> uploadWithEvents(UUID tenantId, UUID uploadId) throws SQLException {
+        DashboardUploadListItem upload;
+        try (var connection = dataSource.getConnection();
+                var statement = connection.prepareStatement("""
+                        select uploads.id, uploads.repository_id, uploads.commit_sha, uploads.branch,
+                               uploads.pull_request_number, uploads.ci_provider, uploads.ci_build_url,
+                               uploads.status, uploads.accepted_at, uploads.completed_at,
+                               uploads.error_code, uploads.error_message,
+                               reports.id as coverage_report_id
+                        from vericov.uploads uploads
+                        left join vericov.coverage_reports reports
+                          on reports.upload_id = uploads.id
+                        where uploads.tenant_id = ?
+                          and uploads.id = ?
+                        """)) {
+            statement.setObject(1, tenantId);
+            statement.setObject(2, uploadId);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                if (!resultSet.next()) {
+                    return Optional.empty();
+                }
+                upload = dashboardUploadListItem(resultSet);
+            }
+        }
+        try (var connection = dataSource.getConnection();
+                var statement = connection.prepareStatement("""
+                        select event_type, payload::text as payload, created_at
+                        from vericov.upload_events
+                        where tenant_id = ?
+                          and upload_id = ?
+                        order by created_at asc
+                        """)) {
+            statement.setObject(1, tenantId);
+            statement.setObject(2, uploadId);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                List<DashboardUploadEvent> events = new ArrayList<>();
+                while (resultSet.next()) {
+                    events.add(new DashboardUploadEvent(
+                            resultSet.getString("event_type"),
+                            resultSet.getString("payload"),
+                            instant(resultSet, "created_at")));
+                }
+                return Optional.of(new DashboardUploadDetails(upload, events));
+            }
+        }
+    }
+
+    private List<DashboardUploadArtifact> tenantUploadArtifacts(UUID tenantId, UUID uploadId) throws SQLException {
+        try (var connection = dataSource.getConnection();
+                var statement = connection.prepareStatement("""
+                        select artifacts.name, artifacts.kind, artifacts.format, artifacts.size_bytes,
+                               artifacts.created_at
+                        from vericov.upload_artifacts artifacts
+                        join vericov.uploads uploads
+                          on uploads.id = artifacts.upload_id
+                        where uploads.tenant_id = ?
+                          and artifacts.upload_id = ?
+                        order by artifacts.created_at asc
+                        """)) {
+            statement.setObject(1, tenantId);
+            statement.setObject(2, uploadId);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                List<DashboardUploadArtifact> artifacts = new ArrayList<>();
+                while (resultSet.next()) {
+                    artifacts.add(new DashboardUploadArtifact(
+                            resultSet.getString("name"),
+                            resultSet.getString("kind"),
+                            resultSet.getString("format"),
+                            resultSet.getLong("size_bytes"),
+                            instant(resultSet, "created_at")));
+                }
+                return List.copyOf(artifacts);
+            }
+        }
+    }
+
+    private static DashboardUploadListItem dashboardUploadListItem(ResultSet resultSet) throws SQLException {
+        return new DashboardUploadListItem(
+                resultSet.getObject("id", UUID.class),
+                resultSet.getObject("repository_id", UUID.class),
+                resultSet.getString("commit_sha"),
+                resultSet.getString("branch"),
+                nullableInteger(resultSet, "pull_request_number"),
+                resultSet.getString("ci_provider"),
+                resultSet.getString("ci_build_url"),
+                resultSet.getString("status"),
+                instant(resultSet, "accepted_at"),
+                nullableInstant(resultSet, "completed_at"),
+                nullableUuid(resultSet, "coverage_report_id"),
+                resultSet.getString("error_code"),
+                resultSet.getString("error_message"));
     }
 
     private List<DashboardTestRun> repositoryTestRuns(UUID tenantId, UUID repositoryId, int limit)

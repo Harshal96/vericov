@@ -17,6 +17,9 @@ import dev.vericov.upload.application.DashboardRepository;
 import dev.vericov.upload.application.DashboardRepositoryOverview;
 import dev.vericov.upload.application.DashboardTestRun;
 import dev.vericov.upload.application.DashboardTrendPoint;
+import dev.vericov.upload.application.DashboardUploadArtifact;
+import dev.vericov.upload.application.DashboardUploadDetails;
+import dev.vericov.upload.application.DashboardUploadListItem;
 import java.util.UUID;
 import java.math.BigDecimal;
 import java.util.List;
@@ -91,6 +94,19 @@ public interface DashboardQueryRepository {
     }
 
     default List<DashboardTestRun> testRuns(UUID tenantId, UUID repositoryId, int limit) {
+        return List.of();
+    }
+
+    default List<DashboardUploadListItem> listUploads(
+            UUID tenantId, UUID repositoryId, String status, int limit) {
+        return List.of();
+    }
+
+    default Optional<DashboardUploadDetails> uploadDetails(UUID tenantId, UUID uploadId) {
+        return Optional.empty();
+    }
+
+    default List<DashboardUploadArtifact> uploadArtifacts(UUID tenantId, UUID uploadId) {
         return List.of();
     }
 }

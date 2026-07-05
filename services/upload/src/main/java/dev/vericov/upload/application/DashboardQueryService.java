@@ -26,6 +26,8 @@ public class DashboardQueryService {
     private static final int MAX_PULL_REQUEST_DIFFS = 100;
     private static final int DEFAULT_TEST_RUNS = 60;
     private static final int MAX_TEST_RUNS = 200;
+    private static final int DEFAULT_UPLOADS = 50;
+    private static final int MAX_UPLOADS = 200;
 
     private final TenantAuthenticator authenticator;
     private final DashboardQueryRepository repository;
@@ -173,6 +175,30 @@ public class DashboardQueryService {
         return repository.pullRequestDiff(principal.tenantId(), diffId)
                 .orElseThrow(() -> new InvalidUploadException(
                         "pull_request_not_found", "Pull request diff not found"));
+    }
+
+    public List<DashboardUploadListItem> uploads(
+            String authorizationHeader, UUID repositoryId, String status, Integer limit) {
+        TenantPrincipal principal = authenticator.authenticateTenant(authorizationHeader);
+        return repository.listUploads(
+                principal.tenantId(),
+                repositoryId,
+                normalizedOptionalStatus(status),
+                normalizedLimit(limit, DEFAULT_UPLOADS, MAX_UPLOADS));
+    }
+
+    public DashboardUploadDetails uploadDetails(String authorizationHeader, UUID uploadId) {
+        TenantPrincipal principal = authenticator.authenticateTenant(authorizationHeader);
+        return repository.uploadDetails(principal.tenantId(), uploadId)
+                .orElseThrow(() -> new InvalidUploadException("upload_not_found", "Upload not found"));
+    }
+
+    public List<DashboardUploadArtifact> uploadArtifacts(String authorizationHeader, UUID uploadId) {
+        TenantPrincipal principal = authenticator.authenticateTenant(authorizationHeader);
+        if (repository.uploadDetails(principal.tenantId(), uploadId).isEmpty()) {
+            throw new InvalidUploadException("upload_not_found", "Upload not found");
+        }
+        return repository.uploadArtifacts(principal.tenantId(), uploadId);
     }
 
     private void ensureReportExists(UUID tenantId, UUID reportId) {

@@ -335,11 +335,60 @@ public class DashboardQueryResource {
         }
     }
 
+    @GET
+    @Path("/uploads")
+    @Operation(summary = "List tenant-scoped uploads across repositories")
+    public Response uploads(
+            @HeaderParam("Authorization") String authorizationHeader,
+            @QueryParam("repo_id") java.util.UUID repositoryId,
+            @QueryParam("status") String status,
+            @QueryParam("limit") Integer limit) {
+        try {
+            var uploads = queryService.uploads(authorizationHeader, repositoryId, status, limit).stream()
+                    .map(DashboardUploadListItemHttpResponse::from)
+                    .toList();
+            return Response.ok(new ApiResponse<>(new DashboardUploadListHttpResponse(uploads))).build();
+        } catch (InvalidUploadException exception) {
+            return errorResponse(exception);
+        }
+    }
+
+    @GET
+    @Path("/uploads/{upload_id}")
+    @Operation(summary = "Get a tenant-scoped upload's status and lifecycle events")
+    public Response upload(
+            @HeaderParam("Authorization") String authorizationHeader,
+            @PathParam("upload_id") java.util.UUID uploadId) {
+        try {
+            return Response.ok(new ApiResponse<>(
+                    DashboardUploadDetailsHttpResponse.from(queryService.uploadDetails(authorizationHeader, uploadId))))
+                    .build();
+        } catch (InvalidUploadException exception) {
+            return errorResponse(exception);
+        }
+    }
+
+    @GET
+    @Path("/uploads/{upload_id}/artifacts")
+    @Operation(summary = "List artifact metadata for a tenant-scoped upload")
+    public Response uploadArtifacts(
+            @HeaderParam("Authorization") String authorizationHeader,
+            @PathParam("upload_id") java.util.UUID uploadId) {
+        try {
+            var artifacts = queryService.uploadArtifacts(authorizationHeader, uploadId).stream()
+                    .map(DashboardUploadArtifactHttpResponse::from)
+                    .toList();
+            return Response.ok(new ApiResponse<>(new DashboardUploadArtifactListHttpResponse(artifacts))).build();
+        } catch (InvalidUploadException exception) {
+            return errorResponse(exception);
+        }
+    }
+
     private static Response errorResponse(InvalidUploadException exception) {
         Response.Status status = switch (exception.code()) {
             case "unauthorized" -> Response.Status.UNAUTHORIZED;
             case "tenant_not_provisioned", "forbidden" -> Response.Status.FORBIDDEN;
-            case "repo_not_found", "report_not_found", "file_not_found", "pull_request_not_found" ->
+            case "repo_not_found", "report_not_found", "file_not_found", "pull_request_not_found", "upload_not_found" ->
                     Response.Status.NOT_FOUND;
             default -> Response.Status.BAD_REQUEST;
         };
