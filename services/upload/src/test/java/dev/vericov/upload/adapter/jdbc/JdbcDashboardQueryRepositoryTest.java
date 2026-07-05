@@ -10,6 +10,7 @@ import java.math.BigDecimal;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
+import java.time.OffsetDateTime;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -19,6 +20,7 @@ import org.junit.jupiter.api.Test;
 
 class JdbcDashboardQueryRepositoryTest {
     private static final UUID TENANT_ID = UUID.fromString("00000000-0000-0000-0000-000000000001");
+    private static final UUID REPOSITORY_ID = UUID.fromString("00000000-0000-0000-0000-000000000003");
 
     @Test
     void overviewFiltersEveryMetricByTenant() {
@@ -40,8 +42,84 @@ class JdbcDashboardQueryRepositoryTest {
         assertTrue(dataSource.lastSql.contains("where repositories.tenant_id = ?"));
         assertTrue(dataSource.lastSql.contains("where tenant_id = ?"));
         assertTrue(dataSource.lastSql.contains("and status = 'failed'"));
+        assertTrue(dataSource.lastSql.contains("evaluated_at >= now() - interval '30 days'"));
         assertEquals(List.of(TENANT_ID, TENANT_ID, TENANT_ID, TENANT_ID, TENANT_ID, TENANT_ID, TENANT_ID),
                 dataSource.parameters);
+    }
+
+    @Test
+    void repositoriesUseTenantScopedLatestDefaultBranchReportQuery() {
+        RecordingDataSource dataSource = new RecordingDataSource();
+        dataSource.rows = List.of(row(
+                "id", REPOSITORY_ID,
+                "full_name", "acme/checkout",
+                "provider", "github",
+                "default_branch", "main",
+                "visibility", "private",
+                "status", "active",
+                "updated_at", OffsetDateTime.parse("2026-07-04T18:00:00Z"),
+                "report_id", UUID.fromString("00000000-0000-0000-0000-000000000030"),
+                "commit_sha", "abc123",
+                "report_created_at", OffsetDateTime.parse("2026-07-04T19:00:00Z"),
+                "line_covered", 812,
+                "line_total", 1000,
+                "branch_covered", 0,
+                "branch_total", 0,
+                "function_covered", 0,
+                "function_total", 0,
+                "statement_covered", 0,
+                "statement_total", 0,
+                "line_delta", new BigDecimal("1.20"),
+                "report_count", 57L,
+                "active_gaps", 4L,
+                "failing_gates", 1L));
+        JdbcDashboardQueryRepository repository = new JdbcDashboardQueryRepository(dataSource);
+
+        var repositories = repository.repositories(TENANT_ID);
+
+        assertEquals("acme/checkout", repositories.getFirst().fullName());
+        assertEquals(new BigDecimal("1.20"), repositories.getFirst().lineDelta());
+        assertTrue(dataSource.lastSql.contains("where r.tenant_id = ?"));
+        assertTrue(dataSource.lastSql.contains("cr.tenant_id = r.tenant_id"));
+        assertTrue(dataSource.lastSql.contains("gates.tenant_id = r.tenant_id"));
+        assertEquals(List.of(TENANT_ID), dataSource.parameters);
+    }
+
+    @Test
+    void sparklinesUseSingleTenantScopedWindowQuery() {
+        RecordingDataSource dataSource = new RecordingDataSource();
+        dataSource.rows = List.of(
+                row("repository_id", REPOSITORY_ID, "line_pct", new BigDecimal("78.10")),
+                row("repository_id", REPOSITORY_ID, "line_pct", new BigDecimal("79.00")));
+        JdbcDashboardQueryRepository repository = new JdbcDashboardQueryRepository(dataSource);
+
+        var sparklines = repository.sparklines(TENANT_ID, 20);
+
+        assertEquals(List.of(new BigDecimal("78.10"), new BigDecimal("79.00")), sparklines.get(REPOSITORY_ID));
+        assertTrue(dataSource.lastSql.contains("row_number() over"));
+        assertTrue(dataSource.lastSql.contains("where cr.tenant_id = ?"));
+        assertEquals(List.of(TENANT_ID, 20), dataSource.parameters);
+    }
+
+    @Test
+    void repositoryLookupIsTenantScoped() {
+        RecordingDataSource dataSource = new RecordingDataSource();
+        dataSource.rows = List.of(row(
+                "id", REPOSITORY_ID,
+                "full_name", "acme/checkout",
+                "provider", "github",
+                "default_branch", "main",
+                "visibility", "private",
+                "status", "active",
+                "updated_at", OffsetDateTime.parse("2026-07-04T18:00:00Z")));
+        JdbcDashboardQueryRepository repository = new JdbcDashboardQueryRepository(dataSource);
+
+        var repositoryDetails = repository.repository(TENANT_ID, REPOSITORY_ID).orElseThrow();
+
+        assertEquals("acme/checkout", repositoryDetails.fullName());
+        assertTrue(dataSource.lastSql.contains("where tenant_id = ?"));
+        assertTrue(dataSource.lastSql.contains("and id = ?"));
+        assertEquals(List.of(TENANT_ID, REPOSITORY_ID), dataSource.parameters);
     }
 
     private static Map<String, Object> row(Object... values) {
@@ -83,6 +161,10 @@ class JdbcDashboardQueryRepositoryTest {
                             parameters.add(args[1]);
                             return null;
                         }
+                        if ("setInt".equals(method.getName())) {
+                            parameters.add(args[1]);
+                            return null;
+                        }
                         if ("executeQuery".equals(method.getName())) {
                             return resultSet(rows);
                         }
@@ -102,6 +184,9 @@ class JdbcDashboardQueryRepositoryTest {
                     return switch (method.getName()) {
                         case "next" -> ++index < rows.size();
                         case "getLong" -> ((Number) rows.get(index).get((String) args[0])).longValue();
+                        case "getInt" -> ((Number) rows.get(index).get((String) args[0])).intValue();
+                        case "getString" -> rows.get(index).get((String) args[0]);
+                        case "getObject" -> getObject(rows.get(index), args);
                         case "getBigDecimal" -> rows.get(index).get((String) args[0]);
                         case "close" -> null;
                         default -> defaultValue(method);
@@ -122,6 +207,10 @@ class JdbcDashboardQueryRepositoryTest {
         @Override public java.util.logging.Logger getParentLogger() { return java.util.logging.Logger.getGlobal(); }
         @Override public <T> T unwrap(Class<T> iface) { throw new UnsupportedOperationException(); }
         @Override public boolean isWrapperFor(Class<?> iface) { return false; }
+    }
+
+    private static Object getObject(Map<String, Object> row, Object[] args) {
+        return row.get((String) args[0]);
     }
 
     private static Object defaultValue(Method method) {

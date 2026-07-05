@@ -3,6 +3,8 @@ package dev.vericov.upload.config;
 import dev.vericov.upload.application.AnalysisJob;
 import dev.vericov.upload.application.CoverageQueryService;
 import dev.vericov.upload.application.DashboardOverview;
+import dev.vericov.upload.application.DashboardRepository;
+import dev.vericov.upload.application.DashboardRepositoryOverview;
 import dev.vericov.upload.application.DashboardQueryService;
 import dev.vericov.upload.application.InMemoryUploadRepository;
 import dev.vericov.upload.application.InvalidUploadException;
@@ -39,9 +41,12 @@ import java.net.URI;
 import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.math.BigDecimal;
 import java.time.Clock;
 import java.util.HexFormat;
+import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -100,7 +105,7 @@ public class DevelopmentUploadComponents {
         if (!jdbcUrl.isBlank()) {
             return new JdbcDashboardQueryRepository(dataSource(jdbcUrl));
         }
-        return tenantId -> new DashboardOverview(0, 0, null, 0, 0, 0, 0);
+        return new EmptyDashboardQueryRepository();
     }
 
     @Produces
@@ -249,6 +254,28 @@ public class DevelopmentUploadComponents {
         private static UUID uuidEnv(String name, String fallback) {
             String value = System.getenv(name);
             return UUID.fromString(value == null || value.isBlank() ? fallback : value);
+        }
+    }
+
+    private static final class EmptyDashboardQueryRepository implements DashboardQueryRepository {
+        @Override
+        public DashboardOverview overview(UUID tenantId) {
+            return new DashboardOverview(0, 0, null, 0, 0, 0, 0);
+        }
+
+        @Override
+        public List<DashboardRepositoryOverview> repositories(UUID tenantId) {
+            return List.of();
+        }
+
+        @Override
+        public Map<UUID, List<BigDecimal>> sparklines(UUID tenantId, int perRepository) {
+            return Map.of();
+        }
+
+        @Override
+        public Optional<DashboardRepository> repository(UUID tenantId, UUID repositoryId) {
+            return Optional.empty();
         }
     }
 
