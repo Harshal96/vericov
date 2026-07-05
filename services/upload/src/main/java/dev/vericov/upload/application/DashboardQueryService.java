@@ -24,6 +24,8 @@ public class DashboardQueryService {
     private static final int MAX_FILE_PATH_LENGTH = 1024;
     private static final int DEFAULT_PULL_REQUEST_DIFFS = 40;
     private static final int MAX_PULL_REQUEST_DIFFS = 100;
+    private static final int DEFAULT_TEST_RUNS = 60;
+    private static final int MAX_TEST_RUNS = 200;
 
     private final TenantAuthenticator authenticator;
     private final DashboardQueryRepository repository;
@@ -155,6 +157,15 @@ public class DashboardQueryService {
                 principal.tenantId(),
                 repositoryId,
                 normalizedLimit(limit, DEFAULT_PULL_REQUEST_DIFFS, MAX_PULL_REQUEST_DIFFS));
+    }
+
+    public List<DashboardTestRun> testRuns(String authorizationHeader, UUID repositoryId, Integer limit) {
+        TenantPrincipal principal = authenticator.authenticateTenant(authorizationHeader);
+        ensureRepositoryExists(principal.tenantId(), repositoryId);
+        return repository.testRuns(
+                principal.tenantId(),
+                repositoryId,
+                normalizedLimit(limit, DEFAULT_TEST_RUNS, MAX_TEST_RUNS));
     }
 
     public DashboardPullRequestDiffDetails pullRequestDiff(String authorizationHeader, UUID diffId) {

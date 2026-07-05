@@ -15,6 +15,7 @@ import dev.vericov.upload.application.DashboardReportDetails;
 import dev.vericov.upload.application.DashboardReportListItem;
 import dev.vericov.upload.application.DashboardRepository;
 import dev.vericov.upload.application.DashboardRepositoryOverview;
+import dev.vericov.upload.application.DashboardTestRun;
 import dev.vericov.upload.application.DashboardTrendPoint;
 import java.util.UUID;
 import java.math.BigDecimal;
@@ -87,5 +88,9 @@ public interface DashboardQueryRepository {
 
     default Optional<DashboardPullRequestDiffDetails> pullRequestDiff(UUID tenantId, UUID diffId) {
         return Optional.empty();
+    }
+
+    default List<DashboardTestRun> testRuns(UUID tenantId, UUID repositoryId, int limit) {
+        return List.of();
     }
 }

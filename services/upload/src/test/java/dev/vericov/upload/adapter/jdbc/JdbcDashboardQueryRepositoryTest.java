@@ -506,6 +506,42 @@ class JdbcDashboardQueryRepositoryTest {
         assertTrue(details.isEmpty());
     }
 
+    @Test
+    void testRunsFiltersByTenantAndRepositoryOrderedNewestFirst() {
+        UUID testRunId = UUID.fromString("00000000-0000-0000-0000-000000000090");
+        RecordingDataSource dataSource = new RecordingDataSource();
+        dataSource.rows = List.of(testRunRow(testRunId));
+        JdbcDashboardQueryRepository repository = new JdbcDashboardQueryRepository(dataSource);
+
+        var runs = repository.testRuns(TENANT_ID, REPOSITORY_ID, 60);
+
+        assertEquals(testRunId, runs.getFirst().id());
+        assertEquals("unit", runs.getFirst().suiteName());
+        assertEquals("passed", runs.getFirst().status());
+        assertEquals(412, runs.getFirst().totalCount());
+        assertTrue(dataSource.lastSql.contains("from vericov.test_runs"));
+        assertTrue(dataSource.lastSql.contains("where tenant_id = ?"));
+        assertTrue(dataSource.lastSql.contains("and repository_id = ?"));
+        assertTrue(dataSource.lastSql.contains("order by created_at desc, suite_index"));
+        assertEquals(List.of(TENANT_ID, REPOSITORY_ID, 60), dataSource.parameters);
+    }
+
+    private static Map<String, Object> testRunRow(UUID testRunId) {
+        return row(
+                "id", testRunId,
+                "suite_name", "unit",
+                "status", "passed",
+                "total_count", 412,
+                "passed_count", 410,
+                "failed_count", 1,
+                "error_count", 0,
+                "skipped_count", 1,
+                "duration_ms", 93210L,
+                "commit_sha", "abc123",
+                "branch", "main",
+                "created_at", OffsetDateTime.parse("2026-07-04T19:00:00Z"));
+    }
+
     private static Map<String, Object> prDiffRow(UUID diffId, UUID reportId) {
         return row(
                 "id", diffId,

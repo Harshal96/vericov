@@ -17,6 +17,7 @@ import dev.vericov.upload.application.DashboardReportDetails;
 import dev.vericov.upload.application.DashboardReportListItem;
 import dev.vericov.upload.application.DashboardRepository;
 import dev.vericov.upload.application.DashboardRepositoryOverview;
+import dev.vericov.upload.application.DashboardTestRun;
 import dev.vericov.upload.application.DashboardTrendPoint;
 import dev.vericov.upload.application.InvalidUploadException;
 import dev.vericov.upload.application.port.DashboardQueryRepository;
@@ -217,6 +218,40 @@ public class JdbcDashboardQueryRepository implements DashboardQueryRepository {
             return pullRequestDiffWithFiles(tenantId, diffId);
         } catch (SQLException exception) {
             throw new InvalidUploadException("dashboard_query_failed", "Pull request diff lookup failed");
+        }
+    }
+
+    @Override
+    public List<DashboardTestRun> testRuns(UUID tenantId, UUID repositoryId, int limit) {
+        try {
+            return repositoryTestRuns(tenantId, repositoryId, limit);
+        } catch (SQLException exception) {
+            throw new InvalidUploadException("dashboard_query_failed", "Test run lookup failed");
+        }
+    }
+
+    private List<DashboardTestRun> repositoryTestRuns(UUID tenantId, UUID repositoryId, int limit)
+            throws SQLException {
+        try (var connection = dataSource.getConnection();
+                var statement = connection.prepareStatement("""
+                        select id, suite_name, status, total_count, passed_count, failed_count,
+                               error_count, skipped_count, duration_ms, commit_sha, branch, created_at
+                        from vericov.test_runs
+                        where tenant_id = ?
+                          and repository_id = ?
+                        order by created_at desc, suite_index
+                        limit ?
+                        """)) {
+            statement.setObject(1, tenantId);
+            statement.setObject(2, repositoryId);
+            statement.setInt(3, limit);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                List<DashboardTestRun> runs = new ArrayList<>();
+                while (resultSet.next()) {
+                    runs.add(dashboardTestRun(resultSet));
+                }
+                return List.copyOf(runs);
+            }
         }
     }
 
@@ -1055,6 +1090,22 @@ public class JdbcDashboardQueryRepository implements DashboardQueryRepository {
                 instant(resultSet, "created_at"),
                 resultSet.getObject("coverage_report_id", UUID.class),
                 resultSet.getBigDecimal("project_line_pct"));
+    }
+
+    private static DashboardTestRun dashboardTestRun(ResultSet resultSet) throws SQLException {
+        return new DashboardTestRun(
+                resultSet.getObject("id", UUID.class),
+                resultSet.getString("suite_name"),
+                resultSet.getString("status"),
+                resultSet.getInt("total_count"),
+                resultSet.getInt("passed_count"),
+                resultSet.getInt("failed_count"),
+                resultSet.getInt("error_count"),
+                resultSet.getInt("skipped_count"),
+                resultSet.getLong("duration_ms"),
+                resultSet.getString("commit_sha"),
+                resultSet.getString("branch"),
+                instant(resultSet, "created_at"));
     }
 
     private static List<DashboardGapFinding> dashboardGapFindings(ResultSet resultSet) throws SQLException {

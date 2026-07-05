@@ -105,6 +105,23 @@ public class DashboardQueryResource {
     }
 
     @GET
+    @Path("/repos/{repo_id}/test-runs")
+    @Operation(summary = "List a repository's recent test-run history")
+    public Response testRuns(
+            @HeaderParam("Authorization") String authorizationHeader,
+            @PathParam("repo_id") java.util.UUID repositoryId,
+            @QueryParam("limit") Integer limit) {
+        try {
+            var runs = queryService.testRuns(authorizationHeader, repositoryId, limit).stream()
+                    .map(DashboardTestRunHttpResponse::from)
+                    .toList();
+            return Response.ok(new ApiResponse<>(new DashboardTestRunListHttpResponse(runs))).build();
+        } catch (InvalidUploadException exception) {
+            return errorResponse(exception);
+        }
+    }
+
+    @GET
     @Path("/repos/{repo_id}/reports")
     @Operation(summary = "List a repository's recent coverage reports")
     public Response reports(

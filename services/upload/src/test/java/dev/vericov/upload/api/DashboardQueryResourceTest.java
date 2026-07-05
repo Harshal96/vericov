@@ -21,6 +21,7 @@ import dev.vericov.upload.application.DashboardReportListItem;
 import dev.vericov.upload.application.DashboardRepository;
 import dev.vericov.upload.application.DashboardRepositoryOverview;
 import dev.vericov.upload.application.DashboardQueryService;
+import dev.vericov.upload.application.DashboardTestRun;
 import dev.vericov.upload.application.DashboardTrendPoint;
 import dev.vericov.upload.application.InvalidUploadException;
 import dev.vericov.upload.application.port.DashboardQueryRepository;
@@ -536,6 +537,36 @@ class DashboardQueryResourceTest {
         assertEquals("pull_request_not_found", error.error().code());
     }
 
+    @Test
+    void testRunsReturnsSuiteHistoryForRepository() {
+        RecordingRepository repository = new RecordingRepository();
+        DashboardQueryResource resource = resource(authorizationHeader -> principal(), repository);
+
+        Response response = resource.testRuns("Bearer internal-token", REPOSITORY_ID, 60);
+
+        assertEquals(200, response.getStatus());
+        assertEquals(REPOSITORY_ID, repository.testRunRepositoryId);
+        assertEquals(60, repository.testRunLimit);
+        var body = (ApiResponse<DashboardTestRunListHttpResponse>) response.getEntity();
+        DashboardTestRunHttpResponse run = body.data().testRuns().getFirst();
+        assertEquals("unit", run.suiteName());
+        assertEquals("passed", run.status());
+        assertEquals(412, run.totalCount());
+        assertEquals(410, run.passedCount());
+    }
+
+    @Test
+    void testRunsReturns404WhenRepositoryMissing() {
+        DashboardQueryResource resource = resource(authorizationHeader -> principal(), new OverviewRepository(
+                new DashboardOverview(0, 0, null, 0, 0, 0, 0)));
+
+        Response response = resource.testRuns("Bearer internal-token", REPOSITORY_ID, null);
+
+        assertEquals(404, response.getStatus());
+        ApiError error = assertInstanceOf(ApiError.class, response.getEntity());
+        assertEquals("repo_not_found", error.error().code());
+    }
+
     private static DashboardQueryResource resource(
             TenantAuthenticator authenticator,
             DashboardQueryRepository repository) {
@@ -604,6 +635,8 @@ class DashboardQueryResourceTest {
         private UUID pullRequestDiffRepositoryId;
         private int pullRequestDiffLimit;
         private UUID pullRequestDiffId;
+        private UUID testRunRepositoryId;
+        private int testRunLimit;
         private final boolean fileExists;
 
         private RecordingRepository() {
@@ -816,6 +849,14 @@ class DashboardQueryResourceTest {
                     pullRequestDiff(), List.of(pullRequestDiffFile())));
         }
 
+        @Override
+        public List<DashboardTestRun> testRuns(UUID tenantId, UUID repositoryId, int limit) {
+            this.tenantId = tenantId;
+            this.testRunRepositoryId = repositoryId;
+            this.testRunLimit = limit;
+            return List.of(testRun());
+        }
+
         private static DashboardReport report() {
             return new DashboardReport(
                     REPORT_ID,
@@ -897,6 +938,22 @@ class DashboardQueryResourceTest {
                     new CoverageMetricDetails(8, 12),
                     4,
                     0);
+        }
+
+        private static DashboardTestRun testRun() {
+            return new DashboardTestRun(
+                    UUID.fromString("00000000-0000-0000-0000-000000000090"),
+                    "unit",
+                    "passed",
+                    412,
+                    410,
+                    1,
+                    0,
+                    1,
+                    93210,
+                    "abc123",
+                    "main",
+                    Instant.parse("2026-07-04T19:00:00Z"));
         }
     }
 }
