@@ -5,7 +5,8 @@ import java.util.Locale;
 public enum ArtifactKind {
     COVERAGE("coverage"),
     TEST_RESULTS("test_results"),
-    METADATA("metadata");
+    METADATA("metadata"),
+    DIFF("diff");
 
     private final String wireValue;
 

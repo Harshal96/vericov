@@ -6,12 +6,19 @@ from vericov_coverage_upload.domain.artifacts import UploadArtifact, format_byte
 from vericov_coverage_upload.domain.upload_response import UploadAccepted, UploadStatus
 
 
-def dry_run_text(config_path: Optional[str], repository_id: Optional[str], idempotency_key: str, artifacts: Iterable[UploadArtifact]) -> str:
+def dry_run_text(
+    config_path: Optional[str],
+    repository_id: Optional[str],
+    idempotency_key: str,
+    artifacts: Iterable[UploadArtifact],
+    base_sha: Optional[str] = None,
+) -> str:
     lines = [
         "Vericov upload dry run",
         f"  config: {config_path or 'none'}",
         f"  repository_id: {repository_id or 'inferred from API key'}",
         f"  idempotency_key: {idempotency_key}",
+        f"  base_sha: {base_sha or 'none'}",
         "  artifacts:",
     ]
     for artifact in artifacts:

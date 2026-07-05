@@ -16,7 +16,13 @@ def error_payload(error: VericovCliError) -> str:
     return dump({"ok": False, "error": {"code": error.code, "message": error.message}})
 
 
-def dry_run_payload(config_path: Optional[str], repository_id: Optional[str], idempotency_key: str, artifacts: Iterable[UploadArtifact]) -> str:
+def dry_run_payload(
+    config_path: Optional[str],
+    repository_id: Optional[str],
+    idempotency_key: str,
+    artifacts: Iterable[UploadArtifact],
+    base_sha: Optional[str] = None,
+) -> str:
     return dump(
         {
             "ok": True,
@@ -24,6 +30,7 @@ def dry_run_payload(config_path: Optional[str], repository_id: Optional[str], id
             "config": config_path,
             "repository_id": repository_id,
             "idempotency_key": idempotency_key,
+            "base_sha": base_sha,
             "artifacts": [_artifact_payload(artifact) for artifact in artifacts],
         }
     )

@@ -1,11 +1,17 @@
 """Upload workflow orchestration."""
 
 import os
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Mapping, Optional, Sequence, Tuple
 
-from vericov_coverage_upload.domain.artifacts import UploadArtifact, build_artifacts, validate_candidate_files
+from vericov_coverage_upload.domain.artifacts import (
+    UploadArtifact,
+    build_artifacts,
+    build_diff_artifact,
+    validate_candidate_files,
+)
 from vericov_coverage_upload.domain.config import UploadConfig
 from vericov_coverage_upload.domain.errors import ExitCode, VericovCliError
 from vericov_coverage_upload.domain.metadata import UploadMetadata
@@ -13,6 +19,13 @@ from vericov_coverage_upload.domain.upload_request import UploadAuth, UploadRequ
 from vericov_coverage_upload.domain.upload_response import UploadAccepted
 from vericov_coverage_upload.infrastructure.ci_metadata import resolve_ci_metadata
 from vericov_coverage_upload.infrastructure.config_loader import merge_environment
+from vericov_coverage_upload.infrastructure.diff import (
+    DiffResolutionError,
+    detect_ci_base_ref,
+    generate_unified_diff,
+    parses_as_unified_diff,
+    resolve_merge_base,
+)
 from vericov_coverage_upload.infrastructure.file_discovery import collect_candidates
 from vericov_coverage_upload.infrastructure.format_detection import detect_format
 from vericov_coverage_upload.infrastructure.git_metadata import git_root, resolve_git_metadata
@@ -38,6 +51,10 @@ class UploadOverrides:
     max_total_bytes: Optional[int] = None
     discover: Optional[bool] = None
     idempotency_key: Optional[str] = None
+    base_ref: Optional[str] = None
+    base_sha: Optional[str] = None
+    diff_path: Optional[str] = None
+    no_diff: bool = False
 
 
 @dataclass(frozen=True)
@@ -82,6 +99,9 @@ def build_upload_plan(
     )
     detected = {candidate.path.resolve(): detect_format(candidate.path, candidate.kind) for candidate in valid_candidates}
     artifacts = build_artifacts(valid_candidates, project_root, detected)
+    base_sha, diff_artifact = _resolve_diff(project_root, overrides, metadata, env)
+    if diff_artifact is not None:
+        artifacts = artifacts + (diff_artifact,)
     request = UploadRequest(
         api_url=resolved.api_url,
         repository_id=resolved.repository_id,
@@ -93,8 +113,71 @@ def build_upload_plan(
         package=resolved.package,
         artifacts=artifacts,
         idempotency_key=overrides.idempotency_key or env.get("VERICOV_IDEMPOTENCY_KEY"),
+        base_sha=base_sha,
     )
     return UploadPlan(project_root=project_root, config_path=config_path, auth=UploadAuth(api_key), request=request)
+
+
+def _resolve_diff(
+    project_root: Path,
+    overrides: UploadOverrides,
+    metadata: UploadMetadata,
+    env: Mapping[str, str],
+) -> Tuple[Optional[str], Optional[UploadArtifact]]:
+    if overrides.no_diff:
+        if overrides.base_ref or overrides.base_sha or overrides.diff_path:
+            raise VericovCliError(
+                "conflicting_diff_options",
+                "--no-diff cannot be combined with --base-ref, --base-sha, or --diff.",
+                ExitCode.USAGE,
+            )
+        return None, None
+
+    if overrides.diff_path:
+        diff_path = Path(overrides.diff_path)
+        if not diff_path.is_file():
+            raise VericovCliError(
+                "diff_file_missing", f"{overrides.diff_path} does not exist.", ExitCode.ARTIFACT_VALIDATION
+            )
+        content = diff_path.read_bytes()
+        if not parses_as_unified_diff(content):
+            raise VericovCliError(
+                "invalid_diff",
+                f"{overrides.diff_path} does not parse as a unified diff.",
+                ExitCode.ARTIFACT_VALIDATION,
+            )
+        base_sha = overrides.base_sha
+        if base_sha is None and overrides.base_ref:
+            base_sha = resolve_merge_base(project_root, overrides.base_ref, metadata.commit_sha)
+        if not base_sha:
+            raise VericovCliError(
+                "missing_base_sha", "--diff requires --base-sha or a resolvable --base-ref.", ExitCode.USAGE
+            )
+        return base_sha, build_diff_artifact("pull_request.diff", content)
+
+    if overrides.base_sha:
+        base_sha = overrides.base_sha
+    elif overrides.base_ref:
+        try:
+            base_sha = resolve_merge_base(project_root, overrides.base_ref, metadata.commit_sha)
+        except DiffResolutionError as error:
+            raise VericovCliError("merge_base_resolution_failed", str(error), ExitCode.USAGE) from error
+    elif metadata.pull_request_number is not None:
+        ci_base_ref = detect_ci_base_ref(env)
+        if not ci_base_ref:
+            return None, None
+        try:
+            base_sha = resolve_merge_base(project_root, ci_base_ref, metadata.commit_sha)
+        except DiffResolutionError as error:
+            print(f"warning: {error} Uploading without a diff.", file=sys.stderr)
+            return None, None
+    else:
+        return None, None
+
+    content = generate_unified_diff(project_root, base_sha, metadata.commit_sha)
+    if not content:
+        return base_sha, None
+    return base_sha, build_diff_artifact("pull_request.diff", content)
 
 
 def submit_upload(plan: UploadPlan, gateway: UploadGateway) -> UploadAccepted:

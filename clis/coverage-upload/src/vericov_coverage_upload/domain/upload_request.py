@@ -25,6 +25,7 @@ class UploadRequest:
     ignore: Tuple[str, ...] = ()
     components: Tuple[ComponentDefinition, ...] = ()
     idempotency_key: Optional[str] = None
+    base_sha: Optional[str] = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "flags", tuple(self.flags))
@@ -42,6 +43,7 @@ class UploadRequest:
             "commit_sha": self.metadata.commit_sha,
             "branch": self.metadata.branch,
             "pull_request_number": self.metadata.pull_request_number,
+            "base_sha": self.base_sha,
             "ci_provider": self.metadata.ci_provider,
             "ci_build_id": self.metadata.ci_build_id,
             "ci_build_url": self.metadata.ci_build_url,
@@ -64,6 +66,7 @@ class UploadRequest:
             "commit_sha": self.metadata.commit_sha,
             "branch": self.metadata.branch,
             "pull_request_number": self.metadata.pull_request_number,
+            "base_sha": self.base_sha,
             "ci_provider": self.metadata.ci_provider,
             "ci_build_id": self.metadata.ci_build_id,
             "flags": list(self.flags),

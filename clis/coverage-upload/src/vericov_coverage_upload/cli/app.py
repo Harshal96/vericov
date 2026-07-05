@@ -3,7 +3,7 @@
 import typer
 
 from vericov_coverage_upload import __version__
-from vericov_coverage_upload.cli.commands import config, upload
+from vericov_coverage_upload.cli.commands import config, gaps, upload
 
 
 def build_app() -> typer.Typer:
@@ -29,6 +29,7 @@ def build_app() -> typer.Typer:
 
     config.register(app)
     upload.register(app)
+    gaps.register(app)
     return app
 
 

@@ -40,8 +40,12 @@ CREATE TABLE IF NOT EXISTS vericov.tenants (
     id uuid PRIMARY KEY DEFAULT extensions.gen_random_uuid(),
     name text NOT NULL CHECK (length(trim(name)) BETWEEN 1 AND 120),
     slug text NOT NULL UNIQUE CHECK (slug ~ '^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$'),
+    external_org_id uuid UNIQUE,
     created_at timestamptz NOT NULL DEFAULT now()
 );
+
+ALTER TABLE vericov.tenants
+    ADD COLUMN IF NOT EXISTS external_org_id uuid UNIQUE;
 
 CREATE TABLE IF NOT EXISTS vericov.repositories (
     id uuid PRIMARY KEY DEFAULT extensions.gen_random_uuid(),
@@ -67,6 +71,11 @@ VALUES (
     'local'
 )
 ON CONFLICT DO NOTHING;
+
+UPDATE vericov.tenants
+SET external_org_id = '00000000-0000-0000-0000-000000000010'
+WHERE id = '00000000-0000-0000-0000-000000000001'
+  AND external_org_id IS NULL;
 
 INSERT INTO vericov.repositories (
     id,
@@ -158,6 +167,7 @@ CREATE TABLE IF NOT EXISTS vericov.uploads (
     commit_sha text NOT NULL CHECK (length(trim(commit_sha)) BETWEEN 1 AND 128),
     branch text NOT NULL CHECK (length(trim(branch)) BETWEEN 1 AND 255),
     pull_request_number integer CHECK (pull_request_number IS NULL OR pull_request_number > 0),
+    base_sha text CHECK (base_sha IS NULL OR length(trim(base_sha)) BETWEEN 1 AND 128),
     ci_provider text,
     ci_build_id text,
     ci_build_url text,
@@ -184,6 +194,9 @@ ALTER TABLE vericov.uploads
     ADD COLUMN IF NOT EXISTS config_snapshot_json jsonb,
     ADD COLUMN IF NOT EXISTS config_sha256 text;
 
+ALTER TABLE vericov.uploads
+    ADD COLUMN IF NOT EXISTS base_sha text;
+
 DO $$
 BEGIN
     IF NOT EXISTS (
@@ -195,6 +208,16 @@ BEGIN
         ALTER TABLE vericov.uploads
             ADD CONSTRAINT uploads_ignore_rules_array
             CHECK (jsonb_typeof(ignore_rules) = 'array');
+    END IF;
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conname = 'uploads_base_sha_format'
+          AND conrelid = 'vericov.uploads'::regclass
+    ) THEN
+        ALTER TABLE vericov.uploads
+            ADD CONSTRAINT uploads_base_sha_format
+            CHECK (base_sha IS NULL OR length(trim(base_sha)) BETWEEN 1 AND 128);
     END IF;
 END
 $$;
@@ -228,7 +251,7 @@ CREATE TABLE IF NOT EXISTS vericov.upload_artifacts (
     id uuid PRIMARY KEY DEFAULT extensions.gen_random_uuid(),
     upload_id uuid NOT NULL REFERENCES vericov.uploads (id) ON DELETE CASCADE,
     name text NOT NULL CHECK (length(trim(name)) BETWEEN 1 AND 512),
-    kind text NOT NULL CHECK (kind IN ('coverage', 'test_results', 'metadata')),
+    kind text NOT NULL CHECK (kind IN ('coverage', 'test_results', 'metadata', 'diff')),
     format text NOT NULL CHECK (length(trim(format)) BETWEEN 1 AND 64),
     content_type text NOT NULL CHECK (length(trim(content_type)) BETWEEN 1 AND 255),
     size_bytes bigint NOT NULL CHECK (size_bytes >= 0),
@@ -238,6 +261,28 @@ CREATE TABLE IF NOT EXISTS vericov.upload_artifacts (
     created_at timestamptz NOT NULL DEFAULT now(),
     UNIQUE (upload_id, name)
 );
+
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conname = 'upload_artifacts_kind_check'
+          AND conrelid = 'vericov.upload_artifacts'::regclass
+          AND pg_get_constraintdef(oid) NOT LIKE '%diff%'
+    ) THEN
+        ALTER TABLE vericov.upload_artifacts
+            DROP CONSTRAINT upload_artifacts_kind_check;
+        ALTER TABLE vericov.upload_artifacts
+            ADD CONSTRAINT upload_artifacts_kind_check
+            CHECK (kind IN ('coverage', 'test_results', 'metadata', 'diff'));
+    END IF;
+END
+$$;
+
+CREATE UNIQUE INDEX IF NOT EXISTS upload_artifacts_single_diff_idx
+    ON vericov.upload_artifacts (upload_id)
+    WHERE kind = 'diff';
 
 CREATE TABLE IF NOT EXISTS vericov.analysis_jobs (
     id uuid PRIMARY KEY DEFAULT extensions.gen_random_uuid(),
@@ -738,6 +783,10 @@ CREATE INDEX IF NOT EXISTS component_coverage_rollups_report_idx
     ON vericov.component_coverage_rollups (coverage_report_id);
 CREATE INDEX IF NOT EXISTS coverage_gap_findings_rank_idx
     ON vericov.coverage_gap_findings (repository_id, status, risk_score DESC, file_path, line_start);
+CREATE INDEX IF NOT EXISTS coverage_gap_findings_report_status_risk_idx
+    ON vericov.coverage_gap_findings (coverage_report_id, status, risk_score DESC);
+CREATE INDEX IF NOT EXISTS coverage_gap_findings_manifest_idx
+    ON vericov.coverage_gap_findings (coverage_report_id, next_action, status, risk_score DESC);
 CREATE INDEX IF NOT EXISTS coverage_gap_findings_owners_idx
     ON vericov.coverage_gap_findings USING gin (owners);
 CREATE INDEX IF NOT EXISTS coverage_line_hits_report_file_idx

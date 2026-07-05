@@ -26,6 +26,10 @@ def upload(
     commit_sha: Optional[str] = typer.Option(None, "--commit-sha", help="Git commit SHA."),
     branch: Optional[str] = typer.Option(None, "--branch", help="Git branch name."),
     pull_request_number: Optional[int] = typer.Option(None, "--pull-request-number", help="Pull request number."),
+    base_ref: Optional[str] = typer.Option(None, "--base-ref", help="Resolve the merge-base against this ref."),
+    base_sha: Optional[str] = typer.Option(None, "--base-sha", help="Use this merge-base commit verbatim."),
+    diff: Optional[str] = typer.Option(None, "--diff", help="Upload a pre-generated unified diff file."),
+    no_diff: bool = typer.Option(False, "--no-diff", help="Never attach a diff, even for pull request uploads."),
     coverage: Optional[List[str]] = typer.Option(None, "--coverage", help="Coverage report path or glob. Repeatable."),
     test_results: Optional[List[str]] = typer.Option(None, "--test-results", help="Test result path or glob. Repeatable."),
     flag: Optional[List[str]] = typer.Option(None, "--flag", help="Upload flag. Repeatable."),
@@ -49,6 +53,10 @@ def upload(
             commit_sha=commit_sha,
             branch=branch,
             pull_request_number=pull_request_number,
+            base_ref=base_ref,
+            base_sha=base_sha,
+            diff_path=diff,
+            no_diff=no_diff,
             coverage=tuple(coverage or ()),
             test_results=tuple(test_results or ()),
             flags=tuple(flag or ()),
@@ -70,6 +78,7 @@ def upload(
                         plan.request.repository_id,
                         plan.request.resolved_idempotency_key(),
                         plan.artifacts,
+                        plan.request.base_sha,
                     )
                 )
             else:
@@ -79,6 +88,7 @@ def upload(
                         plan.request.repository_id,
                         plan.request.resolved_idempotency_key(),
                         plan.artifacts,
+                        plan.request.base_sha,
                     )
                 )
             return

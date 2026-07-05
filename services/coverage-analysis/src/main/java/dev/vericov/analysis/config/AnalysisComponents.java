@@ -14,9 +14,12 @@ import dev.vericov.analysis.adapter.storage.FileSystemNormalizedCoverageStore;
 import dev.vericov.analysis.adapter.storage.SupabaseNormalizedCoverageStore;
 import dev.vericov.analysis.application.AnalysisMessageHandler;
 import dev.vericov.analysis.application.AnalysisWorker;
+import dev.vericov.analysis.application.ArtifactAwarePrDiffCoverageProcessor;
 import dev.vericov.analysis.application.DefaultCoverageAnalysisProcessor;
+import dev.vericov.analysis.application.DefaultPrDiffCoverageProcessor;
 import dev.vericov.analysis.application.PrDiffCoverageProcessor;
 import dev.vericov.analysis.application.UploadAnalysisEventHandler;
+import dev.vericov.analysis.application.UploadArtifactPullRequestDiffClient;
 import dev.vericov.analysis.application.port.AnalysisJobQueue;
 import dev.vericov.analysis.application.port.AnalysisJobRepository;
 import dev.vericov.analysis.application.port.ArtifactContentStore;
@@ -100,9 +103,10 @@ public class AnalysisComponents {
         DataSource dataSource = dataSource(jdbcUrl);
         SecureXmlCoverageDocumentReader xmlReader = new SecureXmlCoverageDocumentReader();
         JdbcCoverageReportRepository reportRepository = new JdbcCoverageReportRepository(dataSource);
+        ArtifactContentStore artifactContentStore = artifactContentStore();
         return new DefaultCoverageAnalysisProcessor(
                 new JdbcCoverageAnalysisInputRepository(dataSource),
-                artifactContentStore(),
+                artifactContentStore,
                 reportRepository,
                 new JdbcGateConfigurationRepository(dataSource),
                 repositoryContextRepository,
@@ -117,8 +121,18 @@ public class AnalysisComponents {
                 new TestResultParserRegistry(List.of(
                         new JUnitTestResultParser(new SecureXmlTestResultDocumentReader()))),
                 new JdbcTestRunRepository(dataSource),
-                PrDiffCoverageProcessor.noop(),
+                prDiffCoverageProcessor(artifactContentStore, reportRepository, dataSource),
                 Clock.systemUTC());
+    }
+
+    private static PrDiffCoverageProcessor prDiffCoverageProcessor(
+            ArtifactContentStore artifactContentStore,
+            JdbcCoverageReportRepository reportRepository,
+            DataSource dataSource) {
+        return new ArtifactAwarePrDiffCoverageProcessor(new DefaultPrDiffCoverageProcessor(
+                new UploadArtifactPullRequestDiffClient(artifactContentStore),
+                reportRepository,
+                new dev.vericov.analysis.adapter.jdbc.JdbcPrDiffCoverageRepository(dataSource)));
     }
 
     private static ArtifactContentStore artifactContentStore() {

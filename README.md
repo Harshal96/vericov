@@ -138,6 +138,10 @@ flowchart LR
 The two services communicate only through PostgreSQL and PGMQ — there is no
 internal service-to-service RPC to operate or secure.
 
+Patch coverage for pull requests is computed from a diff the upload CLI
+generates in the CI checkout and ships as an upload artifact. Neither service
+calls a Git provider to fetch a diff or a merge-base.
+
 Vericov does not expose a bundled public gateway. Keep direct service ports on
 a private network or put your own TLS, authentication, and rate-limiting proxy
 in front of them.
@@ -155,13 +159,66 @@ uvx --from vericov-coverage-upload vericov upload \
 See the [CLI guide](clis/coverage-upload/README.md) for configuration and CI
 usage.
 
+## For Coding Agents
+
+Vericov exposes a read-only coverage query API (`GET /api/v1/coverage/*`) on
+the upload service, and ships `vericov-mcp`, a Model Context Protocol server
+that wraps it. An agent working in a checkout can ask "what's uncovered in
+the file I just changed" or "what's the patch coverage for this pull
+request" mid-session, without a human opening a dashboard. The server is a
+thin HTTP client with no database access, no git access, and no LLM calls of
+its own — interpretation happens entirely in the calling agent.
+
+Mint a repository API key scoped to `uploads:read` only (never reuse an
+upload-capable key), then configure your agent:
+
+```json
+{
+  "mcpServers": {
+    "vericov": {
+      "command": "uvx",
+      "args": ["--from", "vericov-mcp", "vericov-mcp"],
+      "env": {
+        "VERICOV_API_URL": "http://localhost:8080",
+        "VERICOV_API_KEY": "vc_repo_..."
+      }
+    }
+  }
+}
+```
+
+Worked example: an agent edits `services/payments/src/Retry.java`, calls
+`get_file_coverage(path="services/payments/src/Retry.java")`, sees
+`uncovered_ranges: [{"start": 12, "end": 14}]`, and writes a test exercising
+those lines before finishing its turn.
+
+See the [MCP server guide](clis/mcp/README.md) for the full tool list.
+
+## Closing Gaps Automatically
+
+When a patch coverage gate fails, `vericov gaps` fetches a ranked,
+deterministic manifest of the coverage gaps behind it — files, uncovered
+line ranges, risk, owners, and next action — in one call:
+
+```bash
+vericov gaps --pull-request 481 --min-risk-level medium
+```
+
+Vericov's boundary stops there: it produces the manifest and nothing else.
+[`examples/agentic-test-closure/`](examples/agentic-test-closure/) is a
+reference GitHub Actions workflow showing how to feed that manifest to your
+own coding agent (with your own Anthropic API key) so it writes the missing
+tests and pushes a follow-up commit for human review — no Vericov service
+runs the agent, stores its credentials, or merges its output.
+
 ## Development
 
 ```bash
 mvn verify
 python -m pytest -q
-python -m pip install -e clis/coverage-upload pytest pytest-cov
+python -m pip install -e clis/coverage-upload -e clis/mcp pytest pytest-cov
 (cd clis/coverage-upload && python -m pytest -q --cov=vericov_coverage_upload --cov-report=term-missing --cov-fail-under=80)
+(cd clis/mcp && python -m pytest -q --cov=vericov_mcp --cov-report=term-missing --cov-fail-under=80)
 ```
 
 Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request. Report

@@ -21,6 +21,7 @@ public record CoverageReportDetails(
         String gateStatus,
         List<CoverageWarningDetails> warnings,
         List<ComponentCoverageDetails> components,
+        PatchCoverageDetails patch,
         Instant createdAt) {
 
     public CoverageReportDetails {
@@ -60,6 +61,7 @@ public record CoverageReportDetails(
                 "not_evaluated",
                 List.of(),
                 List.of(),
+                null,
                 createdAt);
     }
 }

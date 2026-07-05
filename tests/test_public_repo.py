@@ -142,6 +142,38 @@ def test_public_quick_start_only_starts_the_two_core_services() -> None:
     assert "two Helidon services" in self_hosting
 
 
+def test_patch_coverage_is_computed_from_a_cli_supplied_diff_not_a_git_provider() -> None:
+    compose = read("infra/local/docker-compose.yml")
+    cli_readme = read("clis/coverage-upload/README.md")
+    root_readme = read("README.md")
+
+    assert "git-integration:" not in compose
+    assert "--base-ref" in cli_readme
+    assert "--base-sha" in cli_readme
+    assert "--diff" in cli_readme
+    assert "--no-diff" in cli_readme
+    assert "GITHUB_BASE_REF" in cli_readme
+    assert "Neither service" in root_readme
+
+
+def test_agent_coverage_query_mcp_server_stays_client_side_of_the_two_services() -> None:
+    compose = read("infra/local/docker-compose.yml")
+    root_readme = read("README.md")
+    ci_workflow = read(".github/workflows/ci.yml")
+
+    assert "control-plane:" not in compose
+    assert "git-integration:" not in compose
+    assert "integrations:" not in compose
+    assert "agent-runner:" not in compose
+    assert "vericov-mcp" not in compose
+    assert (ROOT / "clis" / "mcp" / "pyproject.toml").is_file()
+    assert (ROOT / "clis" / "mcp" / "README.md").is_file()
+    assert "For Coding Agents" in root_readme
+    assert "clis/mcp" in ci_workflow
+    assert "--cov=vericov_mcp" in ci_workflow
+    assert "--cov-fail-under=80" in ci_workflow
+
+
 def test_legacy_multi_service_launchers_are_removed() -> None:
     for path in (
         "scripts/dev-up.sh",
@@ -260,3 +292,54 @@ def test_release_builds_the_real_upload_cli_package() -> None:
 def test_root_is_not_published_as_a_placeholder_python_package() -> None:
     assert not (ROOT / "pyproject.toml").exists()
     assert not (ROOT / "src/vericov").exists()
+
+
+def test_coverage_gap_manifest_is_read_only_and_has_no_agent_runtime() -> None:
+    compose = read("infra/local/docker-compose.yml")
+    schema = read("infra/supabase/volumes/db/vericov.sql")
+    analysis_components = read(
+        "services/coverage-analysis/src/main/java/dev/vericov/analysis/config/AnalysisComponents.java"
+    )
+
+    assert "control-plane:" not in compose
+    assert "git-integration:" not in compose
+    assert "integrations:" not in compose
+    assert "agent-runner:" not in compose
+    assert "vericov.agent_" not in schema
+    assert "AGENT" not in analysis_components
+
+
+def test_reference_test_closure_workflow_documents_every_required_guardrail() -> None:
+    import yaml
+
+    readme = read("examples/agentic-test-closure/README.md")
+    workflow_path = ROOT / "examples" / "agentic-test-closure" / "github-workflow.yml"
+    workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
+
+    assert isinstance(workflow, dict)
+    assert (ROOT / "examples" / "agentic-test-closure" / "CLOSURE_PROMPT.md").is_file()
+
+    assert "ANTHROPIC_API_KEY" in readme
+    assert "Vericov never sees this credential" in readme
+    assert "diff guard" in readme.lower()
+    assert "One attempt per head commit" in readme
+    assert "Hard timeout and iteration cap" in readme
+    assert "No force pushes" in readme
+    assert "Vericov's own next report" in readme
+    assert "pull_request_target" in readme
+    assert "never merges" in readme.lower() or "never merge" in readme.lower()
+
+
+def test_coverage_upload_readme_documents_the_gaps_command() -> None:
+    cli_readme = read("clis/coverage-upload/README.md")
+
+    assert "vericov gaps" in cli_readme
+    assert "--fail-on-entries" in cli_readme
+    assert "--min-risk-level" in cli_readme
+
+
+def test_root_readme_documents_closing_gaps_automatically() -> None:
+    root_readme = read("README.md")
+
+    assert "Closing Gaps Automatically" in root_readme
+    assert "examples/agentic-test-closure" in root_readme

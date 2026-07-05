@@ -1,0 +1,145 @@
+# Reference example: close coverage gaps with a user-run coding agent.
+#
+# This file is documentation, not a workflow Vericov runs for you. Copy it
+# into your own repository's .github/workflows/ and adapt the test commands
+# to your stack. Before using it:
+#   - Pin every action below to a full commit SHA (not a floating tag).
+#   - Never trigger this workflow via pull_request_target on forked PRs.
+#   - Scope permissions to exactly what is listed below.
+#   - Store ANTHROPIC_API_KEY as a repository secret; Vericov never sees it.
+#
+# See README.md in this directory for the full guardrail list.
+
+name: Vericov coverage gap closure
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: coverage-gap-closure-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  test-and-upload:
+    name: Test and upload coverage
+    runs-on: ubuntu-latest
+    # Only run for same-repository pull requests. Never adapt this to
+    # pull_request_target with forked PRs — that combination hands write
+    # access and secrets to arbitrary external contributors.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    outputs:
+      gate_status: ${{ steps.upload.outputs.gate_status }}
+    steps:
+      - name: Check out the pull request branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Refuse to re-enter on a commit this workflow already produced
+        run: |
+          if git log -1 --pretty=%s | grep -q '\[vericov-test-closure\]'; then
+            echo "Latest commit is a previous closure commit; skipping to avoid a closure loop."
+            echo "SKIP_CLOSURE=true" >> "$GITHUB_ENV"
+          fi
+
+      - name: Run the project's normal test suite with coverage
+        if: env.SKIP_CLOSURE != 'true'
+        run: ./run-tests-with-coverage.sh # replace with your project's real command
+
+      - name: Upload coverage to Vericov
+        id: upload
+        if: env.SKIP_CLOSURE != 'true'
+        env:
+          VERICOV_API_URL: ${{ secrets.VERICOV_API_URL }}
+          VERICOV_API_KEY: ${{ secrets.VERICOV_API_KEY }}
+        run: |
+          vericov upload \
+            --coverage coverage/lcov.info \
+            --pull-request-number "${{ github.event.pull_request.number }}" \
+            --wait --json > report.json
+          gate_status="$(python3 -c "import json;print(json.load(open('report.json'))['gate_status'])")"
+          echo "gate_status=$gate_status" >> "$GITHUB_OUTPUT"
+
+  close-gaps:
+    name: Close coverage gaps with an agent
+    needs: test-and-upload
+    if: needs.test-and-upload.outputs.gate_status == 'failed'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    steps:
+      - name: Check out the pull request branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Fetch the coverage gap manifest
+        env:
+          VERICOV_API_URL: ${{ secrets.VERICOV_API_URL }}
+          VERICOV_API_KEY: ${{ secrets.VERICOV_API_KEY }}
+        run: |
+          vericov gaps \
+            --pull-request "${{ github.event.pull_request.number }}" \
+            --json --min-risk-level medium > manifest.json
+
+      - name: Record the pre-agent diff baseline
+        run: git rev-parse HEAD > /tmp/pre-agent-sha
+
+      - name: Run Claude Code to write missing tests
+        timeout-minutes: 15
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          claude \
+            --print \
+            --max-turns 20 \
+            --allowedTools "Read,Edit,Write,Bash(*/run-tests*)" \
+            "$(cat CLOSURE_PROMPT.md)"
+        working-directory: examples/agentic-test-closure
+
+      - name: Enforce the diff guard (test files only)
+        run: |
+          changed="$(git diff --name-only "$(cat /tmp/pre-agent-sha)")"
+          if [ -z "$changed" ]; then
+            echo "Agent made no changes; nothing to close."
+            exit 0
+          fi
+          non_test="$(printf '%s\n' "$changed" | grep -Ev '(^|/)(test|tests|spec|__tests__)/' || true)"
+          if [ -n "$non_test" ]; then
+            echo "::error::Agent touched non-test files, refusing to push:"
+            echo "$non_test"
+            exit 1
+          fi
+
+      - name: Re-run the test suite
+        run: ./run-tests-with-coverage.sh # replace with your project's real command
+
+      - name: Re-upload coverage and confirm improvement
+        env:
+          VERICOV_API_URL: ${{ secrets.VERICOV_API_URL }}
+          VERICOV_API_KEY: ${{ secrets.VERICOV_API_KEY }}
+        run: |
+          vericov upload \
+            --coverage coverage/lcov.info \
+            --pull-request-number "${{ github.event.pull_request.number }}" \
+            --wait --json > report-after.json
+          gate_status_after="$(python3 -c "import json;print(json.load(open('report-after.json'))['gate_status'])")"
+          if [ "$gate_status_after" = "failed" ]; then
+            echo "::error::Patch coverage still fails the gate after the agent's changes."
+            exit 1
+          fi
+
+      - name: Commit and push the closure commit
+        run: |
+          git config user.name "vericov-test-closure[bot]"
+          git config user.email "vericov-test-closure[bot]@users.noreply.github.com"
+          git add -- '*test*' '*spec*' '*__tests__*'
+          git commit -m "test: close coverage gaps [vericov-test-closure]"
+          git push origin HEAD:"${{ github.event.pull_request.head.ref }}"

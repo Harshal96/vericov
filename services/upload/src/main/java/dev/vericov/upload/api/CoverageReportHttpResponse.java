@@ -23,6 +23,7 @@ public record CoverageReportHttpResponse(
         @JsonbProperty("gate_status") String gateStatus,
         List<CoverageWarningHttpResponse> warnings,
         List<ComponentCoverageHttpResponse> components,
+        PatchCoverageHttpResponse patch,
         @JsonbProperty("created_at") Instant createdAt) {
 
     public static CoverageReportHttpResponse from(CoverageReportDetails report) {
@@ -43,6 +44,7 @@ public record CoverageReportHttpResponse(
                 report.gateStatus(),
                 report.warnings().stream().map(CoverageWarningHttpResponse::from).toList(),
                 report.components().stream().map(ComponentCoverageHttpResponse::from).toList(),
+                PatchCoverageHttpResponse.from(report.patch()),
                 report.createdAt());
     }
 }

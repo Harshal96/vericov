@@ -91,6 +91,29 @@ Component configuration changes affect future uploads only; existing reports
 are not recomputed. A failed component gate leaves the upload processed and is
 reported through `gate_status`.
 
+## Patch Coverage Gate
+
+Patch coverage is computed automatically once a pull request upload carries a
+`diff` artifact and `base_sha` (the CLI does this by default for pull request
+uploads from a CI checkout; see the [CLI guide](../clis/coverage-upload/README.md#patch-coverage)).
+To block merges on patch coverage, insert an active
+`repository_gate_configurations` row with `gate_type = 'patch_coverage'` for
+the repository. A failed blocking patch gate sets the report's `gate_status`
+to `failed`, the same way repository and component gates do. Apply
+`./vericov migrate` before relying on patch coverage so the `uploads.base_sha`
+column and the extended `upload_artifacts` kind constraint are present.
+
+## Coverage Query API And Agent Access
+
+`repository_api_keys` already carries a `scopes` array (`uploads:create`,
+`uploads:read`); no migration is required to start using it. The read-only
+coverage query API at `/api/v1/coverage/*` — summary, components, files,
+file, pull request patch, gaps, and gates — enforces `uploads:read` the same
+way the existing report endpoint does, so every existing key keeps its exact
+capabilities. Mint dedicated keys scoped to only `uploads:read` for agents
+and MCP clients (see the [MCP server guide](../clis/mcp/README.md)); such a
+key cannot upload or exchange a runner token.
+
 ## Gateway
 
 Vericov no longer bundles a product Kong gateway. Put your own gateway or

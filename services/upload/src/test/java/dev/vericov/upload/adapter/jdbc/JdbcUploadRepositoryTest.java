@@ -54,6 +54,7 @@ class JdbcUploadRepositoryTest {
                 "abc123",
                 "main",
                 42,
+                "def456",
                 "github_actions",
                 "build-1",
                 "https://ci.example/build-1",

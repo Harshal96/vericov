@@ -14,6 +14,7 @@ public record CoverageAnalysisInput(
         String commitSha,
         String branch,
         Integer pullRequestNumber,
+        String baseSha,
         List<String> ignore,
         String configSnapshotJson,
         String configSha256,
@@ -34,6 +35,8 @@ public record CoverageAnalysisInput(
             String branch,
             Integer pullRequestNumber,
             List<String> ignore,
+            String configSnapshotJson,
+            String configSha256,
             List<CoverageInputArtifact> artifacts) {
         this(
                 uploadId,
@@ -43,6 +46,32 @@ public record CoverageAnalysisInput(
                 commitSha,
                 branch,
                 pullRequestNumber,
+                null,
+                ignore,
+                configSnapshotJson,
+                configSha256,
+                artifacts);
+    }
+
+    public CoverageAnalysisInput(
+            UUID uploadId,
+            UUID tenantId,
+            UUID repositoryId,
+            String provider,
+            String commitSha,
+            String branch,
+            Integer pullRequestNumber,
+            List<String> ignore,
+            List<CoverageInputArtifact> artifacts) {
+        this(
+                uploadId,
+                tenantId,
+                repositoryId,
+                provider,
+                commitSha,
+                branch,
+                pullRequestNumber,
+                null,
                 ignore,
                 null,
                 null,
@@ -58,7 +87,7 @@ public record CoverageAnalysisInput(
             String branch,
             Integer pullRequestNumber,
             List<CoverageInputArtifact> artifacts) {
-        this(uploadId, tenantId, repositoryId, provider, commitSha, branch, pullRequestNumber, List.of(), null, null, artifacts);
+        this(uploadId, tenantId, repositoryId, provider, commitSha, branch, pullRequestNumber, null, List.of(), null, null, artifacts);
     }
 
     public CoverageAnalysisInput(
@@ -69,7 +98,7 @@ public record CoverageAnalysisInput(
             String branch,
             Integer pullRequestNumber,
             List<CoverageInputArtifact> artifacts) {
-        this(uploadId, tenantId, repositoryId, "github", commitSha, branch, pullRequestNumber, List.of(), null, null, artifacts);
+        this(uploadId, tenantId, repositoryId, "github", commitSha, branch, pullRequestNumber, null, List.of(), null, null, artifacts);
     }
 
     public List<CoverageInputArtifact> coverageArtifacts() {
@@ -82,6 +111,12 @@ public record CoverageAnalysisInput(
         return artifacts.stream()
                 .filter(CoverageInputArtifact::isTestResultArtifact)
                 .toList();
+    }
+
+    public java.util.Optional<CoverageInputArtifact> diffArtifact() {
+        return artifacts.stream()
+                .filter(CoverageInputArtifact::isDiffArtifact)
+                .findFirst();
     }
 
     public ComponentConfigSnapshot configSnapshot() {

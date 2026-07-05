@@ -5,7 +5,7 @@ import hashlib
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Iterable, List, Tuple
+from typing import Dict, Iterable, List, Optional, Tuple
 
 from vericov_coverage_upload.domain.errors import ExitCode, VericovCliError
 
@@ -28,9 +28,13 @@ class UploadArtifact:
     content_type: str
     size_bytes: int
     sha256: str
+    content: Optional[bytes] = None
+
+    def read_bytes(self) -> bytes:
+        return self.content if self.content is not None else self.path.read_bytes()
 
     def to_request(self) -> Dict[str, str]:
-        content = self.path.read_bytes()
+        content = self.read_bytes()
         return {
             "name": self.name,
             "kind": self.kind,
@@ -38,6 +42,19 @@ class UploadArtifact:
             "content_type": self.content_type,
             "content_base64": base64.b64encode(content).decode("ascii"),
         }
+
+
+def build_diff_artifact(name: str, content: bytes) -> UploadArtifact:
+    return UploadArtifact(
+        path=Path(name),
+        name=name,
+        kind="diff",
+        format="git_unified_diff",
+        content_type="text/x-diff",
+        size_bytes=len(content),
+        sha256=hashlib.sha256(content).hexdigest(),
+        content=content,
+    )
 
 
 def validate_candidate_files(

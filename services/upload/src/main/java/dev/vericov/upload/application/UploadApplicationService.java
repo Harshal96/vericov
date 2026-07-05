@@ -153,6 +153,7 @@ public class UploadApplicationService {
                 command.commitSha(),
                 command.branch(),
                 command.pullRequestNumber(),
+                command.baseSha(),
                 command.ciProvider(),
                 command.ciBuildId(),
                 command.ciBuildUrl(),
@@ -211,6 +212,36 @@ public class UploadApplicationService {
             throw new InvalidUploadException("validation_error", exception.getMessage());
         }
         command.artifacts().forEach(this::validateArtifact);
+        validateDiff(command);
+    }
+
+    private void validateDiff(CreateUploadCommand command) {
+        if (command.baseSha() != null && command.pullRequestNumber() == null) {
+            throw new InvalidUploadException(
+                    "validation_error", "base_sha requires pull_request_number");
+        }
+        List<dev.vericov.upload.domain.UploadArtifactInput> diffArtifacts = command.artifacts().stream()
+                .filter(artifact -> artifact.kind() == dev.vericov.upload.domain.ArtifactKind.DIFF)
+                .toList();
+        if (diffArtifacts.isEmpty()) {
+            return;
+        }
+        if (diffArtifacts.size() > 1) {
+            throw new InvalidUploadException("validation_error", "at most one diff artifact is allowed");
+        }
+        if (command.baseSha() == null || command.baseSha().isBlank()) {
+            throw new InvalidUploadException("validation_error", "a diff artifact requires base_sha");
+        }
+        dev.vericov.upload.domain.UploadArtifactInput diffArtifact = diffArtifacts.get(0);
+        if (!"git_unified_diff".equals(diffArtifact.format())) {
+            throw new InvalidUploadException(
+                    "validation_error", "diff artifact format must be git_unified_diff");
+        }
+        try {
+            dev.vericov.upload.domain.DiffArtifactValidator.validate(diffArtifact.content());
+        } catch (dev.vericov.upload.domain.DiffArtifactValidator.InvalidDiffArtifactException exception) {
+            throw new InvalidUploadException("validation_error", exception.getMessage());
+        }
     }
 
     private CreateUploadCommand resolveRepository(CreateUploadCommand command, RepositoryApiKeyPrincipal principal) {
@@ -224,6 +255,7 @@ public class UploadApplicationService {
                 command.commitSha(),
                 command.branch(),
                 command.pullRequestNumber(),
+                command.baseSha(),
                 command.ciProvider(),
                 command.ciBuildId(),
                 command.ciBuildUrl(),

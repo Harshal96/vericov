@@ -30,6 +30,10 @@ public record CoverageInputArtifact(
         return "test_results".equals(kind);
     }
 
+    public boolean isDiffArtifact() {
+        return "diff".equals(kind);
+    }
+
     public String normalizedFormat() {
         return format == null ? "" : format.trim().toLowerCase(Locale.ROOT);
     }

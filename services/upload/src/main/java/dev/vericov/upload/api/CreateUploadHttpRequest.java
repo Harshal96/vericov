@@ -15,6 +15,8 @@ public record CreateUploadHttpRequest(
         String branch,
         @JsonbProperty("pull_request_number")
         Integer pullRequestNumber,
+        @JsonbProperty("base_sha")
+        String baseSha,
         @JsonbProperty("ci_provider")
         String ciProvider,
         @JsonbProperty("ci_build_id")
@@ -44,6 +46,7 @@ public record CreateUploadHttpRequest(
                 commitSha,
                 branch,
                 pullRequestNumber,
+                baseSha,
                 ciProvider,
                 ciBuildId,
                 ciBuildUrl,

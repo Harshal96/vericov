@@ -1,21 +1,28 @@
 package dev.vericov.upload.config;
 
 import dev.vericov.upload.application.AnalysisJob;
+import dev.vericov.upload.application.CoverageQueryService;
+import dev.vericov.upload.application.DashboardOverview;
+import dev.vericov.upload.application.DashboardQueryService;
 import dev.vericov.upload.application.InMemoryUploadRepository;
 import dev.vericov.upload.application.InvalidUploadException;
 import dev.vericov.upload.application.QueuedUpload;
 import dev.vericov.upload.application.StoredArtifact;
 import dev.vericov.upload.application.UploadApplicationService;
 import dev.vericov.upload.application.UploadEvent;
+import dev.vericov.upload.application.port.DashboardQueryRepository;
 import dev.vericov.upload.application.port.ArtifactStorage;
 import dev.vericov.upload.application.port.RepositoryApiKeyAuthenticator;
+import dev.vericov.upload.application.port.TenantAuthenticator;
 import dev.vericov.upload.application.port.UploadEventPublisher;
 import dev.vericov.upload.application.port.UploadRepository;
 import dev.vericov.upload.application.port.UploadWorkQueue;
 import dev.vericov.upload.adapter.auth.JdbcRepositoryApiKeyAuthenticator;
 import dev.vericov.upload.adapter.auth.GithubActionsOidcVerifier;
 import dev.vericov.upload.adapter.auth.HmacRunnerUploadTokenIssuer;
+import dev.vericov.upload.adapter.auth.InternalTokenAuthenticator;
 import dev.vericov.upload.adapter.auth.RepositoryApiKeySecretHasher;
+import dev.vericov.upload.adapter.jdbc.JdbcDashboardQueryRepository;
 import dev.vericov.upload.adapter.jdbc.DriverManagerDataSource;
 import dev.vericov.upload.adapter.jdbc.JdbcUploadRepository;
 import dev.vericov.upload.adapter.storage.HttpSupabaseObjectStorageClient;
@@ -24,6 +31,7 @@ import dev.vericov.upload.adapter.storage.RawArtifactBucketMapping;
 import dev.vericov.upload.adapter.storage.SupabaseStorageArtifactStorage;
 import dev.vericov.upload.domain.CreateUploadCommand;
 import dev.vericov.upload.domain.RepositoryApiKeyPrincipal;
+import dev.vericov.upload.domain.TenantPrincipal;
 import dev.vericov.upload.domain.UploadArtifactInput;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.inject.Produces;
@@ -61,12 +69,38 @@ public class DevelopmentUploadComponents {
 
     @Produces
     @ApplicationScoped
+    public CoverageQueryService coverageQueryService(
+            RepositoryApiKeyAuthenticator authenticator,
+            UploadRepository uploadRepository) {
+        return new CoverageQueryService(authenticator, uploadRepository);
+    }
+
+    @Produces
+    @ApplicationScoped
+    public DashboardQueryService dashboardQueryService(
+            TenantAuthenticator authenticator,
+            DashboardQueryRepository dashboardQueryRepository) {
+        return new DashboardQueryService(authenticator, dashboardQueryRepository);
+    }
+
+    @Produces
+    @ApplicationScoped
     public UploadRepository uploadRepository() {
         String jdbcUrl = env("VERICOV_UPLOAD_DB_URL", env("SUPABASE_DB_URL", ""));
         if (!jdbcUrl.isBlank()) {
             return new JdbcUploadRepository(dataSource(jdbcUrl));
         }
         return new InMemoryUploadRepository();
+    }
+
+    @Produces
+    @ApplicationScoped
+    public DashboardQueryRepository dashboardQueryRepository() {
+        String jdbcUrl = env("VERICOV_UPLOAD_DB_URL", env("SUPABASE_DB_URL", ""));
+        if (!jdbcUrl.isBlank()) {
+            return new JdbcDashboardQueryRepository(dataSource(jdbcUrl));
+        }
+        return tenantId -> new DashboardOverview(0, 0, null, 0, 0, 0, 0);
     }
 
     @Produces
@@ -88,6 +122,21 @@ public class DevelopmentUploadComponents {
                             Clock.systemUTC()));
         }
         return new EnvironmentRepositoryApiKeyAuthenticator();
+    }
+
+    @Produces
+    @ApplicationScoped
+    public TenantAuthenticator tenantAuthenticator() {
+        String jdbcUrl = env("VERICOV_UPLOAD_DB_URL", env("SUPABASE_DB_URL", ""));
+        if (!jdbcUrl.isBlank() && !Boolean.parseBoolean(env("VERICOV_DEV_AUTH_BYPASS", "false"))) {
+            return new InternalTokenAuthenticator(
+                    dataSource(jdbcUrl),
+                    requiredEnv("VERICOV_INTERNAL_TOKEN_SECRET"),
+                    env("VERICOV_INTERNAL_TOKEN_ISSUER", "veriapi"),
+                    env("VERICOV_INTERNAL_TOKEN_AUDIENCE", "veri-internal"),
+                    Clock.systemUTC());
+        }
+        return new EnvironmentTenantAuthenticator();
     }
 
     @Produces
@@ -176,6 +225,30 @@ public class DevelopmentUploadComponents {
         private static UUID optionalUuidEnv(String name) {
             String value = System.getenv(name);
             return value == null || value.isBlank() ? null : UUID.fromString(value);
+        }
+    }
+
+    private static final class EnvironmentTenantAuthenticator implements TenantAuthenticator {
+        private final boolean authBypass = Boolean.parseBoolean(env("VERICOV_DEV_AUTH_BYPASS", "false"));
+        private final UUID tenantId = uuidEnv("VERICOV_DEV_TENANT_ID", "00000000-0000-0000-0000-000000000001");
+        private final UUID externalOrgId = uuidEnv("VERI_DEV_ORG_ID", "00000000-0000-0000-0000-000000000010");
+
+        @Override
+        public TenantPrincipal authenticateTenant(String authorizationHeader) {
+            if (!authBypass) {
+                throw new InvalidUploadException("unauthorized", "Dashboard authentication is not configured");
+            }
+            return new TenantPrincipal(
+                    tenantId,
+                    externalOrgId,
+                    "dev-user",
+                    Set.of("admin"),
+                    Set.of("cov:read"));
+        }
+
+        private static UUID uuidEnv(String name, String fallback) {
+            String value = System.getenv(name);
+            return UUID.fromString(value == null || value.isBlank() ? fallback : value);
         }
     }
 

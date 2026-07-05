@@ -111,6 +111,7 @@ class UploadResourceTest {
                                 "failed",
                                 true)),
                         List.of())),
+                null,
                 Instant.parse("2026-05-22T10:05:00Z"));
 
         Response response = resource.getCoverageReport("Bearer vc_live_test", accepted.uploadId());
@@ -180,6 +181,7 @@ class UploadResourceTest {
                 "abc123",
                 "main",
                 42,
+                null,
                 "github_actions",
                 "987654321",
                 "https://github.com/acme/payments-api/actions/runs/987654321",

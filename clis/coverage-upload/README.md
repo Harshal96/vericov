@@ -59,6 +59,84 @@ For machine-readable output:
 uvx --from vericov-coverage-upload vericov upload --coverage coverage/lcov.info --json
 ```
 
+## Patch Coverage
+
+For pull request uploads, the CLI resolves the merge-base against the target
+branch and generates a unified diff, so patch coverage can be computed without
+any service ever calling a Git provider:
+
+```bash
+uvx --from vericov-coverage-upload vericov upload \
+  --coverage coverage/lcov.info \
+  --pull-request-number 481 \
+  --wait
+```
+
+When `--pull-request-number` is set, the CLI automatically detects the target
+branch from `GITHUB_BASE_REF` (GitHub Actions), `CI_MERGE_REQUEST_TARGET_BRANCH_NAME`
+(GitLab CI), or `BITBUCKET_PR_DESTINATION_BRANCH` (Bitbucket Pipelines), then
+runs `git merge-base` against the corresponding remote-tracking ref. This
+requires a checkout deep enough to contain the merge-base commit — a shallow
+clone (the CI default) will fail merge-base resolution; deepen the fetch (for
+example `fetch-depth: 0` on GitHub Actions) if you see a merge-base warning.
+
+Explicit overrides are available for CI setups without a full checkout at
+upload time:
+
+| Option | Meaning |
+| --- | --- |
+| `--base-ref <ref>` | Resolve the merge-base against this ref instead of CI auto-detection |
+| `--base-sha <sha>` | Use this merge-base commit verbatim; no `git` invocation |
+| `--diff <file>` | Upload a pre-generated unified diff instead of generating one |
+| `--no-diff` | Never attach a diff, even when a pull request number is present |
+
+Automatic detection failures degrade to a warning and an upload without a
+diff; explicit `--base-ref`/`--base-sha`/`--diff` failures fail the upload
+command outright. Patch coverage against a missing base report is reported as
+`base_coverage_missing` — upload coverage for default-branch builds (not only
+pull requests) to keep this rare.
+
+## Coverage Gaps
+
+`vericov gaps` fetches a ranked, deterministic manifest of actionable
+coverage gaps — files, uncovered line ranges, risk, owners, and next
+action — for a ref or a pull request, from the same read-only query API the
+[MCP server](../mcp/README.md) uses:
+
+```bash
+vericov gaps --pull-request 481 --min-risk-level medium
+```
+
+```
+Vericov coverage gaps for feature/retry-logic: gate_status=failed
+  ✗ patch-coverage: 55.7 < 80.0 (line)
+
+RANK  RISK      FILE                                          LINES        REASON                       OWNERS
+1     high(78.0) services/payments/src/Retry.java              84-97        new_uncovered_changed_line   team-payments
+```
+
+| Option | Meaning |
+| --- | --- |
+| `--ref <ref>` | Manifest for a commit SHA or branch |
+| `--pull-request <n>` | Manifest for a pull request |
+| `--min-risk-level <level>` | Filter entries below this risk level |
+| `--next-action <action>` | Filter by action, default `add_test` |
+| `--limit <n>` | Maximum entries (server default 100, max 500) |
+| `--json` | Emit the raw manifest document, suitable for piping to an agent |
+| `--fail-on-entries` | Exit 1 when any entry remains after filters |
+
+Exit codes are a distinct, CI-friendly contract: `0` on an empty manifest (or
+any manifest without `--fail-on-entries`), `1` when `--fail-on-entries` is
+set and entries remain, `2` on any transport or validation error. In CI:
+
+```bash
+vericov gaps --pull-request "$PR_NUMBER" --json --min-risk-level medium > manifest.json
+```
+
+pipes directly into an agent. See
+[`examples/agentic-test-closure/`](../../examples/agentic-test-closure/) for
+a full reference workflow that does exactly this.
+
 ## Configuration
 
 The only supported configuration filename is `.vericov.yml`. The CLI discovers
@@ -197,6 +275,16 @@ The CLI is structured as if many more commands may be added later:
 - Put business logic in `application/`.
 - Put side effects in `infrastructure/`.
 - Keep output formatting in `presentation/`.
+
+## Read-Only Keys For Agents
+
+Repository API keys already carry a scope list (`uploads:create`,
+`uploads:read`); the read-only coverage query API used by `vericov-mcp`
+enforces `uploads:read` the same way the report and status endpoints do. Mint
+a dedicated key with only `uploads:read` for agent use — such a key cannot
+call `vericov upload`, exchange a runner token, or affect any state — and set
+it as `VERICOV_API_KEY` alongside `VERICOV_API_URL` wherever the agent's MCP
+client is configured. See the [MCP server guide](../mcp/README.md).
 
 ## API Client Scope
 

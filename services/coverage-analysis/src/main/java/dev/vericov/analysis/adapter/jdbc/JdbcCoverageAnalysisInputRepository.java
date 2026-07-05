@@ -39,6 +39,7 @@ public class JdbcCoverageAnalysisInputRepository implements CoverageAnalysisInpu
                     upload.commitSha(),
                     upload.branch(),
                     upload.pullRequestNumber(),
+                    upload.baseSha(),
                     upload.ignore(),
                     upload.configSnapshotJson(),
                     upload.configSha256(),
@@ -51,7 +52,7 @@ public class JdbcCoverageAnalysisInputRepository implements CoverageAnalysisInpu
     private static UploadRow findUpload(java.sql.Connection connection, UUID uploadId) throws SQLException {
         try (var statement = connection.prepareStatement("""
                 select u.id, u.tenant_id, u.repository_id, r.provider,
-                       u.commit_sha, u.branch, u.pull_request_number, u.ignore_rules,
+                       u.commit_sha, u.branch, u.pull_request_number, u.base_sha, u.ignore_rules,
                        u.config_snapshot_json::text as config_snapshot_json, u.config_sha256
                 from vericov.uploads u
                 join vericov.repositories r on r.id = u.repository_id
@@ -74,6 +75,7 @@ public class JdbcCoverageAnalysisInputRepository implements CoverageAnalysisInpu
                         resultSet.getString("commit_sha"),
                         resultSet.getString("branch"),
                         nullableInteger(resultSet, "pull_request_number"),
+                        resultSet.getString("base_sha"),
                         snapshot.ignore(),
                         snapshot.json(),
                         snapshot.sha256());
@@ -173,6 +175,7 @@ public class JdbcCoverageAnalysisInputRepository implements CoverageAnalysisInpu
             String commitSha,
             String branch,
             Integer pullRequestNumber,
+            String baseSha,
             List<String> ignore,
             String configSnapshotJson,
             String configSha256) {

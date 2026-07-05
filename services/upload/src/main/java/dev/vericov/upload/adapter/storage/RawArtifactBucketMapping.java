@@ -18,7 +18,7 @@ public record RawArtifactBucketMapping(
         return switch (Objects.requireNonNull(kind, "kind")) {
             case COVERAGE -> coverageBucket;
             case TEST_RESULTS -> testResultsBucket;
-            case METADATA -> metadataBucket;
+            case METADATA, DIFF -> metadataBucket;
         };
     }
 
