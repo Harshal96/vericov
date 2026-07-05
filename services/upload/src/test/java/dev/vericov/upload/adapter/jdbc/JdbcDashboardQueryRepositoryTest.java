@@ -379,6 +379,71 @@ class JdbcDashboardQueryRepositoryTest {
         assertEquals(List.of(TENANT_ID, REPOSITORY_ID, TENANT_ID, REPOSITORY_ID), dataSource.parameters);
     }
 
+    @Test
+    void gateConfigsIncludeInactivePoliciesAndStayTenantScoped() {
+        UUID configId = UUID.fromString("00000000-0000-0000-0000-000000000060");
+        RecordingDataSource dataSource = new RecordingDataSource();
+        dataSource.rows = List.of(row(
+                "id", configId,
+                "name", "project line floor",
+                "gate_type", "project_coverage",
+                "metric", "line",
+                "threshold", new BigDecimal("80.0"),
+                "max_drop", null,
+                "blocking", true,
+                "status", "disabled"));
+        JdbcDashboardQueryRepository repository = new JdbcDashboardQueryRepository(dataSource);
+
+        var configs = repository.gateConfigs(TENANT_ID, REPOSITORY_ID);
+
+        assertEquals(configId, configs.getFirst().id());
+        assertEquals("disabled", configs.getFirst().status());
+        assertTrue(dataSource.lastSql.contains("from vericov.repository_gate_configurations"));
+        assertTrue(dataSource.lastSql.contains("where tenant_id = ?"));
+        assertTrue(dataSource.lastSql.contains("and repository_id = ?"));
+        assertTrue(dataSource.lastSql.contains("order by blocking desc, name"));
+        assertEquals(List.of(TENANT_ID, REPOSITORY_ID), dataSource.parameters);
+    }
+
+    @Test
+    void repositoryGateEvaluationsAreNewestFirstAndLimited() {
+        UUID evaluationId = UUID.fromString("00000000-0000-0000-0000-000000000061");
+        UUID reportId = UUID.fromString("00000000-0000-0000-0000-000000000062");
+        RecordingDataSource dataSource = new RecordingDataSource();
+        dataSource.rows = List.of(gateEvaluationRow(evaluationId, reportId));
+        JdbcDashboardQueryRepository repository = new JdbcDashboardQueryRepository(dataSource);
+
+        var evaluations = repository.repositoryGateEvaluations(TENANT_ID, REPOSITORY_ID, 60);
+
+        assertEquals(evaluationId, evaluations.getFirst().id());
+        assertEquals(reportId, evaluations.getFirst().coverageReportId());
+        assertTrue(dataSource.lastSql.contains("from vericov.gate_evaluations"));
+        assertTrue(dataSource.lastSql.contains("where tenant_id = ?"));
+        assertTrue(dataSource.lastSql.contains("and repository_id = ?"));
+        assertTrue(dataSource.lastSql.contains("order by evaluated_at desc"));
+        assertTrue(dataSource.lastSql.contains("limit ?"));
+        assertEquals(List.of(TENANT_ID, REPOSITORY_ID, 60), dataSource.parameters);
+    }
+
+    @Test
+    void reportGatesAreTenantScopedAndBlockingFirst() {
+        UUID evaluationId = UUID.fromString("00000000-0000-0000-0000-000000000063");
+        UUID reportId = UUID.fromString("00000000-0000-0000-0000-000000000064");
+        RecordingDataSource dataSource = new RecordingDataSource();
+        dataSource.rows = List.of(gateEvaluationRow(evaluationId, reportId));
+        JdbcDashboardQueryRepository repository = new JdbcDashboardQueryRepository(dataSource);
+
+        var gates = repository.reportGates(TENANT_ID, reportId);
+
+        assertEquals("project line floor", gates.getFirst().gateName());
+        assertEquals(new BigDecimal("78.9"), gates.getFirst().actual());
+        assertTrue(dataSource.lastSql.contains("from vericov.gate_evaluations"));
+        assertTrue(dataSource.lastSql.contains("where tenant_id = ?"));
+        assertTrue(dataSource.lastSql.contains("and coverage_report_id = ?"));
+        assertTrue(dataSource.lastSql.contains("order by blocking desc, gate_name"));
+        assertEquals(List.of(TENANT_ID, reportId), dataSource.parameters);
+    }
+
     private static Map<String, Object> row(Object... values) {
         Map<String, Object> row = new LinkedHashMap<>();
         for (int index = 0; index < values.length; index += 2) {
@@ -432,6 +497,23 @@ class JdbcDashboardQueryRepositoryTest {
                 "status", "active",
                 "commit_sha", "abc123",
                 "pull_request_number", null);
+    }
+
+    private static Map<String, Object> gateEvaluationRow(UUID evaluationId, UUID reportId) {
+        return row(
+                "id", evaluationId,
+                "gate_name", "project line floor",
+                "gate_type", "project_coverage",
+                "metric", "line",
+                "threshold", new BigDecimal("80.0"),
+                "actual", new BigDecimal("78.9"),
+                "status", "failed",
+                "blocking", true,
+                "commit_sha", "abc123",
+                "branch", "main",
+                "pull_request_number", null,
+                "evaluated_at", OffsetDateTime.parse("2026-07-04T20:00:00Z"),
+                "coverage_report_id", reportId);
     }
 
     private static final class RecordingDataSource implements DataSource {
@@ -496,6 +578,7 @@ class JdbcDashboardQueryRepositoryTest {
                         case "getString" -> rows.get(index).get((String) args[0]);
                         case "getObject" -> getObject(rows.get(index), args);
                         case "getBigDecimal" -> rows.get(index).get((String) args[0]);
+                        case "getBoolean" -> rows.get(index).get((String) args[0]);
                         case "getArray" -> {
                             Object value = rows.get(index).get((String) args[0]);
                             yield value == null ? null : array(value);

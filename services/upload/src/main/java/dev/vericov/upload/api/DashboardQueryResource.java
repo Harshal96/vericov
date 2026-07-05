@@ -236,6 +236,55 @@ public class DashboardQueryResource {
         }
     }
 
+    @GET
+    @Path("/repos/{repo_id}/gate-configs")
+    @Operation(summary = "List a repository's configured coverage gates")
+    public Response gateConfigs(
+            @HeaderParam("Authorization") String authorizationHeader,
+            @PathParam("repo_id") java.util.UUID repositoryId) {
+        try {
+            var configs = queryService.gateConfigs(authorizationHeader, repositoryId).stream()
+                    .map(DashboardGateConfigHttpResponse::from)
+                    .toList();
+            return Response.ok(new ApiResponse<>(new DashboardGateConfigListHttpResponse(configs))).build();
+        } catch (InvalidUploadException exception) {
+            return errorResponse(exception);
+        }
+    }
+
+    @GET
+    @Path("/repos/{repo_id}/gate-evaluations")
+    @Operation(summary = "List a repository's coverage gate evaluation history")
+    public Response repositoryGateEvaluations(
+            @HeaderParam("Authorization") String authorizationHeader,
+            @PathParam("repo_id") java.util.UUID repositoryId,
+            @QueryParam("limit") Integer limit) {
+        try {
+            var evaluations = queryService.repositoryGateEvaluations(authorizationHeader, repositoryId, limit).stream()
+                    .map(DashboardGateEvaluationHttpResponse::from)
+                    .toList();
+            return Response.ok(new ApiResponse<>(new DashboardGateEvaluationListHttpResponse(evaluations))).build();
+        } catch (InvalidUploadException exception) {
+            return errorResponse(exception);
+        }
+    }
+
+    @GET
+    @Path("/reports/{report_id}/gates")
+    @Operation(summary = "List coverage gate evaluations for a tenant-scoped report")
+    public Response reportGates(
+            @HeaderParam("Authorization") String authorizationHeader,
+            @PathParam("report_id") java.util.UUID reportId) {
+        try {
+            var gates = queryService.reportGates(authorizationHeader, reportId).stream()
+                    .map(DashboardGateEvaluationHttpResponse::from)
+                    .toList();
+            return Response.ok(new ApiResponse<>(new DashboardReportGateListHttpResponse(gates))).build();
+        } catch (InvalidUploadException exception) {
+            return errorResponse(exception);
+        }
+    }
+
     private static Response errorResponse(InvalidUploadException exception) {
         Response.Status status = switch (exception.code()) {
             case "unauthorized" -> Response.Status.UNAUTHORIZED;

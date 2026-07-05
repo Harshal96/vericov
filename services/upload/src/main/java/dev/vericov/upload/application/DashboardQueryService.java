@@ -19,6 +19,8 @@ public class DashboardQueryService {
     private static final int DEFAULT_TENANT_GAPS = 100;
     private static final int DEFAULT_REPOSITORY_GAPS = 200;
     private static final int MAX_GAPS = 500;
+    private static final int DEFAULT_GATE_EVALUATIONS = 60;
+    private static final int MAX_GATE_EVALUATIONS = 200;
     private static final int MAX_FILE_PATH_LENGTH = 1024;
 
     private final TenantAuthenticator authenticator;
@@ -119,6 +121,28 @@ public class DashboardQueryService {
         TenantPrincipal principal = authenticator.authenticateTenant(authorizationHeader);
         ensureRepositoryExists(principal.tenantId(), repositoryId);
         return repository.repositoryGapCounts(principal.tenantId(), repositoryId);
+    }
+
+    public List<DashboardGateConfig> gateConfigs(String authorizationHeader, UUID repositoryId) {
+        TenantPrincipal principal = authenticator.authenticateTenant(authorizationHeader);
+        ensureRepositoryExists(principal.tenantId(), repositoryId);
+        return repository.gateConfigs(principal.tenantId(), repositoryId);
+    }
+
+    public List<DashboardGateEvaluation> repositoryGateEvaluations(
+            String authorizationHeader, UUID repositoryId, Integer limit) {
+        TenantPrincipal principal = authenticator.authenticateTenant(authorizationHeader);
+        ensureRepositoryExists(principal.tenantId(), repositoryId);
+        return repository.repositoryGateEvaluations(
+                principal.tenantId(),
+                repositoryId,
+                normalizedLimit(limit, DEFAULT_GATE_EVALUATIONS, MAX_GATE_EVALUATIONS));
+    }
+
+    public List<DashboardGateEvaluation> reportGates(String authorizationHeader, UUID reportId) {
+        TenantPrincipal principal = authenticator.authenticateTenant(authorizationHeader);
+        ensureReportExists(principal.tenantId(), reportId);
+        return repository.reportGates(principal.tenantId(), reportId);
     }
 
     private void ensureReportExists(UUID tenantId, UUID reportId) {

@@ -7,6 +7,8 @@ import dev.vericov.upload.application.DashboardFileLineHit;
 import dev.vericov.upload.application.DashboardFileSummary;
 import dev.vericov.upload.application.DashboardGapCounts;
 import dev.vericov.upload.application.DashboardGapFinding;
+import dev.vericov.upload.application.DashboardGateConfig;
+import dev.vericov.upload.application.DashboardGateEvaluation;
 import dev.vericov.upload.application.DashboardReport;
 import dev.vericov.upload.application.DashboardReportDetails;
 import dev.vericov.upload.application.DashboardReportListItem;
@@ -167,6 +169,33 @@ public class JdbcDashboardQueryRepository implements DashboardQueryRepository {
             return latestDefaultBranchRepositoryGapCounts(tenantId, repositoryId);
         } catch (SQLException exception) {
             throw new InvalidUploadException("dashboard_query_failed", "Repository gap count lookup failed");
+        }
+    }
+
+    @Override
+    public List<DashboardGateConfig> gateConfigs(UUID tenantId, UUID repositoryId) {
+        try {
+            return repositoryGateConfigurations(tenantId, repositoryId);
+        } catch (SQLException exception) {
+            throw new InvalidUploadException("dashboard_query_failed", "Repository gate configuration lookup failed");
+        }
+    }
+
+    @Override
+    public List<DashboardGateEvaluation> repositoryGateEvaluations(UUID tenantId, UUID repositoryId, int limit) {
+        try {
+            return repositoryGateEvaluationHistory(tenantId, repositoryId, limit);
+        } catch (SQLException exception) {
+            throw new InvalidUploadException("dashboard_query_failed", "Repository gate evaluation lookup failed");
+        }
+    }
+
+    @Override
+    public List<DashboardGateEvaluation> reportGates(UUID tenantId, UUID reportId) {
+        try {
+            return reportGateEvaluations(tenantId, reportId);
+        } catch (SQLException exception) {
+            throw new InvalidUploadException("dashboard_query_failed", "Report gate lookup failed");
         }
     }
 
@@ -833,6 +862,75 @@ public class JdbcDashboardQueryRepository implements DashboardQueryRepository {
         }
     }
 
+    private List<DashboardGateConfig> repositoryGateConfigurations(UUID tenantId, UUID repositoryId)
+            throws SQLException {
+        try (var connection = dataSource.getConnection();
+                var statement = connection.prepareStatement("""
+                        select id, name, gate_type, metric, threshold, max_drop, blocking, status
+                        from vericov.repository_gate_configurations
+                        where tenant_id = ?
+                          and repository_id = ?
+                        order by blocking desc, name
+                        """)) {
+            statement.setObject(1, tenantId);
+            statement.setObject(2, repositoryId);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                List<DashboardGateConfig> configs = new ArrayList<>();
+                while (resultSet.next()) {
+                    configs.add(new DashboardGateConfig(
+                            resultSet.getObject("id", UUID.class),
+                            resultSet.getString("name"),
+                            resultSet.getString("gate_type"),
+                            resultSet.getString("metric"),
+                            resultSet.getBigDecimal("threshold"),
+                            resultSet.getBigDecimal("max_drop"),
+                            resultSet.getBoolean("blocking"),
+                            resultSet.getString("status")));
+                }
+                return List.copyOf(configs);
+            }
+        }
+    }
+
+    private List<DashboardGateEvaluation> repositoryGateEvaluationHistory(
+            UUID tenantId, UUID repositoryId, int limit) throws SQLException {
+        try (var connection = dataSource.getConnection();
+                var statement = connection.prepareStatement("""
+                        select id, gate_name, gate_type, metric, threshold, actual, status, blocking,
+                               commit_sha, branch, pull_request_number, evaluated_at, coverage_report_id
+                        from vericov.gate_evaluations
+                        where tenant_id = ?
+                          and repository_id = ?
+                        order by evaluated_at desc
+                        limit ?
+                        """)) {
+            statement.setObject(1, tenantId);
+            statement.setObject(2, repositoryId);
+            statement.setInt(3, limit);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                return dashboardGateEvaluations(resultSet);
+            }
+        }
+    }
+
+    private List<DashboardGateEvaluation> reportGateEvaluations(UUID tenantId, UUID reportId) throws SQLException {
+        try (var connection = dataSource.getConnection();
+                var statement = connection.prepareStatement("""
+                        select id, gate_name, gate_type, metric, threshold, actual, status, blocking,
+                               commit_sha, branch, pull_request_number, evaluated_at, coverage_report_id
+                        from vericov.gate_evaluations
+                        where tenant_id = ?
+                          and coverage_report_id = ?
+                        order by blocking desc, gate_name
+                        """)) {
+            statement.setObject(1, tenantId);
+            statement.setObject(2, reportId);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                return dashboardGateEvaluations(resultSet);
+            }
+        }
+    }
+
     private static List<DashboardGapFinding> dashboardGapFindings(ResultSet resultSet) throws SQLException {
         List<DashboardGapFinding> gaps = new ArrayList<>();
         while (resultSet.next()) {
@@ -857,6 +955,27 @@ public class JdbcDashboardQueryRepository implements DashboardQueryRepository {
                     nullableInteger(resultSet, "pull_request_number")));
         }
         return List.copyOf(gaps);
+    }
+
+    private static List<DashboardGateEvaluation> dashboardGateEvaluations(ResultSet resultSet) throws SQLException {
+        List<DashboardGateEvaluation> evaluations = new ArrayList<>();
+        while (resultSet.next()) {
+            evaluations.add(new DashboardGateEvaluation(
+                    resultSet.getObject("id", UUID.class),
+                    resultSet.getString("gate_name"),
+                    resultSet.getString("gate_type"),
+                    resultSet.getString("metric"),
+                    resultSet.getBigDecimal("threshold"),
+                    resultSet.getBigDecimal("actual"),
+                    resultSet.getString("status"),
+                    resultSet.getBoolean("blocking"),
+                    resultSet.getString("commit_sha"),
+                    resultSet.getString("branch"),
+                    nullableInteger(resultSet, "pull_request_number"),
+                    instant(resultSet, "evaluated_at"),
+                    nullableUuid(resultSet, "coverage_report_id")));
+        }
+        return List.copyOf(evaluations);
     }
 
     private static DashboardReport dashboardReport(ResultSet resultSet) throws SQLException {

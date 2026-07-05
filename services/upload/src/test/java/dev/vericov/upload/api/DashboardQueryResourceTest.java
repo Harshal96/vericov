@@ -10,6 +10,8 @@ import dev.vericov.upload.application.DashboardFileLineHit;
 import dev.vericov.upload.application.DashboardFileSummary;
 import dev.vericov.upload.application.DashboardGapCounts;
 import dev.vericov.upload.application.DashboardGapFinding;
+import dev.vericov.upload.application.DashboardGateConfig;
+import dev.vericov.upload.application.DashboardGateEvaluation;
 import dev.vericov.upload.application.DashboardReport;
 import dev.vericov.upload.application.DashboardReportDetails;
 import dev.vericov.upload.application.DashboardReportListItem;
@@ -100,6 +102,9 @@ class DashboardQueryResourceTest {
         service.gaps("Bearer internal-token", "active", 999);
         service.repositoryGaps("Bearer internal-token", REPOSITORY_ID, " ", null);
         service.repositoryGapCounts("Bearer internal-token", REPOSITORY_ID);
+        service.gateConfigs("Bearer internal-token", REPOSITORY_ID);
+        service.repositoryGateEvaluations("Bearer internal-token", REPOSITORY_ID, 999);
+        service.reportGates("Bearer internal-token", REPORT_ID);
 
         assertEquals(TENANT_ID, repository.tenantId);
         assertEquals(60, repository.perRepository);
@@ -107,6 +112,7 @@ class DashboardQueryResourceTest {
         assertEquals(100, repository.reportLimit);
         assertEquals(500, repository.gapLimit);
         assertEquals(200, repository.repositoryGapLimit);
+        assertEquals(200, repository.repositoryGateEvaluationLimit);
         assertEquals(null, repository.repositoryGapStatus);
         assertEquals(REPOSITORY_ID, repository.repositoryId);
         assertEquals(REPORT_ID, repository.reportId);
@@ -409,6 +415,60 @@ class DashboardQueryResourceTest {
         assertEquals(2, body.data().low());
     }
 
+    @Test
+    void gateConfigsReturnConfiguredPoliciesIncludingInactiveRows() {
+        DashboardQueryResource resource = resource(
+                authorizationHeader -> principal(),
+                new RecordingRepository());
+
+        Response response = resource.gateConfigs("Bearer internal-token", REPOSITORY_ID);
+
+        assertEquals(200, response.getStatus());
+        var body = (ApiResponse<DashboardGateConfigListHttpResponse>) response.getEntity();
+        DashboardGateConfigHttpResponse config = body.data().configs().getFirst();
+        assertEquals("project line floor", config.name());
+        assertEquals("project_coverage", config.gateType());
+        assertEquals("line", config.metric());
+        assertEquals(new BigDecimal("80.0"), config.threshold());
+        assertEquals(null, config.maxDrop());
+        assertEquals(true, config.blocking());
+        assertEquals("disabled", config.status());
+    }
+
+    @Test
+    void repositoryGateEvaluationsUseDefaultLimitAndReturnHistoryShape() {
+        RecordingRepository repository = new RecordingRepository();
+        DashboardQueryResource resource = resource(authorizationHeader -> principal(), repository);
+
+        Response response = resource.repositoryGateEvaluations("Bearer internal-token", REPOSITORY_ID, null);
+
+        assertEquals(200, response.getStatus());
+        assertEquals(60, repository.repositoryGateEvaluationLimit);
+        var body = (ApiResponse<DashboardGateEvaluationListHttpResponse>) response.getEntity();
+        DashboardGateEvaluationHttpResponse evaluation = body.data().evaluations().getFirst();
+        assertEquals("project line floor", evaluation.gateName());
+        assertEquals("failed", evaluation.status());
+        assertEquals("abc123", evaluation.commitSha());
+        assertEquals("main", evaluation.branch());
+        assertEquals(REPORT_ID, evaluation.coverageReportId());
+    }
+
+    @Test
+    void reportGatesReturnGatesTopLevelKey() {
+        DashboardQueryResource resource = resource(
+                authorizationHeader -> principal(),
+                new RecordingRepository());
+
+        Response response = resource.reportGates("Bearer internal-token", REPORT_ID);
+
+        assertEquals(200, response.getStatus());
+        var body = (ApiResponse<DashboardReportGateListHttpResponse>) response.getEntity();
+        DashboardGateEvaluationHttpResponse evaluation = body.data().gates().getFirst();
+        assertEquals("project line floor", evaluation.gateName());
+        assertEquals(new BigDecimal("78.9"), evaluation.actual());
+        assertEquals(Instant.parse("2026-07-04T20:00:00Z"), evaluation.evaluatedAt());
+    }
+
     private static DashboardQueryResource resource(
             TenantAuthenticator authenticator,
             DashboardQueryRepository repository) {
@@ -473,6 +533,7 @@ class DashboardQueryResourceTest {
         private int reportLimit;
         private int gapLimit;
         private int repositoryGapLimit;
+        private int repositoryGateEvaluationLimit;
         private final boolean fileExists;
 
         private RecordingRepository() {
@@ -638,6 +699,37 @@ class DashboardQueryResourceTest {
             return new DashboardGapCounts(1, 4, 7, 2);
         }
 
+        @Override
+        public List<DashboardGateConfig> gateConfigs(UUID tenantId, UUID repositoryId) {
+            this.tenantId = tenantId;
+            this.repositoryId = repositoryId;
+            return List.of(new DashboardGateConfig(
+                    UUID.fromString("00000000-0000-0000-0000-000000000060"),
+                    "project line floor",
+                    "project_coverage",
+                    "line",
+                    new BigDecimal("80.0"),
+                    null,
+                    true,
+                    "disabled"));
+        }
+
+        @Override
+        public List<DashboardGateEvaluation> repositoryGateEvaluations(
+                UUID tenantId, UUID repositoryId, int limit) {
+            this.tenantId = tenantId;
+            this.repositoryId = repositoryId;
+            this.repositoryGateEvaluationLimit = limit;
+            return List.of(gateEvaluation());
+        }
+
+        @Override
+        public List<DashboardGateEvaluation> reportGates(UUID tenantId, UUID reportId) {
+            this.tenantId = tenantId;
+            this.reportId = reportId;
+            return List.of(gateEvaluation());
+        }
+
         private static DashboardReport report() {
             return new DashboardReport(
                     REPORT_ID,
@@ -678,6 +770,23 @@ class DashboardQueryResourceTest {
                     "active",
                     "abc123",
                     null);
+        }
+
+        private static DashboardGateEvaluation gateEvaluation() {
+            return new DashboardGateEvaluation(
+                    UUID.fromString("00000000-0000-0000-0000-000000000061"),
+                    "project line floor",
+                    "project_coverage",
+                    "line",
+                    new BigDecimal("80.0"),
+                    new BigDecimal("78.9"),
+                    "failed",
+                    true,
+                    "abc123",
+                    "main",
+                    null,
+                    Instant.parse("2026-07-04T20:00:00Z"),
+                    REPORT_ID);
         }
     }
 }
