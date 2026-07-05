@@ -9,6 +9,9 @@ import dev.vericov.upload.application.DashboardGapCounts;
 import dev.vericov.upload.application.DashboardGapFinding;
 import dev.vericov.upload.application.DashboardGateConfig;
 import dev.vericov.upload.application.DashboardGateEvaluation;
+import dev.vericov.upload.application.DashboardPullRequestDiff;
+import dev.vericov.upload.application.DashboardPullRequestDiffDetails;
+import dev.vericov.upload.application.DashboardPullRequestDiffFile;
 import dev.vericov.upload.application.DashboardReport;
 import dev.vericov.upload.application.DashboardReportDetails;
 import dev.vericov.upload.application.DashboardReportListItem;
@@ -196,6 +199,24 @@ public class JdbcDashboardQueryRepository implements DashboardQueryRepository {
             return reportGateEvaluations(tenantId, reportId);
         } catch (SQLException exception) {
             throw new InvalidUploadException("dashboard_query_failed", "Report gate lookup failed");
+        }
+    }
+
+    @Override
+    public List<DashboardPullRequestDiff> pullRequestDiffs(UUID tenantId, UUID repositoryId, int limit) {
+        try {
+            return latestPullRequestDiffs(tenantId, repositoryId, limit);
+        } catch (SQLException exception) {
+            throw new InvalidUploadException("dashboard_query_failed", "Pull request diff lookup failed");
+        }
+    }
+
+    @Override
+    public Optional<DashboardPullRequestDiffDetails> pullRequestDiff(UUID tenantId, UUID diffId) {
+        try {
+            return pullRequestDiffWithFiles(tenantId, diffId);
+        } catch (SQLException exception) {
+            throw new InvalidUploadException("dashboard_query_failed", "Pull request diff lookup failed");
         }
     }
 
@@ -929,6 +950,111 @@ public class JdbcDashboardQueryRepository implements DashboardQueryRepository {
                 return dashboardGateEvaluations(resultSet);
             }
         }
+    }
+
+    private List<DashboardPullRequestDiff> latestPullRequestDiffs(UUID tenantId, UUID repositoryId, int limit)
+            throws SQLException {
+        try (var connection = dataSource.getConnection();
+                var statement = connection.prepareStatement("""
+                        select *
+                        from (
+                            select distinct on (d.pull_request_number)
+                                d.id, d.pull_request_number, d.base_sha, d.head_sha, d.status,
+                                d.patch_line_covered, d.patch_line_total,
+                                d.newly_missed_line_count, d.lost_coverage_line_count,
+                                d.created_at, d.coverage_report_id,
+                                case
+                                    when cr.line_total = 0 then null
+                                    else round((cr.line_covered::numeric / cr.line_total::numeric) * 100, 2)
+                                end as project_line_pct
+                            from vericov.pull_request_coverage_diffs d
+                            join vericov.coverage_reports cr on cr.id = d.coverage_report_id
+                            where d.tenant_id = ?
+                              and d.repository_id = ?
+                            order by d.pull_request_number, d.created_at desc
+                        ) latest
+                        order by created_at desc
+                        limit ?
+                        """)) {
+            statement.setObject(1, tenantId);
+            statement.setObject(2, repositoryId);
+            statement.setInt(3, limit);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                List<DashboardPullRequestDiff> diffs = new ArrayList<>();
+                while (resultSet.next()) {
+                    diffs.add(dashboardPullRequestDiff(resultSet));
+                }
+                return List.copyOf(diffs);
+            }
+        }
+    }
+
+    private Optional<DashboardPullRequestDiffDetails> pullRequestDiffWithFiles(UUID tenantId, UUID diffId)
+            throws SQLException {
+        try (var connection = dataSource.getConnection()) {
+            DashboardPullRequestDiff diff;
+            try (var statement = connection.prepareStatement("""
+                    select d.id, d.pull_request_number, d.base_sha, d.head_sha, d.status,
+                           d.patch_line_covered, d.patch_line_total,
+                           d.newly_missed_line_count, d.lost_coverage_line_count,
+                           d.created_at, d.coverage_report_id,
+                           case
+                               when cr.line_total = 0 then null
+                               else round((cr.line_covered::numeric / cr.line_total::numeric) * 100, 2)
+                           end as project_line_pct
+                    from vericov.pull_request_coverage_diffs d
+                    join vericov.coverage_reports cr on cr.id = d.coverage_report_id
+                    where d.tenant_id = ?
+                      and d.id = ?
+                    """)) {
+                statement.setObject(1, tenantId);
+                statement.setObject(2, diffId);
+                try (ResultSet resultSet = statement.executeQuery()) {
+                    if (!resultSet.next()) {
+                        return Optional.empty();
+                    }
+                    diff = dashboardPullRequestDiff(resultSet);
+                }
+            }
+            List<DashboardPullRequestDiffFile> files = new ArrayList<>();
+            try (var statement = connection.prepareStatement("""
+                    select file_path, change_status, patch_line_covered, patch_line_total,
+                           newly_missed_line_count, lost_coverage_line_count
+                    from vericov.pull_request_coverage_diff_files
+                    where tenant_id = ?
+                      and pr_diff_id = ?
+                    order by newly_missed_line_count desc, file_path
+                    """)) {
+                statement.setObject(1, tenantId);
+                statement.setObject(2, diffId);
+                try (ResultSet resultSet = statement.executeQuery()) {
+                    while (resultSet.next()) {
+                        files.add(new DashboardPullRequestDiffFile(
+                                resultSet.getString("file_path"),
+                                resultSet.getString("change_status"),
+                                metric(resultSet, "patch_line"),
+                                resultSet.getInt("newly_missed_line_count"),
+                                resultSet.getInt("lost_coverage_line_count")));
+                    }
+                }
+            }
+            return Optional.of(new DashboardPullRequestDiffDetails(diff, files));
+        }
+    }
+
+    private static DashboardPullRequestDiff dashboardPullRequestDiff(ResultSet resultSet) throws SQLException {
+        return new DashboardPullRequestDiff(
+                resultSet.getObject("id", UUID.class),
+                resultSet.getInt("pull_request_number"),
+                resultSet.getString("base_sha"),
+                resultSet.getString("head_sha"),
+                resultSet.getString("status"),
+                metric(resultSet, "patch_line"),
+                resultSet.getInt("newly_missed_line_count"),
+                resultSet.getInt("lost_coverage_line_count"),
+                instant(resultSet, "created_at"),
+                resultSet.getObject("coverage_report_id", UUID.class),
+                resultSet.getBigDecimal("project_line_pct"));
     }
 
     private static List<DashboardGapFinding> dashboardGapFindings(ResultSet resultSet) throws SQLException {

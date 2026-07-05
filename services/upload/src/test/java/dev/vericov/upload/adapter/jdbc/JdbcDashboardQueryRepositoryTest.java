@@ -444,6 +444,94 @@ class JdbcDashboardQueryRepositoryTest {
         assertEquals(List.of(TENANT_ID, reportId), dataSource.parameters);
     }
 
+    @Test
+    void pullRequestDiffsDedupeLatestPerNumberAndOrderNewestFirst() {
+        UUID diffId = UUID.fromString("00000000-0000-0000-0000-000000000070");
+        UUID reportId = UUID.fromString("00000000-0000-0000-0000-000000000071");
+        RecordingDataSource dataSource = new RecordingDataSource();
+        dataSource.rows = List.of(prDiffRow(diffId, reportId));
+        JdbcDashboardQueryRepository repository = new JdbcDashboardQueryRepository(dataSource);
+
+        var diffs = repository.pullRequestDiffs(TENANT_ID, REPOSITORY_ID, 40);
+
+        assertEquals(diffId, diffs.getFirst().id());
+        assertEquals(481, diffs.getFirst().pullRequestNumber());
+        assertEquals(reportId, diffs.getFirst().coverageReportId());
+        assertEquals(new BigDecimal("81.20"), diffs.getFirst().projectLinePct());
+        assertTrue(dataSource.lastSql.contains("distinct on (d.pull_request_number)"));
+        assertTrue(dataSource.lastSql.contains("where d.tenant_id = ?"));
+        assertTrue(dataSource.lastSql.contains("and d.repository_id = ?"));
+        assertTrue(dataSource.lastSql.contains("order by d.pull_request_number, d.created_at desc"));
+        assertTrue(dataSource.lastSql.contains(") latest"));
+        assertTrue(dataSource.lastSql.contains("order by created_at desc"));
+        assertEquals(List.of(TENANT_ID, REPOSITORY_ID, 40), dataSource.parameters);
+    }
+
+    @Test
+    void pullRequestDiffLoadsDiffThenNestedFilesInOrder() {
+        UUID diffId = UUID.fromString("00000000-0000-0000-0000-000000000072");
+        UUID reportId = UUID.fromString("00000000-0000-0000-0000-000000000073");
+        RecordingDataSource dataSource = new RecordingDataSource();
+        dataSource.rowsQueue = new java.util.ArrayDeque<>(List.of(
+                List.of(prDiffRow(diffId, reportId)),
+                List.of(prDiffFileRow("src/App.java", "modified"))));
+        JdbcDashboardQueryRepository repository = new JdbcDashboardQueryRepository(dataSource);
+
+        var details = repository.pullRequestDiff(TENANT_ID, diffId).orElseThrow();
+
+        assertEquals(diffId, details.diff().id());
+        assertEquals(reportId, details.diff().coverageReportId());
+        assertEquals(1, details.files().size());
+        assertEquals("src/App.java", details.files().getFirst().filePath());
+        assertEquals("modified", details.files().getFirst().changeStatus());
+        assertEquals(2, dataSource.sqlLog.size());
+        assertTrue(dataSource.sqlLog.get(0).contains("from vericov.pull_request_coverage_diffs d"));
+        assertTrue(dataSource.sqlLog.get(0).contains("where d.tenant_id = ?"));
+        assertTrue(dataSource.sqlLog.get(0).contains("and d.id = ?"));
+        assertTrue(dataSource.sqlLog.get(1).contains("from vericov.pull_request_coverage_diff_files"));
+        assertTrue(dataSource.sqlLog.get(1).contains("where tenant_id = ?"));
+        assertTrue(dataSource.sqlLog.get(1).contains("and pr_diff_id = ?"));
+        assertEquals(List.of(TENANT_ID, diffId), dataSource.parameterLog.get(0));
+        assertEquals(List.of(TENANT_ID, diffId), dataSource.parameterLog.get(1));
+    }
+
+    @Test
+    void pullRequestDiffReturnsEmptyWhenDiffMissing() {
+        RecordingDataSource dataSource = new RecordingDataSource();
+        dataSource.rowsQueue = new java.util.ArrayDeque<>(List.of(List.of()));
+        JdbcDashboardQueryRepository repository = new JdbcDashboardQueryRepository(dataSource);
+
+        var details = repository.pullRequestDiff(TENANT_ID, UUID.fromString("00000000-0000-0000-0000-000000000074"));
+
+        assertTrue(details.isEmpty());
+    }
+
+    private static Map<String, Object> prDiffRow(UUID diffId, UUID reportId) {
+        return row(
+                "id", diffId,
+                "pull_request_number", 481,
+                "base_sha", "base123",
+                "head_sha", "head456",
+                "status", "complete",
+                "patch_line_covered", 34,
+                "patch_line_total", 40,
+                "newly_missed_line_count", 6,
+                "lost_coverage_line_count", 2,
+                "created_at", OffsetDateTime.parse("2026-07-04T19:00:00Z"),
+                "coverage_report_id", reportId,
+                "project_line_pct", new BigDecimal("81.20"));
+    }
+
+    private static Map<String, Object> prDiffFileRow(String filePath, String changeStatus) {
+        return row(
+                "file_path", filePath,
+                "change_status", changeStatus,
+                "patch_line_covered", 8,
+                "patch_line_total", 12,
+                "newly_missed_line_count", 4,
+                "lost_coverage_line_count", 0);
+    }
+
     private static Map<String, Object> row(Object... values) {
         Map<String, Object> row = new LinkedHashMap<>();
         for (int index = 0; index < values.length; index += 2) {
@@ -519,6 +607,9 @@ class JdbcDashboardQueryRepositoryTest {
     private static final class RecordingDataSource implements DataSource {
         private String lastSql;
         private List<Map<String, Object>> rows = List.of();
+        private java.util.Queue<List<Map<String, Object>>> rowsQueue;
+        private final List<String> sqlLog = new java.util.ArrayList<>();
+        private final List<List<Object>> parameterLog = new java.util.ArrayList<>();
         private final java.util.ArrayList<Object> parameters = new java.util.ArrayList<>();
 
         @Override
@@ -529,7 +620,10 @@ class JdbcDashboardQueryRepositoryTest {
                     (proxy, method, args) -> {
                         if ("prepareStatement".equals(method.getName())) {
                             lastSql = (String) args[0];
-                            return preparedStatement();
+                            sqlLog.add(lastSql);
+                            List<Map<String, Object>> statementRows =
+                                    rowsQueue != null && !rowsQueue.isEmpty() ? rowsQueue.poll() : rows;
+                            return preparedStatement(statementRows);
                         }
                         if ("close".equals(method.getName())) {
                             return null;
@@ -538,25 +632,30 @@ class JdbcDashboardQueryRepositoryTest {
                     });
         }
 
-        private PreparedStatement preparedStatement() {
+        private PreparedStatement preparedStatement(List<Map<String, Object>> statementRows) {
+            List<Object> statementParameters = new java.util.ArrayList<>();
+            parameterLog.add(statementParameters);
             return (PreparedStatement) Proxy.newProxyInstance(
                     PreparedStatement.class.getClassLoader(),
                     new Class<?>[] {PreparedStatement.class},
                     (proxy, method, args) -> {
                         if ("setObject".equals(method.getName())) {
                             parameters.add(args[1]);
+                            statementParameters.add(args[1]);
                             return null;
                         }
                         if ("setInt".equals(method.getName())) {
                             parameters.add(args[1]);
+                            statementParameters.add(args[1]);
                             return null;
                         }
                         if ("setString".equals(method.getName())) {
                             parameters.add(args[1]);
+                            statementParameters.add(args[1]);
                             return null;
                         }
                         if ("executeQuery".equals(method.getName())) {
-                            return resultSet(rows);
+                            return resultSet(statementRows);
                         }
                         if ("close".equals(method.getName())) {
                             return null;

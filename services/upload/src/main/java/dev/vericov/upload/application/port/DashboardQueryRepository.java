@@ -8,6 +8,8 @@ import dev.vericov.upload.application.DashboardGapCounts;
 import dev.vericov.upload.application.DashboardGapFinding;
 import dev.vericov.upload.application.DashboardGateConfig;
 import dev.vericov.upload.application.DashboardGateEvaluation;
+import dev.vericov.upload.application.DashboardPullRequestDiff;
+import dev.vericov.upload.application.DashboardPullRequestDiffDetails;
 import dev.vericov.upload.application.DashboardReport;
 import dev.vericov.upload.application.DashboardReportDetails;
 import dev.vericov.upload.application.DashboardReportListItem;
@@ -77,5 +79,13 @@ public interface DashboardQueryRepository {
 
     default List<DashboardGateEvaluation> reportGates(UUID tenantId, UUID reportId) {
         return List.of();
+    }
+
+    default List<DashboardPullRequestDiff> pullRequestDiffs(UUID tenantId, UUID repositoryId, int limit) {
+        return List.of();
+    }
+
+    default Optional<DashboardPullRequestDiffDetails> pullRequestDiff(UUID tenantId, UUID diffId) {
+        return Optional.empty();
     }
 }

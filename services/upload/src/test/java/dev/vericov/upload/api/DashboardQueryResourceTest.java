@@ -12,6 +12,9 @@ import dev.vericov.upload.application.DashboardGapCounts;
 import dev.vericov.upload.application.DashboardGapFinding;
 import dev.vericov.upload.application.DashboardGateConfig;
 import dev.vericov.upload.application.DashboardGateEvaluation;
+import dev.vericov.upload.application.DashboardPullRequestDiff;
+import dev.vericov.upload.application.DashboardPullRequestDiffDetails;
+import dev.vericov.upload.application.DashboardPullRequestDiffFile;
 import dev.vericov.upload.application.DashboardReport;
 import dev.vericov.upload.application.DashboardReportDetails;
 import dev.vericov.upload.application.DashboardReportListItem;
@@ -39,6 +42,7 @@ class DashboardQueryResourceTest {
     private static final UUID REPOSITORY_ID = UUID.fromString("00000000-0000-0000-0000-000000000003");
     private static final UUID REPORT_ID = UUID.fromString("00000000-0000-0000-0000-000000000030");
     private static final UUID UPLOAD_ID = UUID.fromString("00000000-0000-0000-0000-000000000031");
+    private static final UUID PR_DIFF_ID = UUID.fromString("00000000-0000-0000-0000-000000000080");
 
     @Test
     void overviewReturnsEnvelopeWithSnakeCasePayload() {
@@ -105,6 +109,8 @@ class DashboardQueryResourceTest {
         service.gateConfigs("Bearer internal-token", REPOSITORY_ID);
         service.repositoryGateEvaluations("Bearer internal-token", REPOSITORY_ID, 999);
         service.reportGates("Bearer internal-token", REPORT_ID);
+        service.pullRequestDiffs("Bearer internal-token", REPOSITORY_ID, 999);
+        service.pullRequestDiff("Bearer internal-token", PR_DIFF_ID);
 
         assertEquals(TENANT_ID, repository.tenantId);
         assertEquals(60, repository.perRepository);
@@ -117,6 +123,9 @@ class DashboardQueryResourceTest {
         assertEquals(REPOSITORY_ID, repository.repositoryId);
         assertEquals(REPORT_ID, repository.reportId);
         assertEquals("src/App.java", repository.filePath);
+        assertEquals(REPOSITORY_ID, repository.pullRequestDiffRepositoryId);
+        assertEquals(100, repository.pullRequestDiffLimit);
+        assertEquals(PR_DIFF_ID, repository.pullRequestDiffId);
     }
 
     @Test
@@ -469,6 +478,64 @@ class DashboardQueryResourceTest {
         assertEquals(Instant.parse("2026-07-04T20:00:00Z"), evaluation.evaluatedAt());
     }
 
+    @Test
+    void pullRequestDiffsReturnsLatestDiffPerPullRequest() {
+        RecordingRepository repository = new RecordingRepository();
+        DashboardQueryResource resource = resource(authorizationHeader -> principal(), repository);
+
+        Response response = resource.pullRequestDiffs("Bearer internal-token", REPOSITORY_ID, 40);
+
+        assertEquals(200, response.getStatus());
+        assertEquals(REPOSITORY_ID, repository.pullRequestDiffRepositoryId);
+        assertEquals(40, repository.pullRequestDiffLimit);
+        var body = (ApiResponse<DashboardPullRequestDiffListHttpResponse>) response.getEntity();
+        DashboardPullRequestDiffHttpResponse diff = body.data().diffs().getFirst();
+        assertEquals(481, diff.pullRequestNumber());
+        assertEquals(34, diff.patchLineCovered());
+        assertEquals(40, diff.patchLineTotal());
+        assertEquals(new BigDecimal("81.20"), diff.projectLinePct());
+    }
+
+    @Test
+    void pullRequestDiffsReturns404WhenRepositoryMissing() {
+        DashboardQueryResource resource = resource(authorizationHeader -> principal(), new OverviewRepository(
+                new DashboardOverview(0, 0, null, 0, 0, 0, 0)));
+
+        Response response = resource.pullRequestDiffs("Bearer internal-token", REPOSITORY_ID, null);
+
+        assertEquals(404, response.getStatus());
+        ApiError error = assertInstanceOf(ApiError.class, response.getEntity());
+        assertEquals("repo_not_found", error.error().code());
+    }
+
+    @Test
+    void pullRequestDiffReturnsDetailWithNestedFiles() {
+        RecordingRepository repository = new RecordingRepository();
+        DashboardQueryResource resource = resource(authorizationHeader -> principal(), repository);
+
+        Response response = resource.pullRequestDiff("Bearer internal-token", PR_DIFF_ID);
+
+        assertEquals(200, response.getStatus());
+        assertEquals(PR_DIFF_ID, repository.pullRequestDiffId);
+        var body = (ApiResponse<DashboardPullRequestDiffDetailHttpResponse>) response.getEntity();
+        assertEquals(481, body.data().pullRequestNumber());
+        assertEquals(1, body.data().files().size());
+        assertEquals("src/App.java", body.data().files().getFirst().filePath());
+        assertEquals("modified", body.data().files().getFirst().changeStatus());
+    }
+
+    @Test
+    void pullRequestDiffReturns404WhenDiffMissing() {
+        DashboardQueryResource resource = resource(authorizationHeader -> principal(), new OverviewRepository(
+                new DashboardOverview(0, 0, null, 0, 0, 0, 0)));
+
+        Response response = resource.pullRequestDiff("Bearer internal-token", PR_DIFF_ID);
+
+        assertEquals(404, response.getStatus());
+        ApiError error = assertInstanceOf(ApiError.class, response.getEntity());
+        assertEquals("pull_request_not_found", error.error().code());
+    }
+
     private static DashboardQueryResource resource(
             TenantAuthenticator authenticator,
             DashboardQueryRepository repository) {
@@ -534,6 +601,9 @@ class DashboardQueryResourceTest {
         private int gapLimit;
         private int repositoryGapLimit;
         private int repositoryGateEvaluationLimit;
+        private UUID pullRequestDiffRepositoryId;
+        private int pullRequestDiffLimit;
+        private UUID pullRequestDiffId;
         private final boolean fileExists;
 
         private RecordingRepository() {
@@ -730,6 +800,22 @@ class DashboardQueryResourceTest {
             return List.of(gateEvaluation());
         }
 
+        @Override
+        public List<DashboardPullRequestDiff> pullRequestDiffs(UUID tenantId, UUID repositoryId, int limit) {
+            this.tenantId = tenantId;
+            this.pullRequestDiffRepositoryId = repositoryId;
+            this.pullRequestDiffLimit = limit;
+            return List.of(pullRequestDiff());
+        }
+
+        @Override
+        public Optional<DashboardPullRequestDiffDetails> pullRequestDiff(UUID tenantId, UUID diffId) {
+            this.tenantId = tenantId;
+            this.pullRequestDiffId = diffId;
+            return Optional.of(new DashboardPullRequestDiffDetails(
+                    pullRequestDiff(), List.of(pullRequestDiffFile())));
+        }
+
         private static DashboardReport report() {
             return new DashboardReport(
                     REPORT_ID,
@@ -787,6 +873,30 @@ class DashboardQueryResourceTest {
                     null,
                     Instant.parse("2026-07-04T20:00:00Z"),
                     REPORT_ID);
+        }
+
+        private static DashboardPullRequestDiff pullRequestDiff() {
+            return new DashboardPullRequestDiff(
+                    PR_DIFF_ID,
+                    481,
+                    "base123",
+                    "head456",
+                    "complete",
+                    new CoverageMetricDetails(34, 40),
+                    6,
+                    2,
+                    Instant.parse("2026-07-04T19:00:00Z"),
+                    REPORT_ID,
+                    new BigDecimal("81.20"));
+        }
+
+        private static DashboardPullRequestDiffFile pullRequestDiffFile() {
+            return new DashboardPullRequestDiffFile(
+                    "src/App.java",
+                    "modified",
+                    new CoverageMetricDetails(8, 12),
+                    4,
+                    0);
         }
     }
 }

@@ -22,6 +22,8 @@ public class DashboardQueryService {
     private static final int DEFAULT_GATE_EVALUATIONS = 60;
     private static final int MAX_GATE_EVALUATIONS = 200;
     private static final int MAX_FILE_PATH_LENGTH = 1024;
+    private static final int DEFAULT_PULL_REQUEST_DIFFS = 40;
+    private static final int MAX_PULL_REQUEST_DIFFS = 100;
 
     private final TenantAuthenticator authenticator;
     private final DashboardQueryRepository repository;
@@ -143,6 +145,23 @@ public class DashboardQueryService {
         TenantPrincipal principal = authenticator.authenticateTenant(authorizationHeader);
         ensureReportExists(principal.tenantId(), reportId);
         return repository.reportGates(principal.tenantId(), reportId);
+    }
+
+    public List<DashboardPullRequestDiff> pullRequestDiffs(
+            String authorizationHeader, UUID repositoryId, Integer limit) {
+        TenantPrincipal principal = authenticator.authenticateTenant(authorizationHeader);
+        ensureRepositoryExists(principal.tenantId(), repositoryId);
+        return repository.pullRequestDiffs(
+                principal.tenantId(),
+                repositoryId,
+                normalizedLimit(limit, DEFAULT_PULL_REQUEST_DIFFS, MAX_PULL_REQUEST_DIFFS));
+    }
+
+    public DashboardPullRequestDiffDetails pullRequestDiff(String authorizationHeader, UUID diffId) {
+        TenantPrincipal principal = authenticator.authenticateTenant(authorizationHeader);
+        return repository.pullRequestDiff(principal.tenantId(), diffId)
+                .orElseThrow(() -> new InvalidUploadException(
+                        "pull_request_not_found", "Pull request diff not found"));
     }
 
     private void ensureReportExists(UUID tenantId, UUID reportId) {

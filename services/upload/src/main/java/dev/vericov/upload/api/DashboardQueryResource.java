@@ -285,11 +285,45 @@ public class DashboardQueryResource {
         }
     }
 
+    @GET
+    @Path("/repos/{repo_id}/prs")
+    @Operation(summary = "List the latest coverage diff per pull request for a repository")
+    public Response pullRequestDiffs(
+            @HeaderParam("Authorization") String authorizationHeader,
+            @PathParam("repo_id") java.util.UUID repositoryId,
+            @QueryParam("limit") Integer limit) {
+        try {
+            var diffs = queryService.pullRequestDiffs(authorizationHeader, repositoryId, limit).stream()
+                    .map(DashboardPullRequestDiffHttpResponse::from)
+                    .toList();
+            return Response.ok(new ApiResponse<>(new DashboardPullRequestDiffListHttpResponse(diffs))).build();
+        } catch (InvalidUploadException exception) {
+            return errorResponse(exception);
+        }
+    }
+
+    @GET
+    @Path("/prs/{diff_id}")
+    @Operation(summary = "Get a pull request coverage diff with its per-file breakdown")
+    public Response pullRequestDiff(
+            @HeaderParam("Authorization") String authorizationHeader,
+            @PathParam("diff_id") java.util.UUID diffId) {
+        try {
+            return Response.ok(new ApiResponse<>(
+                    DashboardPullRequestDiffDetailHttpResponse.from(
+                            queryService.pullRequestDiff(authorizationHeader, diffId))))
+                    .build();
+        } catch (InvalidUploadException exception) {
+            return errorResponse(exception);
+        }
+    }
+
     private static Response errorResponse(InvalidUploadException exception) {
         Response.Status status = switch (exception.code()) {
             case "unauthorized" -> Response.Status.UNAUTHORIZED;
             case "tenant_not_provisioned", "forbidden" -> Response.Status.FORBIDDEN;
-            case "repo_not_found", "report_not_found", "file_not_found" -> Response.Status.NOT_FOUND;
+            case "repo_not_found", "report_not_found", "file_not_found", "pull_request_not_found" ->
+                    Response.Status.NOT_FOUND;
             default -> Response.Status.BAD_REQUEST;
         };
         if (exception instanceof DashboardQueryService.FileNotFoundQueryException fileNotFound) {
