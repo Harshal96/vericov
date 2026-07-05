@@ -16,6 +16,9 @@ public class DashboardQueryService {
     private static final int MAX_TREND_POINTS = 200;
     private static final int DEFAULT_RECENT_REPORTS = 30;
     private static final int MAX_RECENT_REPORTS = 100;
+    private static final int DEFAULT_TENANT_GAPS = 100;
+    private static final int DEFAULT_REPOSITORY_GAPS = 200;
+    private static final int MAX_GAPS = 500;
     private static final int MAX_FILE_PATH_LENGTH = 1024;
 
     private final TenantAuthenticator authenticator;
@@ -93,9 +96,40 @@ public class DashboardQueryService {
         return repository.reportComponents(principal.tenantId(), reportId);
     }
 
+    public List<DashboardGapFinding> gaps(String authorizationHeader, String status, Integer limit) {
+        TenantPrincipal principal = authenticator.authenticateTenant(authorizationHeader);
+        return repository.gaps(
+                principal.tenantId(),
+                normalizedOptionalStatus(status),
+                normalizedLimit(limit, DEFAULT_TENANT_GAPS, MAX_GAPS));
+    }
+
+    public List<DashboardGapFinding> repositoryGaps(
+            String authorizationHeader, UUID repositoryId, String status, Integer limit) {
+        TenantPrincipal principal = authenticator.authenticateTenant(authorizationHeader);
+        ensureRepositoryExists(principal.tenantId(), repositoryId);
+        return repository.repositoryGaps(
+                principal.tenantId(),
+                repositoryId,
+                normalizedOptionalStatus(status),
+                normalizedLimit(limit, DEFAULT_REPOSITORY_GAPS, MAX_GAPS));
+    }
+
+    public DashboardGapCounts repositoryGapCounts(String authorizationHeader, UUID repositoryId) {
+        TenantPrincipal principal = authenticator.authenticateTenant(authorizationHeader);
+        ensureRepositoryExists(principal.tenantId(), repositoryId);
+        return repository.repositoryGapCounts(principal.tenantId(), repositoryId);
+    }
+
     private void ensureReportExists(UUID tenantId, UUID reportId) {
         if (repository.report(tenantId, reportId).isEmpty()) {
             throw new InvalidUploadException("report_not_found", "Report not found");
+        }
+    }
+
+    private void ensureRepositoryExists(UUID tenantId, UUID repositoryId) {
+        if (repository.repository(tenantId, repositoryId).isEmpty()) {
+            throw new InvalidUploadException("repo_not_found", "Repository not found");
         }
     }
 
@@ -118,6 +152,13 @@ public class DashboardQueryService {
             return null;
         }
         return branch;
+    }
+
+    private static String normalizedOptionalStatus(String status) {
+        if (status == null || status.isBlank()) {
+            return null;
+        }
+        return status;
     }
 
     private static String normalizedRequiredFilePath(String filePath) {

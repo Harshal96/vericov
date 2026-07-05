@@ -11,6 +11,7 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.time.OffsetDateTime;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -313,6 +314,71 @@ class JdbcDashboardQueryRepositoryTest {
         assertEquals(List.of(TENANT_ID, reportId), dataSource.parameters);
     }
 
+    @Test
+    void tenantWideGapsUseLatestCompleteDefaultBranchReports() {
+        UUID gapId = UUID.fromString("00000000-0000-0000-0000-000000000050");
+        UUID reportId = UUID.fromString("00000000-0000-0000-0000-000000000051");
+        RecordingDataSource dataSource = new RecordingDataSource();
+        dataSource.rows = List.of(gapRow(gapId, reportId));
+        JdbcDashboardQueryRepository repository = new JdbcDashboardQueryRepository(dataSource);
+
+        var gaps = repository.gaps(TENANT_ID, "active", 100);
+
+        assertEquals(gapId, gaps.getFirst().id());
+        assertEquals(reportId, gaps.getFirst().coverageReportId());
+        assertEquals(REPOSITORY_ID, gaps.getFirst().repositoryId());
+        assertTrue(dataSource.lastSql.contains("latest_default_reports"));
+        assertTrue(dataSource.lastSql.contains("reports.branch = repositories.default_branch"));
+        assertTrue(dataSource.lastSql.contains("reports.status = 'complete'"));
+        assertTrue(dataSource.lastSql.contains("repositories.tenant_id = ?"));
+        assertTrue(dataSource.lastSql.contains("gaps.tenant_id = ?"));
+        assertTrue(dataSource.lastSql.contains("gaps.status = ?"));
+        assertTrue(dataSource.lastSql.contains("order by gaps.risk_score desc, gaps.id"));
+        assertEquals(List.of(TENANT_ID, TENANT_ID, "active", "active", 100), dataSource.parameters);
+    }
+
+    @Test
+    void repositoryGapsAllowBlankStatusAndUseSameLatestReportSemantics() {
+        UUID gapId = UUID.fromString("00000000-0000-0000-0000-000000000052");
+        UUID reportId = UUID.fromString("00000000-0000-0000-0000-000000000053");
+        RecordingDataSource dataSource = new RecordingDataSource();
+        dataSource.rows = List.of(gapRow(gapId, reportId));
+        JdbcDashboardQueryRepository repository = new JdbcDashboardQueryRepository(dataSource);
+
+        var gaps = repository.repositoryGaps(TENANT_ID, REPOSITORY_ID, null, 200);
+
+        assertEquals(gapId, gaps.getFirst().id());
+        assertTrue(dataSource.lastSql.contains("repositories.id = ?"));
+        assertTrue(dataSource.lastSql.contains("reports.branch = repositories.default_branch"));
+        assertTrue(dataSource.lastSql.contains("reports.status = 'complete'"));
+        assertTrue(dataSource.lastSql.contains("(?::text is null or gaps.status = ?)"));
+        assertEquals(Arrays.asList(TENANT_ID, REPOSITORY_ID, TENANT_ID, REPOSITORY_ID, null, null, 200),
+                dataSource.parameters);
+    }
+
+    @Test
+    void repositoryGapCountsUseActiveLatestDefaultBranchReportPopulation() {
+        RecordingDataSource dataSource = new RecordingDataSource();
+        dataSource.rows = List.of(
+                row("risk_level", "critical", "n", 1L),
+                row("risk_level", "high", "n", 4L),
+                row("risk_level", "medium", "n", 7L),
+                row("risk_level", "low", "n", 2L));
+        JdbcDashboardQueryRepository repository = new JdbcDashboardQueryRepository(dataSource);
+
+        var counts = repository.repositoryGapCounts(TENANT_ID, REPOSITORY_ID);
+
+        assertEquals(1, counts.critical());
+        assertEquals(4, counts.high());
+        assertEquals(7, counts.medium());
+        assertEquals(2, counts.low());
+        assertTrue(dataSource.lastSql.contains("latest_default_report"));
+        assertTrue(dataSource.lastSql.contains("reports.branch = repositories.default_branch"));
+        assertTrue(dataSource.lastSql.contains("gaps.status = 'active'"));
+        assertTrue(dataSource.lastSql.contains("group by gaps.risk_level"));
+        assertEquals(List.of(TENANT_ID, REPOSITORY_ID, TENANT_ID, REPOSITORY_ID), dataSource.parameters);
+    }
+
     private static Map<String, Object> row(Object... values) {
         Map<String, Object> row = new LinkedHashMap<>();
         for (int index = 0; index < values.length; index += 2) {
@@ -344,6 +410,28 @@ class JdbcDashboardQueryRepositoryTest {
             row.put((String) extraValues[index], extraValues[index + 1]);
         }
         return row;
+    }
+
+    private static Map<String, Object> gapRow(UUID gapId, UUID reportId) {
+        return row(
+                "id", gapId,
+                "coverage_report_id", reportId,
+                "repository_id", REPOSITORY_ID,
+                "file_path", "src/App.java",
+                "target_type", "function",
+                "line_start", 12,
+                "line_end", 34,
+                "symbol_name", "retryPayment",
+                "reason_code", "uncovered_branch",
+                "explanation", "No test exercises the retry branch.",
+                "confidence", "high",
+                "risk_score", new BigDecimal("8.5"),
+                "risk_level", "critical",
+                "owners", new String[] {"team-payments"},
+                "next_action", "write_test",
+                "status", "active",
+                "commit_sha", "abc123",
+                "pull_request_number", null);
     }
 
     private static final class RecordingDataSource implements DataSource {

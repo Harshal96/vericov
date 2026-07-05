@@ -8,6 +8,8 @@ import dev.vericov.upload.application.CoverageMetricDetails;
 import dev.vericov.upload.application.DashboardComponentRollup;
 import dev.vericov.upload.application.DashboardFileLineHit;
 import dev.vericov.upload.application.DashboardFileSummary;
+import dev.vericov.upload.application.DashboardGapCounts;
+import dev.vericov.upload.application.DashboardGapFinding;
 import dev.vericov.upload.application.DashboardReport;
 import dev.vericov.upload.application.DashboardReportDetails;
 import dev.vericov.upload.application.DashboardReportListItem;
@@ -95,11 +97,17 @@ class DashboardQueryResourceTest {
         service.reportFiles("Bearer internal-token", REPORT_ID);
         service.reportLineHits("Bearer internal-token", REPORT_ID, "src/App.java");
         service.reportComponents("Bearer internal-token", REPORT_ID);
+        service.gaps("Bearer internal-token", "active", 999);
+        service.repositoryGaps("Bearer internal-token", REPOSITORY_ID, " ", null);
+        service.repositoryGapCounts("Bearer internal-token", REPOSITORY_ID);
 
         assertEquals(TENANT_ID, repository.tenantId);
         assertEquals(60, repository.perRepository);
         assertEquals(200, repository.trendLimit);
         assertEquals(100, repository.reportLimit);
+        assertEquals(500, repository.gapLimit);
+        assertEquals(200, repository.repositoryGapLimit);
+        assertEquals(null, repository.repositoryGapStatus);
         assertEquals(REPOSITORY_ID, repository.repositoryId);
         assertEquals(REPORT_ID, repository.reportId);
         assertEquals("src/App.java", repository.filePath);
@@ -353,6 +361,54 @@ class DashboardQueryResourceTest {
         assertEquals(new BigDecimal("27.50"), component.riskScoreTotal());
     }
 
+    @Test
+    void gapsReturnsTenantWideLatestDefaultBranchGapShape() {
+        DashboardQueryResource resource = resource(
+                authorizationHeader -> principal(),
+                new RecordingRepository());
+
+        Response response = resource.gaps("Bearer internal-token", "active", null);
+
+        assertEquals(200, response.getStatus());
+        var body = (ApiResponse<DashboardGapListHttpResponse>) response.getEntity();
+        DashboardGapFindingHttpResponse gap = body.data().gaps().getFirst();
+        assertEquals("00000000-0000-0000-0000-000000000050", gap.id().toString());
+        assertEquals(REPOSITORY_ID, gap.repositoryId());
+        assertEquals(REPORT_ID, gap.coverageReportId());
+        assertEquals("src/App.java", gap.filePath());
+        assertEquals(new BigDecimal("8.5"), gap.riskScore());
+        assertEquals("abc123", gap.commitSha());
+        assertEquals(null, gap.pullRequestNumber());
+    }
+
+    @Test
+    void repositoryGapsUseRepositoryDefaultLimitAndBlankStatusAsAll() {
+        RecordingRepository repository = new RecordingRepository();
+        DashboardQueryResource resource = resource(authorizationHeader -> principal(), repository);
+
+        Response response = resource.repositoryGaps("Bearer internal-token", REPOSITORY_ID, " ", null);
+
+        assertEquals(200, response.getStatus());
+        assertEquals(200, repository.repositoryGapLimit);
+        assertEquals(null, repository.repositoryGapStatus);
+    }
+
+    @Test
+    void repositoryGapCountsReturnRiskLevelBuckets() {
+        DashboardQueryResource resource = resource(
+                authorizationHeader -> principal(),
+                new RecordingRepository());
+
+        Response response = resource.repositoryGapCounts("Bearer internal-token", REPOSITORY_ID);
+
+        assertEquals(200, response.getStatus());
+        var body = (ApiResponse<DashboardGapCountsHttpResponse>) response.getEntity();
+        assertEquals(1, body.data().critical());
+        assertEquals(4, body.data().high());
+        assertEquals(7, body.data().medium());
+        assertEquals(2, body.data().low());
+    }
+
     private static DashboardQueryResource resource(
             TenantAuthenticator authenticator,
             DashboardQueryRepository repository) {
@@ -411,9 +467,12 @@ class DashboardQueryResourceTest {
         private UUID repositoryId;
         private UUID reportId;
         private String filePath;
+        private String repositoryGapStatus;
         private int perRepository;
         private int trendLimit;
         private int reportLimit;
+        private int gapLimit;
+        private int repositoryGapLimit;
         private final boolean fileExists;
 
         private RecordingRepository() {
@@ -555,6 +614,30 @@ class DashboardQueryResourceTest {
                     "high"));
         }
 
+        @Override
+        public List<DashboardGapFinding> gaps(UUID tenantId, String status, int limit) {
+            this.tenantId = tenantId;
+            this.repositoryGapStatus = status;
+            this.gapLimit = limit;
+            return List.of(gap());
+        }
+
+        @Override
+        public List<DashboardGapFinding> repositoryGaps(UUID tenantId, UUID repositoryId, String status, int limit) {
+            this.tenantId = tenantId;
+            this.repositoryId = repositoryId;
+            this.repositoryGapStatus = status;
+            this.repositoryGapLimit = limit;
+            return List.of(gap());
+        }
+
+        @Override
+        public DashboardGapCounts repositoryGapCounts(UUID tenantId, UUID repositoryId) {
+            this.tenantId = tenantId;
+            this.repositoryId = repositoryId;
+            return new DashboardGapCounts(1, 4, 7, 2);
+        }
+
         private static DashboardReport report() {
             return new DashboardReport(
                     REPORT_ID,
@@ -573,6 +656,28 @@ class DashboardQueryResourceTest {
                     100,
                     0,
                     0);
+        }
+
+        private static DashboardGapFinding gap() {
+            return new DashboardGapFinding(
+                    UUID.fromString("00000000-0000-0000-0000-000000000050"),
+                    REPORT_ID,
+                    REPOSITORY_ID,
+                    "src/App.java",
+                    "function",
+                    12,
+                    34,
+                    "retryPayment",
+                    "uncovered_branch",
+                    "No test exercises the retry branch.",
+                    "high",
+                    new BigDecimal("8.5"),
+                    "critical",
+                    List.of("team-payments"),
+                    "write_test",
+                    "active",
+                    "abc123",
+                    null);
         }
     }
 }

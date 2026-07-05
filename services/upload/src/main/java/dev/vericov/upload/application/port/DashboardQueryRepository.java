@@ -4,6 +4,8 @@ import dev.vericov.upload.application.DashboardOverview;
 import dev.vericov.upload.application.DashboardComponentRollup;
 import dev.vericov.upload.application.DashboardFileLineHit;
 import dev.vericov.upload.application.DashboardFileSummary;
+import dev.vericov.upload.application.DashboardGapCounts;
+import dev.vericov.upload.application.DashboardGapFinding;
 import dev.vericov.upload.application.DashboardReport;
 import dev.vericov.upload.application.DashboardReportDetails;
 import dev.vericov.upload.application.DashboardReportListItem;
@@ -49,5 +51,17 @@ public interface DashboardQueryRepository {
 
     default List<DashboardComponentRollup> reportComponents(UUID tenantId, UUID reportId) {
         return List.of();
+    }
+
+    default List<DashboardGapFinding> gaps(UUID tenantId, String status, int limit) {
+        return List.of();
+    }
+
+    default List<DashboardGapFinding> repositoryGaps(UUID tenantId, UUID repositoryId, String status, int limit) {
+        return List.of();
+    }
+
+    default DashboardGapCounts repositoryGapCounts(UUID tenantId, UUID repositoryId) {
+        return new DashboardGapCounts(0, 0, 0, 0);
     }
 }

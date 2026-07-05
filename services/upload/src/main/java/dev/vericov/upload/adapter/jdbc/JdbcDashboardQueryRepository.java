@@ -5,6 +5,8 @@ import dev.vericov.upload.application.CoverageMetricDetails;
 import dev.vericov.upload.application.DashboardComponentRollup;
 import dev.vericov.upload.application.DashboardFileLineHit;
 import dev.vericov.upload.application.DashboardFileSummary;
+import dev.vericov.upload.application.DashboardGapCounts;
+import dev.vericov.upload.application.DashboardGapFinding;
 import dev.vericov.upload.application.DashboardReport;
 import dev.vericov.upload.application.DashboardReportDetails;
 import dev.vericov.upload.application.DashboardReportListItem;
@@ -138,6 +140,33 @@ public class JdbcDashboardQueryRepository implements DashboardQueryRepository {
             return reportComponentRollups(tenantId, reportId);
         } catch (SQLException exception) {
             throw new InvalidUploadException("dashboard_query_failed", "Report component lookup failed");
+        }
+    }
+
+    @Override
+    public List<DashboardGapFinding> gaps(UUID tenantId, String status, int limit) {
+        try {
+            return latestDefaultBranchGaps(tenantId, status, limit);
+        } catch (SQLException exception) {
+            throw new InvalidUploadException("dashboard_query_failed", "Dashboard gap lookup failed");
+        }
+    }
+
+    @Override
+    public List<DashboardGapFinding> repositoryGaps(UUID tenantId, UUID repositoryId, String status, int limit) {
+        try {
+            return latestDefaultBranchRepositoryGaps(tenantId, repositoryId, status, limit);
+        } catch (SQLException exception) {
+            throw new InvalidUploadException("dashboard_query_failed", "Repository gap lookup failed");
+        }
+    }
+
+    @Override
+    public DashboardGapCounts repositoryGapCounts(UUID tenantId, UUID repositoryId) {
+        try {
+            return latestDefaultBranchRepositoryGapCounts(tenantId, repositoryId);
+        } catch (SQLException exception) {
+            throw new InvalidUploadException("dashboard_query_failed", "Repository gap count lookup failed");
         }
     }
 
@@ -663,6 +692,171 @@ public class JdbcDashboardQueryRepository implements DashboardQueryRepository {
                 return List.copyOf(components);
             }
         }
+    }
+
+    private List<DashboardGapFinding> latestDefaultBranchGaps(UUID tenantId, String status, int limit)
+            throws SQLException {
+        try (var connection = dataSource.getConnection();
+                var statement = connection.prepareStatement("""
+                        with latest_default_reports as (
+                            select distinct on (repositories.id)
+                                repositories.id as repository_id,
+                                reports.id as report_id
+                            from vericov.repositories repositories
+                            join vericov.coverage_reports reports
+                              on reports.repository_id = repositories.id
+                             and reports.tenant_id = repositories.tenant_id
+                             and reports.branch = repositories.default_branch
+                             and reports.status = 'complete'
+                            where repositories.tenant_id = ?
+                              and repositories.status = 'active'
+                            order by repositories.id, reports.created_at desc
+                        )
+                        select gaps.id, gaps.coverage_report_id, gaps.repository_id,
+                               gaps.file_path, gaps.target_type, gaps.line_start, gaps.line_end,
+                               gaps.symbol_name, gaps.reason_code, gaps.explanation, gaps.confidence,
+                               gaps.risk_score, gaps.risk_level, gaps.owners, gaps.next_action,
+                               gaps.status, gaps.commit_sha, gaps.pull_request_number
+                        from vericov.coverage_gap_findings gaps
+                        join latest_default_reports latest
+                          on latest.repository_id = gaps.repository_id
+                         and latest.report_id = gaps.coverage_report_id
+                        where gaps.tenant_id = ?
+                          and (?::text is null or gaps.status = ?)
+                        order by gaps.risk_score desc, gaps.id
+                        limit ?
+                        """)) {
+            statement.setObject(1, tenantId);
+            statement.setObject(2, tenantId);
+            statement.setObject(3, status);
+            statement.setObject(4, status);
+            statement.setInt(5, limit);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                return dashboardGapFindings(resultSet);
+            }
+        }
+    }
+
+    private List<DashboardGapFinding> latestDefaultBranchRepositoryGaps(
+            UUID tenantId, UUID repositoryId, String status, int limit) throws SQLException {
+        try (var connection = dataSource.getConnection();
+                var statement = connection.prepareStatement("""
+                        with latest_default_report as (
+                            select reports.id as report_id
+                            from vericov.repositories repositories
+                            join vericov.coverage_reports reports
+                              on reports.repository_id = repositories.id
+                             and reports.tenant_id = repositories.tenant_id
+                             and reports.branch = repositories.default_branch
+                             and reports.status = 'complete'
+                            where repositories.tenant_id = ?
+                              and repositories.id = ?
+                              and repositories.status = 'active'
+                            order by reports.created_at desc
+                            limit 1
+                        )
+                        select gaps.id, gaps.coverage_report_id, gaps.repository_id,
+                               gaps.file_path, gaps.target_type, gaps.line_start, gaps.line_end,
+                               gaps.symbol_name, gaps.reason_code, gaps.explanation, gaps.confidence,
+                               gaps.risk_score, gaps.risk_level, gaps.owners, gaps.next_action,
+                               gaps.status, gaps.commit_sha, gaps.pull_request_number
+                        from vericov.coverage_gap_findings gaps
+                        join latest_default_report latest
+                          on latest.report_id = gaps.coverage_report_id
+                        where gaps.tenant_id = ?
+                          and gaps.repository_id = ?
+                          and (?::text is null or gaps.status = ?)
+                        order by gaps.risk_score desc, gaps.id
+                        limit ?
+                        """)) {
+            statement.setObject(1, tenantId);
+            statement.setObject(2, repositoryId);
+            statement.setObject(3, tenantId);
+            statement.setObject(4, repositoryId);
+            statement.setObject(5, status);
+            statement.setObject(6, status);
+            statement.setInt(7, limit);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                return dashboardGapFindings(resultSet);
+            }
+        }
+    }
+
+    private DashboardGapCounts latestDefaultBranchRepositoryGapCounts(UUID tenantId, UUID repositoryId)
+            throws SQLException {
+        try (var connection = dataSource.getConnection();
+                var statement = connection.prepareStatement("""
+                        with latest_default_report as (
+                            select reports.id as report_id
+                            from vericov.repositories repositories
+                            join vericov.coverage_reports reports
+                              on reports.repository_id = repositories.id
+                             and reports.tenant_id = repositories.tenant_id
+                             and reports.branch = repositories.default_branch
+                             and reports.status = 'complete'
+                            where repositories.tenant_id = ?
+                              and repositories.id = ?
+                              and repositories.status = 'active'
+                            order by reports.created_at desc
+                            limit 1
+                        )
+                        select gaps.risk_level, count(*) as n
+                        from vericov.coverage_gap_findings gaps
+                        join latest_default_report latest
+                          on latest.report_id = gaps.coverage_report_id
+                        where gaps.tenant_id = ?
+                          and gaps.repository_id = ?
+                          and gaps.status = 'active'
+                        group by gaps.risk_level
+                        """)) {
+            statement.setObject(1, tenantId);
+            statement.setObject(2, repositoryId);
+            statement.setObject(3, tenantId);
+            statement.setObject(4, repositoryId);
+            long critical = 0;
+            long high = 0;
+            long medium = 0;
+            long low = 0;
+            try (ResultSet resultSet = statement.executeQuery()) {
+                while (resultSet.next()) {
+                    long count = resultSet.getLong("n");
+                    switch (resultSet.getString("risk_level")) {
+                        case "critical" -> critical = count;
+                        case "high" -> high = count;
+                        case "medium" -> medium = count;
+                        case "low" -> low = count;
+                        default -> { }
+                    }
+                }
+            }
+            return new DashboardGapCounts(critical, high, medium, low);
+        }
+    }
+
+    private static List<DashboardGapFinding> dashboardGapFindings(ResultSet resultSet) throws SQLException {
+        List<DashboardGapFinding> gaps = new ArrayList<>();
+        while (resultSet.next()) {
+            gaps.add(new DashboardGapFinding(
+                    resultSet.getObject("id", UUID.class),
+                    resultSet.getObject("coverage_report_id", UUID.class),
+                    resultSet.getObject("repository_id", UUID.class),
+                    resultSet.getString("file_path"),
+                    resultSet.getString("target_type"),
+                    nullableInteger(resultSet, "line_start"),
+                    nullableInteger(resultSet, "line_end"),
+                    resultSet.getString("symbol_name"),
+                    resultSet.getString("reason_code"),
+                    resultSet.getString("explanation"),
+                    resultSet.getString("confidence"),
+                    resultSet.getBigDecimal("risk_score"),
+                    resultSet.getString("risk_level"),
+                    textArray(resultSet, "owners"),
+                    resultSet.getString("next_action"),
+                    resultSet.getString("status"),
+                    resultSet.getString("commit_sha"),
+                    nullableInteger(resultSet, "pull_request_number")));
+        }
+        return List.copyOf(gaps);
     }
 
     private static DashboardReport dashboardReport(ResultSet resultSet) throws SQLException {

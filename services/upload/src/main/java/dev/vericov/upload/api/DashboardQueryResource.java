@@ -185,6 +185,57 @@ public class DashboardQueryResource {
         }
     }
 
+    @GET
+    @Path("/gaps")
+    @Operation(summary = "List tenant-wide highest-risk coverage gaps from each repository's latest complete default-branch report")
+    public Response gaps(
+            @HeaderParam("Authorization") String authorizationHeader,
+            @QueryParam("status") String status,
+            @QueryParam("limit") Integer limit) {
+        try {
+            var gaps = queryService.gaps(authorizationHeader, status, limit).stream()
+                    .map(DashboardGapFindingHttpResponse::from)
+                    .toList();
+            return Response.ok(new ApiResponse<>(new DashboardGapListHttpResponse(gaps))).build();
+        } catch (InvalidUploadException exception) {
+            return errorResponse(exception);
+        }
+    }
+
+    @GET
+    @Path("/repos/{repo_id}/gaps")
+    @Operation(summary = "List repository coverage gaps from the latest complete default-branch report")
+    public Response repositoryGaps(
+            @HeaderParam("Authorization") String authorizationHeader,
+            @PathParam("repo_id") java.util.UUID repositoryId,
+            @QueryParam("status") String status,
+            @QueryParam("limit") Integer limit) {
+        try {
+            var gaps = queryService.repositoryGaps(authorizationHeader, repositoryId, status, limit).stream()
+                    .map(DashboardGapFindingHttpResponse::from)
+                    .toList();
+            return Response.ok(new ApiResponse<>(new DashboardGapListHttpResponse(gaps))).build();
+        } catch (InvalidUploadException exception) {
+            return errorResponse(exception);
+        }
+    }
+
+    @GET
+    @Path("/repos/{repo_id}/gap-counts")
+    @Operation(summary = "Count active repository coverage gaps by risk level from the latest complete default-branch report")
+    public Response repositoryGapCounts(
+            @HeaderParam("Authorization") String authorizationHeader,
+            @PathParam("repo_id") java.util.UUID repositoryId) {
+        try {
+            return Response.ok(new ApiResponse<>(
+                    DashboardGapCountsHttpResponse.from(queryService.repositoryGapCounts(
+                            authorizationHeader, repositoryId))))
+                    .build();
+        } catch (InvalidUploadException exception) {
+            return errorResponse(exception);
+        }
+    }
+
     private static Response errorResponse(InvalidUploadException exception) {
         Response.Status status = switch (exception.code()) {
             case "unauthorized" -> Response.Status.UNAUTHORIZED;
