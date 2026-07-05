@@ -4,9 +4,13 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 
 import dev.vericov.upload.application.DashboardOverview;
+import dev.vericov.upload.application.DashboardReport;
+import dev.vericov.upload.application.DashboardReportDetails;
+import dev.vericov.upload.application.DashboardReportListItem;
 import dev.vericov.upload.application.DashboardRepository;
 import dev.vericov.upload.application.DashboardRepositoryOverview;
 import dev.vericov.upload.application.DashboardQueryService;
+import dev.vericov.upload.application.DashboardTrendPoint;
 import dev.vericov.upload.application.InvalidUploadException;
 import dev.vericov.upload.application.port.DashboardQueryRepository;
 import dev.vericov.upload.application.port.TenantAuthenticator;
@@ -25,6 +29,8 @@ class DashboardQueryResourceTest {
     private static final UUID TENANT_ID = UUID.fromString("00000000-0000-0000-0000-000000000001");
     private static final UUID ORG_ID = UUID.fromString("00000000-0000-0000-0000-000000000010");
     private static final UUID REPOSITORY_ID = UUID.fromString("00000000-0000-0000-0000-000000000003");
+    private static final UUID REPORT_ID = UUID.fromString("00000000-0000-0000-0000-000000000030");
+    private static final UUID UPLOAD_ID = UUID.fromString("00000000-0000-0000-0000-000000000031");
 
     @Test
     void overviewReturnsEnvelopeWithSnakeCasePayload() {
@@ -79,10 +85,16 @@ class DashboardQueryResourceTest {
         service.repositories("Bearer internal-token");
         service.sparklines("Bearer internal-token", 99);
         service.repository("Bearer internal-token", REPOSITORY_ID);
+        service.trend("Bearer internal-token", REPOSITORY_ID, " ", 300);
+        service.reports("Bearer internal-token", REPOSITORY_ID, 300);
+        service.report("Bearer internal-token", REPORT_ID);
 
         assertEquals(TENANT_ID, repository.tenantId);
         assertEquals(60, repository.perRepository);
+        assertEquals(200, repository.trendLimit);
+        assertEquals(100, repository.reportLimit);
         assertEquals(REPOSITORY_ID, repository.repositoryId);
+        assertEquals(REPORT_ID, repository.reportId);
     }
 
     @Test
@@ -131,6 +143,22 @@ class DashboardQueryResourceTest {
                     public Optional<DashboardRepository> repository(UUID tenantId, UUID repositoryId) {
                         return Optional.empty();
                     }
+
+                    @Override
+                    public List<DashboardTrendPoint> trend(
+                            UUID tenantId, UUID repositoryId, String branch, int limit) {
+                        return List.of();
+                    }
+
+                    @Override
+                    public List<DashboardReportListItem> reports(UUID tenantId, UUID repositoryId, int limit) {
+                        return List.of();
+                    }
+
+                    @Override
+                    public Optional<DashboardReportDetails> report(UUID tenantId, UUID reportId) {
+                        return Optional.empty();
+                    }
                 });
 
         Response response = resource.repositories("Bearer internal-token");
@@ -177,6 +205,21 @@ class DashboardQueryResourceTest {
             public Optional<DashboardRepository> repository(UUID tenantId, UUID repositoryId) {
                 return Optional.empty();
             }
+
+            @Override
+            public List<DashboardTrendPoint> trend(UUID tenantId, UUID repositoryId, String branch, int limit) {
+                return List.of();
+            }
+
+            @Override
+            public List<DashboardReportListItem> reports(UUID tenantId, UUID repositoryId, int limit) {
+                return List.of();
+            }
+
+            @Override
+            public Optional<DashboardReportDetails> report(UUID tenantId, UUID reportId) {
+                return Optional.empty();
+            }
         });
 
         Response response = resource.repository("Bearer internal-token", REPOSITORY_ID);
@@ -184,6 +227,46 @@ class DashboardQueryResourceTest {
         assertEquals(404, response.getStatus());
         ApiError error = assertInstanceOf(ApiError.class, response.getEntity());
         assertEquals("repo_not_found", error.error().code());
+    }
+
+    @Test
+    void trendReturnsPointsEnvelope() {
+        DashboardQueryResource resource = resource(
+                authorizationHeader -> principal(),
+                new RecordingRepository());
+
+        Response response = resource.trend("Bearer internal-token", REPOSITORY_ID, null, null);
+
+        assertEquals(200, response.getStatus());
+        var body = (ApiResponse<DashboardTrendHttpResponse>) response.getEntity();
+        assertEquals(REPORT_ID, body.data().points().getFirst().reportId());
+        assertEquals(new BigDecimal("81.20"), body.data().points().getFirst().linePct());
+    }
+
+    @Test
+    void reportsReturnsCiMetadataAndFlags() {
+        DashboardQueryResource resource = resource(
+                authorizationHeader -> principal(),
+                new RecordingRepository());
+
+        Response response = resource.reports("Bearer internal-token", REPOSITORY_ID, 30);
+
+        assertEquals(200, response.getStatus());
+        var body = (ApiResponse<DashboardReportListHttpResponse>) response.getEntity();
+        assertEquals("github_actions", body.data().reports().getFirst().ciProvider());
+        assertEquals(List.of("unit"), body.data().reports().getFirst().flags());
+    }
+
+    @Test
+    void reportReturns404WhenTenantScopedLookupMisses() {
+        DashboardQueryResource resource = resource(authorizationHeader -> principal(), new OverviewRepository(
+                new DashboardOverview(0, 0, null, 0, 0, 0, 0)));
+
+        Response response = resource.report("Bearer internal-token", REPORT_ID);
+
+        assertEquals(404, response.getStatus());
+        ApiError error = assertInstanceOf(ApiError.class, response.getEntity());
+        assertEquals("report_not_found", error.error().code());
     }
 
     private static DashboardQueryResource resource(
@@ -222,12 +305,30 @@ class DashboardQueryResourceTest {
         public Optional<DashboardRepository> repository(UUID tenantId, UUID repositoryId) {
             return Optional.empty();
         }
+
+        @Override
+        public List<DashboardTrendPoint> trend(UUID tenantId, UUID repositoryId, String branch, int limit) {
+            return List.of();
+        }
+
+        @Override
+        public List<DashboardReportListItem> reports(UUID tenantId, UUID repositoryId, int limit) {
+            return List.of();
+        }
+
+        @Override
+        public Optional<DashboardReportDetails> report(UUID tenantId, UUID reportId) {
+            return Optional.empty();
+        }
     }
 
     private static final class RecordingRepository implements DashboardQueryRepository {
         private UUID tenantId;
         private UUID repositoryId;
+        private UUID reportId;
         private int perRepository;
+        private int trendLimit;
+        private int reportLimit;
 
         @Override
         public DashboardOverview overview(UUID tenantId) {
@@ -260,6 +361,70 @@ class DashboardQueryResourceTest {
                     "private",
                     "active",
                     Instant.parse("2026-07-04T18:00:00Z")));
+        }
+
+        @Override
+        public List<DashboardTrendPoint> trend(UUID tenantId, UUID repositoryId, String branch, int limit) {
+            this.tenantId = tenantId;
+            this.repositoryId = repositoryId;
+            this.trendLimit = limit;
+            return List.of(new DashboardTrendPoint(
+                    REPORT_ID,
+                    "abc123",
+                    Instant.parse("2026-07-04T19:00:00Z"),
+                    new BigDecimal("81.20"),
+                    null,
+                    new BigDecimal("74.00"),
+                    null));
+        }
+
+        @Override
+        public List<DashboardReportListItem> reports(UUID tenantId, UUID repositoryId, int limit) {
+            this.tenantId = tenantId;
+            this.repositoryId = repositoryId;
+            this.reportLimit = limit;
+            return List.of(new DashboardReportListItem(
+                    report(),
+                    new BigDecimal("-0.40"),
+                    "github_actions",
+                    "https://ci.example/build-1",
+                    List.of("unit")));
+        }
+
+        @Override
+        public Optional<DashboardReportDetails> report(UUID tenantId, UUID reportId) {
+            this.tenantId = tenantId;
+            this.reportId = reportId;
+            return Optional.of(new DashboardReportDetails(
+                    report(),
+                    new DashboardRepository(
+                            REPOSITORY_ID,
+                            "acme/checkout",
+                            "github",
+                            "main",
+                            "private",
+                            "active",
+                            Instant.parse("2026-07-04T18:00:00Z"))));
+        }
+
+        private static DashboardReport report() {
+            return new DashboardReport(
+                    REPORT_ID,
+                    UPLOAD_ID,
+                    REPOSITORY_ID,
+                    "abc123",
+                    "main",
+                    null,
+                    "complete",
+                    Instant.parse("2026-07-04T19:00:00Z"),
+                    812,
+                    1000,
+                    0,
+                    0,
+                    74,
+                    100,
+                    0,
+                    0);
         }
     }
 }

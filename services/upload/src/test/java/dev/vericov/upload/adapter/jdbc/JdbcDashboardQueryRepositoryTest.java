@@ -122,10 +122,117 @@ class JdbcDashboardQueryRepositoryTest {
         assertEquals(List.of(TENANT_ID, REPOSITORY_ID), dataSource.parameters);
     }
 
+    @Test
+    void trendUsesDefaultBranchFallbackAndCompleteReportsOnly() {
+        UUID reportId = UUID.fromString("00000000-0000-0000-0000-000000000040");
+        RecordingDataSource dataSource = new RecordingDataSource();
+        dataSource.rows = List.of(row(
+                "report_id", reportId,
+                "commit_sha", "abc123",
+                "created_at", OffsetDateTime.parse("2026-07-04T19:00:00Z"),
+                "line_pct", new BigDecimal("81.20"),
+                "branch_pct", null,
+                "function_pct", new BigDecimal("74.00"),
+                "statement_pct", null));
+        JdbcDashboardQueryRepository repository = new JdbcDashboardQueryRepository(dataSource);
+
+        var points = repository.trend(TENANT_ID, REPOSITORY_ID, null, 60);
+
+        assertEquals(reportId, points.getFirst().reportId());
+        assertEquals(new BigDecimal("81.20"), points.getFirst().linePct());
+        assertTrue(dataSource.lastSql.contains("cr.status = 'complete'"));
+        assertTrue(dataSource.lastSql.contains("coalesce(nullif(?, ''), r.default_branch)"));
+        assertTrue(dataSource.lastSql.contains("order by created_at asc"));
+        assertEquals(TENANT_ID, dataSource.parameters.get(0));
+        assertEquals(REPOSITORY_ID, dataSource.parameters.get(1));
+        assertEquals(null, dataSource.parameters.get(2));
+        assertEquals(60, dataSource.parameters.get(3));
+    }
+
+    @Test
+    void recentReportsComputeSameBranchDeltaAndJoinUploadMetadata() {
+        UUID reportId = UUID.fromString("00000000-0000-0000-0000-000000000041");
+        UUID uploadId = UUID.fromString("00000000-0000-0000-0000-000000000042");
+        RecordingDataSource dataSource = new RecordingDataSource();
+        dataSource.rows = List.of(reportRow(
+                reportId,
+                uploadId,
+                "main",
+                "complete",
+                "line_delta", new BigDecimal("-0.40"),
+                "ci_provider", "github_actions",
+                "ci_build_url", "https://ci.example/build-1",
+                "flags", new String[] {"unit", "integration"}));
+        JdbcDashboardQueryRepository repository = new JdbcDashboardQueryRepository(dataSource);
+
+        var reports = repository.reports(TENANT_ID, REPOSITORY_ID, 30);
+
+        assertEquals(reportId, reports.getFirst().report().id());
+        assertEquals(new BigDecimal("-0.40"), reports.getFirst().lineDelta());
+        assertEquals("github_actions", reports.getFirst().ciProvider());
+        assertEquals(List.of("unit", "integration"), reports.getFirst().flags());
+        assertTrue(dataSource.lastSql.contains("partition by branch order by created_at"));
+        assertTrue(dataSource.lastSql.contains("where status = 'complete'"));
+        assertTrue(dataSource.lastSql.contains("join vericov.uploads uploads"));
+        assertEquals(List.of(TENANT_ID, REPOSITORY_ID, 30), dataSource.parameters);
+    }
+
+    @Test
+    void reportLookupEmbedsRepositoryAndStaysTenantScoped() {
+        UUID reportId = UUID.fromString("00000000-0000-0000-0000-000000000043");
+        UUID uploadId = UUID.fromString("00000000-0000-0000-0000-000000000044");
+        RecordingDataSource dataSource = new RecordingDataSource();
+        dataSource.rows = List.of(reportRow(
+                reportId,
+                uploadId,
+                "main",
+                "complete",
+                "full_name", "acme/checkout",
+                "provider", "github",
+                "default_branch", "main",
+                "visibility", "private",
+                "repo_status", "active",
+                "repo_updated_at", OffsetDateTime.parse("2026-07-04T18:00:00Z")));
+        JdbcDashboardQueryRepository repository = new JdbcDashboardQueryRepository(dataSource);
+
+        var report = repository.report(TENANT_ID, reportId).orElseThrow();
+
+        assertEquals(reportId, report.report().id());
+        assertEquals("acme/checkout", report.repository().fullName());
+        assertTrue(dataSource.lastSql.contains("where cr.tenant_id = ?"));
+        assertTrue(dataSource.lastSql.contains("and cr.id = ?"));
+        assertEquals(List.of(TENANT_ID, reportId), dataSource.parameters);
+    }
+
     private static Map<String, Object> row(Object... values) {
         Map<String, Object> row = new LinkedHashMap<>();
         for (int index = 0; index < values.length; index += 2) {
             row.put((String) values[index], values[index + 1]);
+        }
+        return row;
+    }
+
+    private static Map<String, Object> reportRow(
+            UUID reportId, UUID uploadId, String branch, String status, Object... extraValues) {
+        Map<String, Object> row = row(
+                "id", reportId,
+                "upload_id", uploadId,
+                "repository_id", REPOSITORY_ID,
+                "commit_sha", "abc123",
+                "branch", branch,
+                "pull_request_number", null,
+                "status", status,
+                "created_at", OffsetDateTime.parse("2026-07-04T19:00:00Z"),
+                "line_covered", 812,
+                "line_total", 1000,
+                "branch_covered", 0,
+                "branch_total", 0,
+                "function_covered", 74,
+                "function_total", 100,
+                "statement_covered", 0,
+                "statement_total", 0);
+        for (int index = 0; index < extraValues.length; index += 2) {
+            row.put((String) extraValues[index], extraValues[index + 1]);
         }
         return row;
     }
@@ -165,6 +272,10 @@ class JdbcDashboardQueryRepositoryTest {
                             parameters.add(args[1]);
                             return null;
                         }
+                        if ("setString".equals(method.getName())) {
+                            parameters.add(args[1]);
+                            return null;
+                        }
                         if ("executeQuery".equals(method.getName())) {
                             return resultSet(rows);
                         }
@@ -188,6 +299,10 @@ class JdbcDashboardQueryRepositoryTest {
                         case "getString" -> rows.get(index).get((String) args[0]);
                         case "getObject" -> getObject(rows.get(index), args);
                         case "getBigDecimal" -> rows.get(index).get((String) args[0]);
+                        case "getArray" -> {
+                            Object value = rows.get(index).get((String) args[0]);
+                            yield value == null ? null : array(value);
+                        }
                         case "close" -> null;
                         default -> defaultValue(method);
                     };
@@ -211,6 +326,13 @@ class JdbcDashboardQueryRepositoryTest {
 
     private static Object getObject(Map<String, Object> row, Object[] args) {
         return row.get((String) args[0]);
+    }
+
+    private static java.sql.Array array(Object value) {
+        return (java.sql.Array) Proxy.newProxyInstance(
+                java.sql.Array.class.getClassLoader(),
+                new Class<?>[] {java.sql.Array.class},
+                (proxy, method, args) -> "getArray".equals(method.getName()) ? value : null);
     }
 
     private static Object defaultValue(Method method) {

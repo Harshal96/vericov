@@ -86,11 +86,61 @@ public class DashboardQueryResource {
         }
     }
 
+    @GET
+    @Path("/repos/{repo_id}/trend")
+    @Operation(summary = "Get a repository coverage trend")
+    public Response trend(
+            @HeaderParam("Authorization") String authorizationHeader,
+            @PathParam("repo_id") java.util.UUID repositoryId,
+            @QueryParam("branch") String branch,
+            @QueryParam("limit") Integer limit) {
+        try {
+            var points = queryService.trend(authorizationHeader, repositoryId, branch, limit).stream()
+                    .map(DashboardTrendPointHttpResponse::from)
+                    .toList();
+            return Response.ok(new ApiResponse<>(new DashboardTrendHttpResponse(points))).build();
+        } catch (InvalidUploadException exception) {
+            return errorResponse(exception);
+        }
+    }
+
+    @GET
+    @Path("/repos/{repo_id}/reports")
+    @Operation(summary = "List a repository's recent coverage reports")
+    public Response reports(
+            @HeaderParam("Authorization") String authorizationHeader,
+            @PathParam("repo_id") java.util.UUID repositoryId,
+            @QueryParam("limit") Integer limit) {
+        try {
+            var reports = queryService.reports(authorizationHeader, repositoryId, limit).stream()
+                    .map(DashboardReportListItemHttpResponse::from)
+                    .toList();
+            return Response.ok(new ApiResponse<>(new DashboardReportListHttpResponse(reports))).build();
+        } catch (InvalidUploadException exception) {
+            return errorResponse(exception);
+        }
+    }
+
+    @GET
+    @Path("/reports/{report_id}")
+    @Operation(summary = "Get a tenant-scoped coverage report by id")
+    public Response report(
+            @HeaderParam("Authorization") String authorizationHeader,
+            @PathParam("report_id") java.util.UUID reportId) {
+        try {
+            return Response.ok(new ApiResponse<>(
+                    DashboardReportDetailsHttpResponse.from(queryService.report(authorizationHeader, reportId))))
+                    .build();
+        } catch (InvalidUploadException exception) {
+            return errorResponse(exception);
+        }
+    }
+
     private static Response errorResponse(InvalidUploadException exception) {
         Response.Status status = switch (exception.code()) {
             case "unauthorized" -> Response.Status.UNAUTHORIZED;
             case "tenant_not_provisioned", "forbidden" -> Response.Status.FORBIDDEN;
-            case "repo_not_found" -> Response.Status.NOT_FOUND;
+            case "repo_not_found", "report_not_found" -> Response.Status.NOT_FOUND;
             default -> Response.Status.BAD_REQUEST;
         };
         return Response.status(status)

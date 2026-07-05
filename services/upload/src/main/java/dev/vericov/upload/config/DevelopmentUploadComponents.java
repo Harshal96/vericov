@@ -3,9 +3,12 @@ package dev.vericov.upload.config;
 import dev.vericov.upload.application.AnalysisJob;
 import dev.vericov.upload.application.CoverageQueryService;
 import dev.vericov.upload.application.DashboardOverview;
+import dev.vericov.upload.application.DashboardReportDetails;
+import dev.vericov.upload.application.DashboardReportListItem;
 import dev.vericov.upload.application.DashboardRepository;
 import dev.vericov.upload.application.DashboardRepositoryOverview;
 import dev.vericov.upload.application.DashboardQueryService;
+import dev.vericov.upload.application.DashboardTrendPoint;
 import dev.vericov.upload.application.InMemoryUploadRepository;
 import dev.vericov.upload.application.InvalidUploadException;
 import dev.vericov.upload.application.QueuedUpload;
@@ -275,6 +278,21 @@ public class DevelopmentUploadComponents {
 
         @Override
         public Optional<DashboardRepository> repository(UUID tenantId, UUID repositoryId) {
+            return Optional.empty();
+        }
+
+        @Override
+        public List<DashboardTrendPoint> trend(UUID tenantId, UUID repositoryId, String branch, int limit) {
+            return List.of();
+        }
+
+        @Override
+        public List<DashboardReportListItem> reports(UUID tenantId, UUID repositoryId, int limit) {
+            return List.of();
+        }
+
+        @Override
+        public Optional<DashboardReportDetails> report(UUID tenantId, UUID reportId) {
             return Optional.empty();
         }
     }

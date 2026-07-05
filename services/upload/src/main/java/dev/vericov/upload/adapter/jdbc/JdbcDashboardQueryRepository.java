@@ -1,8 +1,12 @@
 package dev.vericov.upload.adapter.jdbc;
 
 import dev.vericov.upload.application.DashboardOverview;
+import dev.vericov.upload.application.DashboardReport;
+import dev.vericov.upload.application.DashboardReportDetails;
+import dev.vericov.upload.application.DashboardReportListItem;
 import dev.vericov.upload.application.DashboardRepository;
 import dev.vericov.upload.application.DashboardRepositoryOverview;
+import dev.vericov.upload.application.DashboardTrendPoint;
 import dev.vericov.upload.application.InvalidUploadException;
 import dev.vericov.upload.application.port.DashboardQueryRepository;
 import java.math.BigDecimal;
@@ -58,6 +62,33 @@ public class JdbcDashboardQueryRepository implements DashboardQueryRepository {
             return repositoryById(tenantId, repositoryId);
         } catch (SQLException exception) {
             throw new InvalidUploadException("dashboard_query_failed", "Repository lookup failed");
+        }
+    }
+
+    @Override
+    public List<DashboardTrendPoint> trend(UUID tenantId, UUID repositoryId, String branch, int limit) {
+        try {
+            return trendPoints(tenantId, repositoryId, branch, limit);
+        } catch (SQLException exception) {
+            throw new InvalidUploadException("dashboard_query_failed", "Repository trend lookup failed");
+        }
+    }
+
+    @Override
+    public List<DashboardReportListItem> reports(UUID tenantId, UUID repositoryId, int limit) {
+        try {
+            return recentReports(tenantId, repositoryId, limit);
+        } catch (SQLException exception) {
+            throw new InvalidUploadException("dashboard_query_failed", "Repository report history lookup failed");
+        }
+    }
+
+    @Override
+    public Optional<DashboardReportDetails> report(UUID tenantId, UUID reportId) {
+        try {
+            return reportById(tenantId, reportId);
+        } catch (SQLException exception) {
+            throw new InvalidUploadException("dashboard_query_failed", "Report lookup failed");
         }
     }
 
@@ -282,6 +313,187 @@ public class JdbcDashboardQueryRepository implements DashboardQueryRepository {
         }
     }
 
+    private List<DashboardTrendPoint> trendPoints(
+            UUID tenantId, UUID repositoryId, String branch, int limit) throws SQLException {
+        try (var connection = dataSource.getConnection();
+                var statement = connection.prepareStatement("""
+                        select *
+                        from (
+                            select
+                                cr.id as report_id,
+                                cr.commit_sha,
+                                cr.created_at,
+                                case
+                                    when cr.line_total = 0 then null
+                                    else round((cr.line_covered::numeric / cr.line_total::numeric) * 100, 2)
+                                end as line_pct,
+                                case
+                                    when cr.branch_total = 0 then null
+                                    else round((cr.branch_covered::numeric / cr.branch_total::numeric) * 100, 2)
+                                end as branch_pct,
+                                case
+                                    when cr.function_total = 0 then null
+                                    else round((cr.function_covered::numeric / cr.function_total::numeric) * 100, 2)
+                                end as function_pct,
+                                case
+                                    when cr.statement_total = 0 then null
+                                    else round((cr.statement_covered::numeric / cr.statement_total::numeric) * 100, 2)
+                                end as statement_pct
+                            from vericov.coverage_reports cr
+                            join vericov.repositories r
+                              on r.tenant_id = cr.tenant_id
+                             and r.id = cr.repository_id
+                            where cr.tenant_id = ?
+                              and cr.repository_id = ?
+                              and cr.status = 'complete'
+                              and cr.branch = coalesce(nullif(?, ''), r.default_branch)
+                            order by cr.created_at desc
+                            limit ?
+                        ) trend
+                        order by created_at asc
+                        """)) {
+            statement.setObject(1, tenantId);
+            statement.setObject(2, repositoryId);
+            statement.setString(3, branch);
+            statement.setInt(4, limit);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                List<DashboardTrendPoint> points = new ArrayList<>();
+                while (resultSet.next()) {
+                    points.add(new DashboardTrendPoint(
+                            resultSet.getObject("report_id", UUID.class),
+                            resultSet.getString("commit_sha"),
+                            instant(resultSet, "created_at"),
+                            resultSet.getBigDecimal("line_pct"),
+                            resultSet.getBigDecimal("branch_pct"),
+                            resultSet.getBigDecimal("function_pct"),
+                            resultSet.getBigDecimal("statement_pct")));
+                }
+                return List.copyOf(points);
+            }
+        }
+    }
+
+    private List<DashboardReportListItem> recentReports(UUID tenantId, UUID repositoryId, int limit)
+            throws SQLException {
+        try (var connection = dataSource.getConnection();
+                var statement = connection.prepareStatement("""
+                        with scoped_reports as (
+                            select cr.*
+                            from vericov.coverage_reports cr
+                            where cr.tenant_id = ?
+                              and cr.repository_id = ?
+                        ),
+                        complete_deltas as (
+                            select
+                                id,
+                                case
+                                    when line_total = 0 or prev_line_total is null or prev_line_total = 0 then null
+                                    else round(
+                                        ((line_covered::numeric / line_total::numeric) * 100)
+                                        - ((prev_line_covered::numeric / prev_line_total::numeric) * 100),
+                                        2
+                                    )
+                                end as line_delta
+                            from (
+                                select
+                                    scoped_reports.*,
+                                    lag(line_covered) over same_branch as prev_line_covered,
+                                    lag(line_total) over same_branch as prev_line_total
+                                from scoped_reports
+                                where status = 'complete'
+                                window same_branch as (partition by branch order by created_at)
+                            ) complete_reports
+                        )
+                        select
+                            scoped_reports.*,
+                            complete_deltas.line_delta,
+                            uploads.ci_provider,
+                            uploads.ci_build_url,
+                            uploads.flags
+                        from scoped_reports
+                        join vericov.uploads uploads
+                          on uploads.tenant_id = scoped_reports.tenant_id
+                         and uploads.id = scoped_reports.upload_id
+                        left join complete_deltas
+                          on complete_deltas.id = scoped_reports.id
+                        order by scoped_reports.created_at desc
+                        limit ?
+                        """)) {
+            statement.setObject(1, tenantId);
+            statement.setObject(2, repositoryId);
+            statement.setInt(3, limit);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                List<DashboardReportListItem> reports = new ArrayList<>();
+                while (resultSet.next()) {
+                    reports.add(new DashboardReportListItem(
+                            dashboardReport(resultSet),
+                            resultSet.getBigDecimal("line_delta"),
+                            resultSet.getString("ci_provider"),
+                            resultSet.getString("ci_build_url"),
+                            textArray(resultSet, "flags")));
+                }
+                return List.copyOf(reports);
+            }
+        }
+    }
+
+    private Optional<DashboardReportDetails> reportById(UUID tenantId, UUID reportId) throws SQLException {
+        try (var connection = dataSource.getConnection();
+                var statement = connection.prepareStatement("""
+                        select
+                            cr.*,
+                            r.full_name,
+                            r.provider,
+                            r.default_branch,
+                            r.visibility,
+                            r.status as repo_status,
+                            r.updated_at as repo_updated_at
+                        from vericov.coverage_reports cr
+                        join vericov.repositories r
+                          on r.tenant_id = cr.tenant_id
+                         and r.id = cr.repository_id
+                        where cr.tenant_id = ?
+                          and cr.id = ?
+                        """)) {
+            statement.setObject(1, tenantId);
+            statement.setObject(2, reportId);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                if (!resultSet.next()) {
+                    return Optional.empty();
+                }
+                DashboardRepository repository = new DashboardRepository(
+                        resultSet.getObject("repository_id", UUID.class),
+                        resultSet.getString("full_name"),
+                        resultSet.getString("provider"),
+                        resultSet.getString("default_branch"),
+                        resultSet.getString("visibility"),
+                        resultSet.getString("repo_status"),
+                        instant(resultSet, "repo_updated_at"));
+                return Optional.of(new DashboardReportDetails(dashboardReport(resultSet), repository));
+            }
+        }
+    }
+
+    private static DashboardReport dashboardReport(ResultSet resultSet) throws SQLException {
+        return new DashboardReport(
+                resultSet.getObject("id", UUID.class),
+                resultSet.getObject("upload_id", UUID.class),
+                resultSet.getObject("repository_id", UUID.class),
+                resultSet.getString("commit_sha"),
+                resultSet.getString("branch"),
+                nullableInteger(resultSet, "pull_request_number"),
+                resultSet.getString("status"),
+                instant(resultSet, "created_at"),
+                resultSet.getInt("line_covered"),
+                resultSet.getInt("line_total"),
+                resultSet.getInt("branch_covered"),
+                resultSet.getInt("branch_total"),
+                resultSet.getInt("function_covered"),
+                resultSet.getInt("function_total"),
+                resultSet.getInt("statement_covered"),
+                resultSet.getInt("statement_total"));
+    }
+
     private static UUID nullableUuid(ResultSet resultSet, String column) throws SQLException {
         return resultSet.getObject(column, UUID.class);
     }
@@ -299,4 +511,13 @@ public class JdbcDashboardQueryRepository implements DashboardQueryRepository {
         OffsetDateTime value = resultSet.getObject(column, OffsetDateTime.class);
         return value == null ? null : value.toInstant();
     }
+
+    private static List<String> textArray(ResultSet resultSet, String column) throws SQLException {
+        java.sql.Array array = resultSet.getArray(column);
+        if (array == null) {
+            return List.of();
+        }
+        return List.of((String[]) array.getArray());
+    }
+
 }
