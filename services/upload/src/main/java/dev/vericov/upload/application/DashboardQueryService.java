@@ -2,8 +2,10 @@ package dev.vericov.upload.application;
 
 import dev.vericov.upload.application.port.DashboardQueryRepository;
 import dev.vericov.upload.application.port.TenantAuthenticator;
+import dev.vericov.upload.application.port.UploadRepository;
 import dev.vericov.upload.domain.TenantPrincipal;
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -28,13 +30,20 @@ public class DashboardQueryService {
     private static final int MAX_TEST_RUNS = 200;
     private static final int DEFAULT_UPLOADS = 50;
     private static final int MAX_UPLOADS = 200;
+    private static final int DEFAULT_MANIFEST_LIMIT = 100;
+    private static final int MAX_MANIFEST_LIMIT = 500;
 
     private final TenantAuthenticator authenticator;
     private final DashboardQueryRepository repository;
+    private final UploadRepository uploadRepository;
 
-    public DashboardQueryService(TenantAuthenticator authenticator, DashboardQueryRepository repository) {
+    public DashboardQueryService(
+            TenantAuthenticator authenticator,
+            DashboardQueryRepository repository,
+            UploadRepository uploadRepository) {
         this.authenticator = Objects.requireNonNull(authenticator, "authenticator");
         this.repository = Objects.requireNonNull(repository, "repository");
+        this.uploadRepository = Objects.requireNonNull(uploadRepository, "uploadRepository");
     }
 
     public DashboardOverview overview(String authorizationHeader) {
@@ -127,6 +136,58 @@ public class DashboardQueryService {
         TenantPrincipal principal = authenticator.authenticateTenant(authorizationHeader);
         ensureRepositoryExists(principal.tenantId(), repositoryId);
         return repository.repositoryGapCounts(principal.tenantId(), repositoryId);
+    }
+
+    public CoverageGapManifest manifest(
+            String authorizationHeader,
+            UUID repositoryId,
+            String ref,
+            Integer pullRequestNumber,
+            String nextAction,
+            String minRiskLevel,
+            Integer limit) {
+        TenantPrincipal principal = authenticator.authenticateTenant(authorizationHeader);
+        ensureRepositoryExists(principal.tenantId(), repositoryId);
+        // Repository ownership is already confirmed against the tenant above, so it is safe to
+        // delegate to the same repository-scoped UploadRepository the agent-facing endpoint uses —
+        // this is what keeps the dashboard manifest byte-for-byte identical to the agent one.
+        ResolvedCoverageRef resolved = pullRequestNumber != null
+                ? uploadRepository.resolveCoverageRefForPullRequest(repositoryId, pullRequestNumber)
+                        .orElseThrow(() -> new InvalidUploadException(
+                                "pull_request_not_found",
+                                "No diff-bearing coverage report found for pull request " + pullRequestNumber
+                                        + ". Uploads must include a diff artifact."))
+                : uploadRepository.resolveCoverageRef(repositoryId, ref)
+                        .orElseThrow(() -> new InvalidUploadException(
+                                "ref_not_found",
+                                "No complete coverage report found for ref " + describeRef(ref)));
+        CoverageReportDetails report = uploadRepository.coverageReportFor(resolved.uploadId())
+                .orElseThrow(() -> new InvalidUploadException("ref_not_found", "Coverage report not found"));
+        RepositoryInfo repositoryInfo = uploadRepository.repositoryInfo(repositoryId)
+                .orElse(new RepositoryInfo(null, null));
+        PatchCoverageDetails patch = report.pullRequestNumber() == null
+                ? null
+                : uploadRepository.patchForPullRequest(repositoryId, report.pullRequestNumber()).orElse(null);
+        List<CoverageGateEvaluationDetails> failedGates = uploadRepository.gatesFor(resolved.reportId()).stream()
+                .filter(gate -> "failed".equals(gate.status()) && gate.blocking())
+                .toList();
+        int effectiveLimit = normalizedLimit(limit, DEFAULT_MANIFEST_LIMIT, MAX_MANIFEST_LIMIT);
+        List<CoverageGapManifestEntry> page = uploadRepository.gapManifestEntries(
+                resolved.reportId(), nextAction, minRiskLevel, effectiveLimit + 1, 0);
+        boolean truncated = page.size() > effectiveLimit;
+        List<CoverageGapManifestEntry> entries = truncated ? page.subList(0, effectiveLimit) : page;
+        return new CoverageGapManifest(
+                1,
+                Instant.now(),
+                repositoryInfo,
+                resolved,
+                report.pullRequestNumber(),
+                report.gateStatus(),
+                report.configSha256(),
+                patch,
+                failedGates,
+                entries,
+                truncated);
     }
 
     public List<DashboardGateConfig> gateConfigs(String authorizationHeader, UUID repositoryId) {
@@ -232,6 +293,10 @@ public class DashboardQueryService {
             return null;
         }
         return branch;
+    }
+
+    private static String describeRef(String ref) {
+        return ref == null || ref.isBlank() ? "<default branch>" : ref;
     }
 
     private static String normalizedOptionalStatus(String status) {

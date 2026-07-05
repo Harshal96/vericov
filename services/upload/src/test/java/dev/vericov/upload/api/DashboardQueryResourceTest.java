@@ -27,9 +27,19 @@ import dev.vericov.upload.application.DashboardUploadArtifact;
 import dev.vericov.upload.application.DashboardUploadDetails;
 import dev.vericov.upload.application.DashboardUploadEvent;
 import dev.vericov.upload.application.DashboardUploadListItem;
+import dev.vericov.upload.application.CoverageGapManifestEntry;
+import dev.vericov.upload.application.CoverageGateEvaluationDetails;
+import dev.vericov.upload.application.CoverageLineRange;
+import dev.vericov.upload.application.CoverageReportDetails;
 import dev.vericov.upload.application.InvalidUploadException;
+import dev.vericov.upload.application.PatchCoverageDetails;
+import dev.vericov.upload.application.QueuedUpload;
+import dev.vericov.upload.application.RepositoryInfo;
+import dev.vericov.upload.application.ResolvedCoverageRef;
+import dev.vericov.upload.application.StoredArtifact;
 import dev.vericov.upload.application.port.DashboardQueryRepository;
 import dev.vericov.upload.application.port.TenantAuthenticator;
+import dev.vericov.upload.application.port.UploadRepository;
 import dev.vericov.upload.domain.TenantPrincipal;
 import jakarta.ws.rs.core.Response;
 import java.math.BigDecimal;
@@ -96,7 +106,8 @@ class DashboardQueryResourceTest {
     @Test
     void serviceQueriesWithAuthenticatedTenantId() {
         RecordingRepository repository = new RecordingRepository();
-        DashboardQueryService service = new DashboardQueryService(authorizationHeader -> principal(), repository);
+        DashboardQueryService service = new DashboardQueryService(
+                authorizationHeader -> principal(), repository, new NoOpUploadRepository());
 
         service.overview("Bearer internal-token");
         service.repositories("Bearer internal-token");
@@ -430,6 +441,70 @@ class DashboardQueryResourceTest {
     }
 
     @Test
+    void repositoryGapManifestMatchesAgentManifestShape() {
+        CoverageMetricDetails metric = new CoverageMetricDetails(1, 2);
+        FakeUploadRepository uploadRepository = new FakeUploadRepository();
+        uploadRepository.report = new CoverageReportDetails(
+                UPLOAD_ID, REPOSITORY_ID, "abc123", "main", null, "complete",
+                metric, metric, metric, metric, "bucket", "path", "sha256", "failed",
+                List.of(), List.of(), null, Instant.parse("2026-07-03T00:00:00Z"));
+        uploadRepository.repositoryInfo = Optional.of(new RepositoryInfo("acme/api", "main"));
+        uploadRepository.gates = List.of(new CoverageGateEvaluationDetails(
+                "line-gate", "line_coverage", "line", "repository", null, List.of(),
+                new BigDecimal("80"), new BigDecimal("75"), "failed", true));
+        uploadRepository.manifestEntries = List.of(new CoverageGapManifestEntry(
+                UUID.randomUUID(), 1, "src/Retry.java", "range", 84, 97, null, true,
+                "new_uncovered_changed_line", "explanation", "high",
+                new BigDecimal("78.0"), "high", List.of("change_exposure: reason (+25)"),
+                "payments-api", List.of("team-payments"), "add_test",
+                List.of(new CoverageLineRange(84, 91), new CoverageLineRange(95, 97)), false));
+        DashboardQueryResource resource = resource(
+                authorizationHeader -> principal(), new RecordingRepository(), uploadRepository);
+
+        Response response = resource.repositoryGapManifest(
+                "Bearer internal-token", REPOSITORY_ID, "main", null, null, null, null);
+
+        assertEquals(200, response.getStatus());
+        var body = (ApiResponse<CoverageGapManifestHttpResponse>) response.getEntity();
+        assertEquals(1, body.data().manifestVersion());
+        assertEquals("acme/api", body.data().repository().fullName());
+        assertEquals("failed", body.data().report().gateStatus());
+        assertEquals(1, body.data().failedGates().size());
+        assertEquals(1, body.data().entries().size());
+        assertEquals("payments-api", body.data().entries().get(0).componentKey());
+        assertEquals(2, body.data().entries().get(0).uncoveredRanges().size());
+    }
+
+    @Test
+    void repositoryGapManifestReturns404WhenRepositoryNotFound() {
+        DashboardQueryResource resource = resource(
+                authorizationHeader -> principal(),
+                new OverviewRepository(new DashboardOverview(0, 0, null, 0, 0, 0, 0)));
+
+        Response response = resource.repositoryGapManifest(
+                "Bearer internal-token", REPOSITORY_ID, "main", null, null, null, null);
+
+        assertEquals(404, response.getStatus());
+        ApiError error = assertInstanceOf(ApiError.class, response.getEntity());
+        assertEquals("repo_not_found", error.error().code());
+    }
+
+    @Test
+    void repositoryGapManifestForUnknownPullRequestReturns404() {
+        FakeUploadRepository uploadRepository = new FakeUploadRepository();
+        uploadRepository.pullRequestResolved = Optional.empty();
+        DashboardQueryResource resource = resource(
+                authorizationHeader -> principal(), new RecordingRepository(), uploadRepository);
+
+        Response response = resource.repositoryGapManifest(
+                "Bearer internal-token", REPOSITORY_ID, null, 999, null, null, null);
+
+        assertEquals(404, response.getStatus());
+        ApiError error = assertInstanceOf(ApiError.class, response.getEntity());
+        assertEquals("pull_request_not_found", error.error().code());
+    }
+
+    @Test
     void gateConfigsReturnConfiguredPoliciesIncludingInactiveRows() {
         DashboardQueryResource resource = resource(
                 authorizationHeader -> principal(),
@@ -643,7 +718,83 @@ class DashboardQueryResourceTest {
     private static DashboardQueryResource resource(
             TenantAuthenticator authenticator,
             DashboardQueryRepository repository) {
-        return new DashboardQueryResource(new DashboardQueryService(authenticator, repository));
+        return resource(authenticator, repository, new NoOpUploadRepository());
+    }
+
+    private static DashboardQueryResource resource(
+            TenantAuthenticator authenticator,
+            DashboardQueryRepository repository,
+            UploadRepository uploadRepository) {
+        return new DashboardQueryResource(new DashboardQueryService(authenticator, repository, uploadRepository));
+    }
+
+    private static class NoOpUploadRepository implements UploadRepository {
+        @Override
+        public Optional<QueuedUpload> findById(UUID uploadId) {
+            return Optional.empty();
+        }
+
+        @Override
+        public Optional<QueuedUpload> findByIdempotencyKey(UUID repositoryId, String idempotencyKey) {
+            return Optional.empty();
+        }
+
+        @Override
+        public void save(QueuedUpload upload, List<StoredArtifact> artifacts) {
+        }
+
+        @Override
+        public List<StoredArtifact> artifactsFor(UUID uploadId) {
+            return List.of();
+        }
+    }
+
+    private static final class FakeUploadRepository extends NoOpUploadRepository {
+        private Optional<ResolvedCoverageRef> resolved = Optional.of(new ResolvedCoverageRef(
+                REPORT_ID, UPLOAD_ID, REPOSITORY_ID, "abc123", "main", Instant.parse("2026-07-03T00:00:00Z")));
+        private Optional<ResolvedCoverageRef> pullRequestResolved = resolved;
+        private CoverageReportDetails report;
+        private Optional<RepositoryInfo> repositoryInfo = Optional.empty();
+        private Optional<PatchCoverageDetails> patch = Optional.empty();
+        private List<CoverageGateEvaluationDetails> gates = List.of();
+        private List<CoverageGapManifestEntry> manifestEntries = List.of();
+
+        @Override
+        public Optional<CoverageReportDetails> coverageReportFor(UUID uploadId) {
+            return Optional.ofNullable(report);
+        }
+
+        @Override
+        public Optional<ResolvedCoverageRef> resolveCoverageRef(UUID repositoryId, String ref) {
+            return resolved;
+        }
+
+        @Override
+        public Optional<ResolvedCoverageRef> resolveCoverageRefForPullRequest(
+                UUID repositoryId, int pullRequestNumber) {
+            return pullRequestResolved;
+        }
+
+        @Override
+        public Optional<RepositoryInfo> repositoryInfo(UUID repositoryId) {
+            return repositoryInfo;
+        }
+
+        @Override
+        public Optional<PatchCoverageDetails> patchForPullRequest(UUID repositoryId, int pullRequestNumber) {
+            return patch;
+        }
+
+        @Override
+        public List<CoverageGateEvaluationDetails> gatesFor(UUID reportId) {
+            return gates;
+        }
+
+        @Override
+        public List<CoverageGapManifestEntry> gapManifestEntries(
+                UUID reportId, String nextAction, String minRiskLevel, int limit, int offset) {
+            return manifestEntries;
+        }
     }
 
     private static TenantPrincipal principal() {

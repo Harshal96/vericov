@@ -90,8 +90,9 @@ public class DevelopmentUploadComponents {
     @ApplicationScoped
     public DashboardQueryService dashboardQueryService(
             TenantAuthenticator authenticator,
-            DashboardQueryRepository dashboardQueryRepository) {
-        return new DashboardQueryService(authenticator, dashboardQueryRepository);
+            DashboardQueryRepository dashboardQueryRepository,
+            UploadRepository uploadRepository) {
+        return new DashboardQueryService(authenticator, dashboardQueryRepository, uploadRepository);
     }
 
     @Produces

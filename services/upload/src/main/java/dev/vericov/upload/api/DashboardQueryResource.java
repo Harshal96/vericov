@@ -254,6 +254,26 @@ public class DashboardQueryResource {
     }
 
     @GET
+    @Path("/repos/{repo_id}/gap-manifest")
+    @Operation(summary = "Get a ranked, deterministic manifest of actionable coverage gaps for a repository")
+    public Response repositoryGapManifest(
+            @HeaderParam("Authorization") String authorizationHeader,
+            @PathParam("repo_id") java.util.UUID repositoryId,
+            @QueryParam("ref") String ref,
+            @QueryParam("pull_request") Integer pullRequest,
+            @QueryParam("next_action") String nextAction,
+            @QueryParam("min_risk_level") String minRiskLevel,
+            @QueryParam("limit") Integer limit) {
+        try {
+            return Response.ok(new ApiResponse<>(CoverageGapManifestHttpResponse.from(queryService.manifest(
+                    authorizationHeader, repositoryId, ref, pullRequest, nextAction, minRiskLevel, limit))))
+                    .build();
+        } catch (InvalidUploadException exception) {
+            return errorResponse(exception);
+        }
+    }
+
+    @GET
     @Path("/repos/{repo_id}/gate-configs")
     @Operation(summary = "List a repository's configured coverage gates")
     public Response gateConfigs(
