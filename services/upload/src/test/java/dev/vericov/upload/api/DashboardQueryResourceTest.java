@@ -4,6 +4,10 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 
 import dev.vericov.upload.application.DashboardOverview;
+import dev.vericov.upload.application.CoverageMetricDetails;
+import dev.vericov.upload.application.DashboardComponentRollup;
+import dev.vericov.upload.application.DashboardFileLineHit;
+import dev.vericov.upload.application.DashboardFileSummary;
 import dev.vericov.upload.application.DashboardReport;
 import dev.vericov.upload.application.DashboardReportDetails;
 import dev.vericov.upload.application.DashboardReportListItem;
@@ -88,6 +92,9 @@ class DashboardQueryResourceTest {
         service.trend("Bearer internal-token", REPOSITORY_ID, " ", 300);
         service.reports("Bearer internal-token", REPOSITORY_ID, 300);
         service.report("Bearer internal-token", REPORT_ID);
+        service.reportFiles("Bearer internal-token", REPORT_ID);
+        service.reportLineHits("Bearer internal-token", REPORT_ID, "src/App.java");
+        service.reportComponents("Bearer internal-token", REPORT_ID);
 
         assertEquals(TENANT_ID, repository.tenantId);
         assertEquals(60, repository.perRepository);
@@ -95,6 +102,7 @@ class DashboardQueryResourceTest {
         assertEquals(100, repository.reportLimit);
         assertEquals(REPOSITORY_ID, repository.repositoryId);
         assertEquals(REPORT_ID, repository.reportId);
+        assertEquals("src/App.java", repository.filePath);
     }
 
     @Test
@@ -269,6 +277,82 @@ class DashboardQueryResourceTest {
         assertEquals("report_not_found", error.error().code());
     }
 
+    @Test
+    void reportFilesReturnsDashboardFileShape() {
+        DashboardQueryResource resource = resource(
+                authorizationHeader -> principal(),
+                new RecordingRepository());
+
+        Response response = resource.reportFiles("Bearer internal-token", REPORT_ID);
+
+        assertEquals(200, response.getStatus());
+        var body = (ApiResponse<DashboardFileSummaryListHttpResponse>) response.getEntity();
+        DashboardFileSummaryHttpResponse file = body.data().files().getFirst();
+        assertEquals("src/App.java", file.filePath());
+        assertEquals("checkout", file.packageName());
+        assertEquals(10, file.lineCovered());
+        assertEquals("", body.data().nextCursor());
+    }
+
+    @Test
+    void reportLineHitsReturns400WhenFilePathIsMissing() {
+        DashboardQueryResource resource = resource(
+                authorizationHeader -> principal(),
+                new RecordingRepository());
+
+        Response response = resource.reportLineHits("Bearer internal-token", REPORT_ID, " ");
+
+        assertEquals(400, response.getStatus());
+        ApiError error = assertInstanceOf(ApiError.class, response.getEntity());
+        assertEquals("missing_file_path", error.error().code());
+    }
+
+    @Test
+    void reportLineHitsReturnsDidYouMeanDetailsForUnknownFile() {
+        DashboardQueryResource resource = resource(
+                authorizationHeader -> principal(),
+                new RecordingRepository(false));
+
+        Response response = resource.reportLineHits("Bearer internal-token", REPORT_ID, "App.java");
+
+        assertEquals(404, response.getStatus());
+        ApiError error = assertInstanceOf(ApiError.class, response.getEntity());
+        assertEquals("file_not_found", error.error().code());
+        assertEquals("path", error.error().details().getFirst().field());
+        assertEquals("did_you_mean", error.error().details().getFirst().code());
+        assertEquals("src/App.java", error.error().details().getFirst().message());
+    }
+
+    @Test
+    void reportLineHitsReturnsRawHitCounts() {
+        DashboardQueryResource resource = resource(
+                authorizationHeader -> principal(),
+                new RecordingRepository());
+
+        Response response = resource.reportLineHits("Bearer internal-token", REPORT_ID, "src/App.java");
+
+        assertEquals(200, response.getStatus());
+        var body = (ApiResponse<DashboardFileLineHitListHttpResponse>) response.getEntity();
+        assertEquals(12, body.data().lines().getFirst().lineNumber());
+        assertEquals(0, body.data().lines().getFirst().hits());
+    }
+
+    @Test
+    void reportComponentsReturnsFlatRollupShape() {
+        DashboardQueryResource resource = resource(
+                authorizationHeader -> principal(),
+                new RecordingRepository());
+
+        Response response = resource.reportComponents("Bearer internal-token", REPORT_ID);
+
+        assertEquals(200, response.getStatus());
+        var body = (ApiResponse<DashboardComponentRollupListHttpResponse>) response.getEntity();
+        DashboardComponentRollupHttpResponse component = body.data().components().getFirst();
+        assertEquals("commerce/payments-api", component.componentId());
+        assertEquals("team-payments", component.owner());
+        assertEquals(new BigDecimal("27.50"), component.riskScoreTotal());
+    }
+
     private static DashboardQueryResource resource(
             TenantAuthenticator authenticator,
             DashboardQueryRepository repository) {
@@ -326,9 +410,19 @@ class DashboardQueryResourceTest {
         private UUID tenantId;
         private UUID repositoryId;
         private UUID reportId;
+        private String filePath;
         private int perRepository;
         private int trendLimit;
         private int reportLimit;
+        private final boolean fileExists;
+
+        private RecordingRepository() {
+            this(true);
+        }
+
+        private RecordingRepository(boolean fileExists) {
+            this.fileExists = fileExists;
+        }
 
         @Override
         public DashboardOverview overview(UUID tenantId) {
@@ -405,6 +499,60 @@ class DashboardQueryResourceTest {
                             "private",
                             "active",
                             Instant.parse("2026-07-04T18:00:00Z"))));
+        }
+
+        @Override
+        public List<DashboardFileSummary> reportFiles(UUID tenantId, UUID reportId) {
+            this.tenantId = tenantId;
+            this.reportId = reportId;
+            return List.of(new DashboardFileSummary(
+                    "src/App.java",
+                    "checkout",
+                    List.of("team-payments"),
+                    new CoverageMetricDetails(10, 40),
+                    new CoverageMetricDetails(2, 8),
+                    new CoverageMetricDetails(1, 2),
+                    new CoverageMetricDetails(12, 45)));
+        }
+
+        @Override
+        public boolean reportFileExists(UUID tenantId, UUID reportId, String filePath) {
+            this.tenantId = tenantId;
+            this.reportId = reportId;
+            this.filePath = filePath;
+            return fileExists;
+        }
+
+        @Override
+        public List<DashboardFileLineHit> reportLineHits(UUID tenantId, UUID reportId, String filePath) {
+            this.tenantId = tenantId;
+            this.reportId = reportId;
+            this.filePath = filePath;
+            return List.of(new DashboardFileLineHit(12, 0), new DashboardFileLineHit(13, 4));
+        }
+
+        @Override
+        public List<String> similarReportFilePaths(UUID tenantId, UUID reportId, String basename, int max) {
+            this.tenantId = tenantId;
+            this.reportId = reportId;
+            return List.of("src/" + basename);
+        }
+
+        @Override
+        public List<DashboardComponentRollup> reportComponents(UUID tenantId, UUID reportId) {
+            this.tenantId = tenantId;
+            this.reportId = reportId;
+            return List.of(new DashboardComponentRollup(
+                    "commerce/payments-api",
+                    "team-payments",
+                    new CoverageMetricDetails(512, 640),
+                    new CoverageMetricDetails(50, 80),
+                    new CoverageMetricDetails(20, 25),
+                    new CoverageMetricDetails(600, 720),
+                    3,
+                    1,
+                    new BigDecimal("27.50"),
+                    "high"));
         }
 
         private static DashboardReport report() {

@@ -204,6 +204,115 @@ class JdbcDashboardQueryRepositoryTest {
         assertEquals(List.of(TENANT_ID, reportId), dataSource.parameters);
     }
 
+    @Test
+    void reportFilesAreTenantScopedAndSortedWorstFirst() {
+        UUID reportId = UUID.fromString("00000000-0000-0000-0000-000000000045");
+        RecordingDataSource dataSource = new RecordingDataSource();
+        dataSource.rows = List.of(row(
+                "file_path", "src/App.java",
+                "package_name", "checkout",
+                "owners", new String[] {"team-payments"},
+                "line_covered", 10,
+                "line_total", 40,
+                "branch_covered", 2,
+                "branch_total", 8,
+                "function_covered", 1,
+                "function_total", 2,
+                "statement_covered", 12,
+                "statement_total", 45));
+        JdbcDashboardQueryRepository repository = new JdbcDashboardQueryRepository(dataSource);
+
+        var files = repository.reportFiles(TENANT_ID, reportId);
+
+        assertEquals("src/App.java", files.getFirst().filePath());
+        assertEquals("checkout", files.getFirst().packageName());
+        assertEquals(List.of("team-payments"), files.getFirst().owners());
+        assertEquals(10, files.getFirst().line().covered());
+        assertTrue(dataSource.lastSql.contains("where tenant_id = ?"));
+        assertTrue(dataSource.lastSql.contains("coverage_report_id = ?"));
+        assertTrue(dataSource.lastSql.contains("line_covered * 100.0 / line_total"));
+        assertEquals(List.of(TENANT_ID, reportId), dataSource.parameters);
+    }
+
+    @Test
+    void reportFileExistsIsTenantScoped() {
+        UUID reportId = UUID.fromString("00000000-0000-0000-0000-000000000046");
+        RecordingDataSource dataSource = new RecordingDataSource();
+        dataSource.rows = List.of(row("exists", 1));
+        JdbcDashboardQueryRepository repository = new JdbcDashboardQueryRepository(dataSource);
+
+        boolean exists = repository.reportFileExists(TENANT_ID, reportId, "src/App.java");
+
+        assertTrue(exists);
+        assertTrue(dataSource.lastSql.contains("where tenant_id = ?"));
+        assertTrue(dataSource.lastSql.contains("and file_path = ?"));
+        assertEquals(List.of(TENANT_ID, reportId, "src/App.java"), dataSource.parameters);
+    }
+
+    @Test
+    void reportLineHitsAreOrderedByLineNumber() {
+        UUID reportId = UUID.fromString("00000000-0000-0000-0000-000000000047");
+        RecordingDataSource dataSource = new RecordingDataSource();
+        dataSource.rows = List.of(
+                row("line_number", 12, "hits", 0L),
+                row("line_number", 13, "hits", 4L));
+        JdbcDashboardQueryRepository repository = new JdbcDashboardQueryRepository(dataSource);
+
+        var lines = repository.reportLineHits(TENANT_ID, reportId, "src/App.java");
+
+        assertEquals(12, lines.getFirst().lineNumber());
+        assertEquals(0, lines.getFirst().hits());
+        assertTrue(dataSource.lastSql.contains("from vericov.coverage_line_hits"));
+        assertTrue(dataSource.lastSql.contains("order by line_number"));
+        assertEquals(List.of(TENANT_ID, reportId, "src/App.java"), dataSource.parameters);
+    }
+
+    @Test
+    void similarReportFilePathsReuseSameBasenameMatching() {
+        UUID reportId = UUID.fromString("00000000-0000-0000-0000-000000000048");
+        RecordingDataSource dataSource = new RecordingDataSource();
+        dataSource.rows = List.of(row("file_path", "src/App.java"));
+        JdbcDashboardQueryRepository repository = new JdbcDashboardQueryRepository(dataSource);
+
+        var paths = repository.similarReportFilePaths(TENANT_ID, reportId, "App.java", 5);
+
+        assertEquals(List.of("src/App.java"), paths);
+        assertTrue(dataSource.lastSql.contains("file_path = ? or file_path like ?"));
+        assertEquals(List.of(TENANT_ID, reportId, "App.java", "%/App.java", 5), dataSource.parameters);
+    }
+
+    @Test
+    void reportComponentsReturnFlatRollupsOrderedByRiskAndOwner() {
+        UUID reportId = UUID.fromString("00000000-0000-0000-0000-000000000049");
+        RecordingDataSource dataSource = new RecordingDataSource();
+        dataSource.rows = List.of(row(
+                "component_key", "commerce/payments-api",
+                "owners", new String[] {"team-payments"},
+                "line_covered", 512,
+                "line_total", 640,
+                "branch_covered", 50,
+                "branch_total", 80,
+                "function_covered", 20,
+                "function_total", 25,
+                "statement_covered", 600,
+                "statement_total", 720,
+                "gap_count", 3L,
+                "debt_count", 1L,
+                "risk_score_total", new BigDecimal("27.50"),
+                "highest_active_risk_level", "high"));
+        JdbcDashboardQueryRepository repository = new JdbcDashboardQueryRepository(dataSource);
+
+        var components = repository.reportComponents(TENANT_ID, reportId);
+
+        assertEquals("commerce/payments-api", components.getFirst().componentId());
+        assertEquals("team-payments", components.getFirst().owner());
+        assertEquals(new BigDecimal("27.50"), components.getFirst().riskScoreTotal());
+        assertTrue(dataSource.lastSql.contains("from vericov.component_coverage_rollups"));
+        assertTrue(dataSource.lastSql.contains("where tenant_id = ?"));
+        assertTrue(dataSource.lastSql.contains("order by risk_score_total desc"));
+        assertEquals(List.of(TENANT_ID, reportId), dataSource.parameters);
+    }
+
     private static Map<String, Object> row(Object... values) {
         Map<String, Object> row = new LinkedHashMap<>();
         for (int index = 0; index < values.length; index += 2) {

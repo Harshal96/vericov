@@ -2,6 +2,9 @@ package dev.vericov.upload.config;
 
 import dev.vericov.upload.application.AnalysisJob;
 import dev.vericov.upload.application.CoverageQueryService;
+import dev.vericov.upload.application.DashboardComponentRollup;
+import dev.vericov.upload.application.DashboardFileLineHit;
+import dev.vericov.upload.application.DashboardFileSummary;
 import dev.vericov.upload.application.DashboardOverview;
 import dev.vericov.upload.application.DashboardReportDetails;
 import dev.vericov.upload.application.DashboardReportListItem;
@@ -294,6 +297,31 @@ public class DevelopmentUploadComponents {
         @Override
         public Optional<DashboardReportDetails> report(UUID tenantId, UUID reportId) {
             return Optional.empty();
+        }
+
+        @Override
+        public List<DashboardFileSummary> reportFiles(UUID tenantId, UUID reportId) {
+            return List.of();
+        }
+
+        @Override
+        public boolean reportFileExists(UUID tenantId, UUID reportId, String filePath) {
+            return false;
+        }
+
+        @Override
+        public List<DashboardFileLineHit> reportLineHits(UUID tenantId, UUID reportId, String filePath) {
+            return List.of();
+        }
+
+        @Override
+        public List<String> similarReportFilePaths(UUID tenantId, UUID reportId, String basename, int max) {
+            return List.of();
+        }
+
+        @Override
+        public List<DashboardComponentRollup> reportComponents(UUID tenantId, UUID reportId) {
+            return List.of();
         }
     }
 

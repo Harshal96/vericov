@@ -136,13 +136,72 @@ public class DashboardQueryResource {
         }
     }
 
+    @GET
+    @Path("/reports/{report_id}/files")
+    @Operation(summary = "List file coverage summaries for a tenant-scoped report")
+    public Response reportFiles(
+            @HeaderParam("Authorization") String authorizationHeader,
+            @PathParam("report_id") java.util.UUID reportId) {
+        try {
+            var result = queryService.reportFiles(authorizationHeader, reportId);
+            var files = result.files().stream().map(DashboardFileSummaryHttpResponse::from).toList();
+            return Response.ok(new ApiResponse<>(
+                    new DashboardFileSummaryListHttpResponse(files, result.nextCursor()))).build();
+        } catch (InvalidUploadException exception) {
+            return errorResponse(exception);
+        }
+    }
+
+    @GET
+    @Path("/reports/{report_id}/lines")
+    @Operation(summary = "List line hit counts for one file in a tenant-scoped report")
+    public Response reportLineHits(
+            @HeaderParam("Authorization") String authorizationHeader,
+            @PathParam("report_id") java.util.UUID reportId,
+            @QueryParam("file_path") String filePath) {
+        try {
+            var lines = queryService.reportLineHits(authorizationHeader, reportId, filePath).stream()
+                    .map(DashboardFileLineHitHttpResponse::from)
+                    .toList();
+            return Response.ok(new ApiResponse<>(new DashboardFileLineHitListHttpResponse(lines))).build();
+        } catch (InvalidUploadException exception) {
+            return errorResponse(exception);
+        }
+    }
+
+    @GET
+    @Path("/reports/{report_id}/components")
+    @Operation(summary = "List flat component coverage rollups for a tenant-scoped report")
+    public Response reportComponents(
+            @HeaderParam("Authorization") String authorizationHeader,
+            @PathParam("report_id") java.util.UUID reportId) {
+        try {
+            var components = queryService.reportComponents(authorizationHeader, reportId).stream()
+                    .map(DashboardComponentRollupHttpResponse::from)
+                    .toList();
+            return Response.ok(new ApiResponse<>(new DashboardComponentRollupListHttpResponse(components))).build();
+        } catch (InvalidUploadException exception) {
+            return errorResponse(exception);
+        }
+    }
+
     private static Response errorResponse(InvalidUploadException exception) {
         Response.Status status = switch (exception.code()) {
             case "unauthorized" -> Response.Status.UNAUTHORIZED;
             case "tenant_not_provisioned", "forbidden" -> Response.Status.FORBIDDEN;
-            case "repo_not_found", "report_not_found" -> Response.Status.NOT_FOUND;
+            case "repo_not_found", "report_not_found", "file_not_found" -> Response.Status.NOT_FOUND;
             default -> Response.Status.BAD_REQUEST;
         };
+        if (exception instanceof DashboardQueryService.FileNotFoundQueryException fileNotFound) {
+            return Response.status(status)
+                    .entity(new ApiError(new ApiError.ErrorBody(
+                            exception.code(),
+                            exception.getMessage(),
+                            fileNotFound.didYouMean().stream()
+                                    .map(candidate -> new ApiError.FieldError("path", "did_you_mean", candidate))
+                                    .toList())))
+                    .build();
+        }
         return Response.status(status)
                 .entity(ApiError.of(exception.code(), exception.getMessage()))
                 .build();

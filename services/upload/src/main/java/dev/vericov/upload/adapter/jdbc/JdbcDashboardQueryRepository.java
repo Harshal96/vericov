@@ -1,6 +1,10 @@
 package dev.vericov.upload.adapter.jdbc;
 
 import dev.vericov.upload.application.DashboardOverview;
+import dev.vericov.upload.application.CoverageMetricDetails;
+import dev.vericov.upload.application.DashboardComponentRollup;
+import dev.vericov.upload.application.DashboardFileLineHit;
+import dev.vericov.upload.application.DashboardFileSummary;
 import dev.vericov.upload.application.DashboardReport;
 import dev.vericov.upload.application.DashboardReportDetails;
 import dev.vericov.upload.application.DashboardReportListItem;
@@ -89,6 +93,51 @@ public class JdbcDashboardQueryRepository implements DashboardQueryRepository {
             return reportById(tenantId, reportId);
         } catch (SQLException exception) {
             throw new InvalidUploadException("dashboard_query_failed", "Report lookup failed");
+        }
+    }
+
+    @Override
+    public List<DashboardFileSummary> reportFiles(UUID tenantId, UUID reportId) {
+        try {
+            return reportFileSummaries(tenantId, reportId);
+        } catch (SQLException exception) {
+            throw new InvalidUploadException("dashboard_query_failed", "Report file summary lookup failed");
+        }
+    }
+
+    @Override
+    public boolean reportFileExists(UUID tenantId, UUID reportId, String filePath) {
+        try {
+            return reportFileExistsByPath(tenantId, reportId, filePath);
+        } catch (SQLException exception) {
+            throw new InvalidUploadException("dashboard_query_failed", "Report file lookup failed");
+        }
+    }
+
+    @Override
+    public List<DashboardFileLineHit> reportLineHits(UUID tenantId, UUID reportId, String filePath) {
+        try {
+            return reportFileLineHits(tenantId, reportId, filePath);
+        } catch (SQLException exception) {
+            throw new InvalidUploadException("dashboard_query_failed", "Report line hit lookup failed");
+        }
+    }
+
+    @Override
+    public List<String> similarReportFilePaths(UUID tenantId, UUID reportId, String basename, int max) {
+        try {
+            return similarReportFilePathsByBasename(tenantId, reportId, basename, max);
+        } catch (SQLException exception) {
+            throw new InvalidUploadException("dashboard_query_failed", "Similar report file lookup failed");
+        }
+    }
+
+    @Override
+    public List<DashboardComponentRollup> reportComponents(UUID tenantId, UUID reportId) {
+        try {
+            return reportComponentRollups(tenantId, reportId);
+        } catch (SQLException exception) {
+            throw new InvalidUploadException("dashboard_query_failed", "Report component lookup failed");
         }
     }
 
@@ -474,6 +523,148 @@ public class JdbcDashboardQueryRepository implements DashboardQueryRepository {
         }
     }
 
+    private List<DashboardFileSummary> reportFileSummaries(UUID tenantId, UUID reportId) throws SQLException {
+        try (var connection = dataSource.getConnection();
+                var statement = connection.prepareStatement("""
+                        select file_path, package_name, owners,
+                               line_covered, line_total, branch_covered, branch_total,
+                               function_covered, function_total, statement_covered, statement_total
+                        from vericov.coverage_file_summaries
+                        where tenant_id = ?
+                          and coverage_report_id = ?
+                        order by
+                            (case when line_total = 0 then 100.0 else line_covered * 100.0 / line_total end) asc,
+                            file_path asc
+                        """)) {
+            statement.setObject(1, tenantId);
+            statement.setObject(2, reportId);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                List<DashboardFileSummary> files = new ArrayList<>();
+                while (resultSet.next()) {
+                    files.add(new DashboardFileSummary(
+                            resultSet.getString("file_path"),
+                            resultSet.getString("package_name"),
+                            textArray(resultSet, "owners"),
+                            metric(resultSet, "line"),
+                            metric(resultSet, "branch"),
+                            metric(resultSet, "function"),
+                            metric(resultSet, "statement")));
+                }
+                return List.copyOf(files);
+            }
+        }
+    }
+
+    private boolean reportFileExistsByPath(UUID tenantId, UUID reportId, String filePath) throws SQLException {
+        try (var connection = dataSource.getConnection();
+                var statement = connection.prepareStatement("""
+                        select 1
+                        from vericov.coverage_file_summaries
+                        where tenant_id = ?
+                          and coverage_report_id = ?
+                          and file_path = ?
+                        limit 1
+                        """)) {
+            statement.setObject(1, tenantId);
+            statement.setObject(2, reportId);
+            statement.setString(3, filePath);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                return resultSet.next();
+            }
+        }
+    }
+
+    private List<DashboardFileLineHit> reportFileLineHits(UUID tenantId, UUID reportId, String filePath)
+            throws SQLException {
+        try (var connection = dataSource.getConnection();
+                var statement = connection.prepareStatement("""
+                        select line_number, hits
+                        from vericov.coverage_line_hits
+                        where tenant_id = ?
+                          and coverage_report_id = ?
+                          and file_path = ?
+                        order by line_number
+                        """)) {
+            statement.setObject(1, tenantId);
+            statement.setObject(2, reportId);
+            statement.setString(3, filePath);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                List<DashboardFileLineHit> lines = new ArrayList<>();
+                while (resultSet.next()) {
+                    lines.add(new DashboardFileLineHit(
+                            resultSet.getInt("line_number"),
+                            resultSet.getLong("hits")));
+                }
+                return List.copyOf(lines);
+            }
+        }
+    }
+
+    private List<String> similarReportFilePathsByBasename(
+            UUID tenantId, UUID reportId, String basename, int max) throws SQLException {
+        if (basename == null || basename.isBlank()) {
+            return List.of();
+        }
+        try (var connection = dataSource.getConnection();
+                var statement = connection.prepareStatement("""
+                        select file_path
+                        from vericov.coverage_file_summaries
+                        where tenant_id = ?
+                          and coverage_report_id = ?
+                          and (file_path = ? or file_path like ?)
+                        order by file_path
+                        limit ?
+                        """)) {
+            statement.setObject(1, tenantId);
+            statement.setObject(2, reportId);
+            statement.setString(3, basename);
+            statement.setString(4, "%/" + basename.replace("%", "\\%").replace("_", "\\_"));
+            statement.setInt(5, max);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                List<String> paths = new ArrayList<>();
+                while (resultSet.next()) {
+                    paths.add(resultSet.getString("file_path"));
+                }
+                return List.copyOf(paths);
+            }
+        }
+    }
+
+    private List<DashboardComponentRollup> reportComponentRollups(UUID tenantId, UUID reportId) throws SQLException {
+        try (var connection = dataSource.getConnection();
+                var statement = connection.prepareStatement("""
+                        select component_key, owners,
+                               line_covered, line_total, branch_covered, branch_total,
+                               function_covered, function_total, statement_covered, statement_total,
+                               gap_count, debt_count, risk_score_total, highest_active_risk_level
+                        from vericov.component_coverage_rollups
+                        where tenant_id = ?
+                          and coverage_report_id = ?
+                        order by risk_score_total desc, coalesce(owners[1], ''), component_key
+                        """)) {
+            statement.setObject(1, tenantId);
+            statement.setObject(2, reportId);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                List<DashboardComponentRollup> components = new ArrayList<>();
+                while (resultSet.next()) {
+                    List<String> owners = textArray(resultSet, "owners");
+                    components.add(new DashboardComponentRollup(
+                            resultSet.getString("component_key"),
+                            owners.isEmpty() ? "" : owners.getFirst(),
+                            metric(resultSet, "line"),
+                            metric(resultSet, "branch"),
+                            metric(resultSet, "function"),
+                            metric(resultSet, "statement"),
+                            resultSet.getLong("gap_count"),
+                            resultSet.getLong("debt_count"),
+                            resultSet.getBigDecimal("risk_score_total"),
+                            resultSet.getString("highest_active_risk_level")));
+                }
+                return List.copyOf(components);
+            }
+        }
+    }
+
     private static DashboardReport dashboardReport(ResultSet resultSet) throws SQLException {
         return new DashboardReport(
                 resultSet.getObject("id", UUID.class),
@@ -501,6 +692,12 @@ public class JdbcDashboardQueryRepository implements DashboardQueryRepository {
     private static Integer nullableInteger(ResultSet resultSet, String column) throws SQLException {
         Object value = resultSet.getObject(column);
         return value == null ? null : ((Number) value).intValue();
+    }
+
+    private static CoverageMetricDetails metric(ResultSet resultSet, String prefix) throws SQLException {
+        return new CoverageMetricDetails(
+                resultSet.getLong(prefix + "_covered"),
+                resultSet.getLong(prefix + "_total"));
     }
 
     private static java.time.Instant instant(ResultSet resultSet, String column) throws SQLException {
